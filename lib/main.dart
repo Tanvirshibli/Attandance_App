@@ -5,9 +5,11 @@ import 'screens/login_screen.dart';
 import 'screens/main_shell.dart';
 import 'services/auth_service.dart';
 import 'services/face_recognition_service.dart';
+import 'services/geo_tracking_service.dart';
 
-void main() {
+void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await GeoTrackingService.initialize();
   SystemChrome.setSystemUIOverlayStyle(
     const SystemUiOverlayStyle(
       statusBarColor: Colors.transparent,
