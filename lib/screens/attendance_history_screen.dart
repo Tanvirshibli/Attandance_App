@@ -6,7 +6,9 @@ import '../config/theme.dart';
 import '../data/dummy_data.dart';
 import '../models/attendance_request_record.dart';
 import '../services/attendance_request_service.dart';
+import '../services/auth_service.dart';
 import '../widgets/attendance_tile.dart';
+import 'attendance_report_screen.dart';
 
 class AttendanceHistoryScreen extends StatefulWidget {
   const AttendanceHistoryScreen({super.key});
@@ -19,6 +21,7 @@ class AttendanceHistoryScreen extends StatefulWidget {
 class _AttendanceHistoryScreenState extends State<AttendanceHistoryScreen> {
   final AttendanceRequestService _attendanceRequestService =
       AttendanceRequestService();
+  final AuthService _authService = AuthService();
 
   String _selectedFilter = 'All';
   final List<String> _filters = ['All', 'Requested', 'Approved', 'Rejected'];
@@ -33,7 +36,10 @@ class _AttendanceHistoryScreenState extends State<AttendanceHistoryScreen> {
 
   Future<void> _loadRecords() async {
     setState(() => _isLoading = true);
-    final records = await _attendanceRequestService.getAttendanceRecords();
+    final profile = await _authService.getCurrentUserProfile();
+    final records = await _attendanceRequestService.getAttendanceRecords(
+      employeeId: profile?.canonicalEmployeeId,
+    );
     if (!mounted) return;
     setState(() {
       _records = records;
@@ -192,20 +198,30 @@ class _AttendanceHistoryScreenState extends State<AttendanceHistoryScreen> {
                     color: Colors.white.withValues(alpha: 0.15),
                     borderRadius: BorderRadius.circular(12),
                   ),
-                  child: Row(
-                    children: [
-                      const Icon(Icons.calendar_month_outlined,
-                          size: 16, color: Colors.white),
-                      const SizedBox(width: 6),
-                      Text(
-                        'Feb 2026',
-                        style: GoogleFonts.poppins(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w500,
-                          color: Colors.white,
+                  child: InkWell(
+                    onTap: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => const AttendanceReportScreen(),
                         ),
-                      ),
-                    ],
+                      );
+                    },
+                    borderRadius: BorderRadius.circular(12),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.assessment_outlined,
+                            size: 16, color: Colors.white),
+                        const SizedBox(width: 6),
+                        Text(
+                          'Full Report',
+                          style: GoogleFonts.poppins(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w500,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ],
