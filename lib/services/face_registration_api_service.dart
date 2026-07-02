@@ -54,7 +54,10 @@ class FaceRegistrationApiService {
     return null;
   }
 
-  Future<bool> saveFaceRegistration(FaceRegistrationData registration) async {
+  Future<bool> saveFaceRegistration(
+    FaceRegistrationData registration, {
+    int? canonicalEmployeeId,
+  }) async {
     final token = await _authService.getToken();
     if (token == null || token.isEmpty) {
       return false;
@@ -64,6 +67,8 @@ class FaceRegistrationApiService {
     final payload = {
       ...registration.toJson(),
       ...deviceMetadata,
+      if (canonicalEmployeeId != null && canonicalEmployeeId > 0)
+        'zktecoPin': '$canonicalEmployeeId',
     };
 
     for (final url in AppConfig.faceRegistrationUrls) {

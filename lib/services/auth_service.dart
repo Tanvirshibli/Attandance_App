@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:async';
+import 'dart:io';
 
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
@@ -30,8 +31,11 @@ class AuthService {
     required bool rememberMe,
   }) async {
     String? lastNetworkError;
+    String? lastNetworkDetails;
+    String? lastAttemptedLoginUrl;
 
     for (final loginUrl in AppConfig.loginUrls) {
+      lastAttemptedLoginUrl = loginUrl;
       try {
         final response = await http
             .post(
@@ -39,6 +43,8 @@ class AuthService {
               headers: {
                 'Content-Type': 'application/json',
                 'Accept': 'application/json',
+                // Helps Cloudflare/WAF distinguish app traffic from unknown bots.
+                'User-Agent': 'PPHLAttendance/2.0 (Android; Flutter)',
               },
               body: jsonEncode({
                 'email': email,
@@ -93,19 +99,34 @@ class AuthService {
           message: data['message']?.toString() ??
               'Login failed (${response.statusCode}).',
         );
-      } on TimeoutException {
+      } on TimeoutException catch (error) {
         lastNetworkError = 'Request timed out.';
-      } catch (_) {
+        lastNetworkDetails = error.toString();
+      } on SocketException catch (error) {
         lastNetworkError = 'Unable to connect to backend.';
+        lastNetworkDetails =
+            'SocketException: ${error.message} (osError=${error.osError?.errorCode ?? 'n/a'})';
+      } on HandshakeException catch (error) {
+        lastNetworkError = 'Secure connection failed.';
+        lastNetworkDetails = 'HandshakeException: $error';
+      } on http.ClientException catch (error) {
+        lastNetworkError = 'HTTP client connection failed.';
+        lastNetworkDetails = 'ClientException: ${error.message}';
+      } catch (error) {
+        lastNetworkError = 'Unexpected network error.';
+        lastNetworkDetails = '$error';
       }
     }
 
-    final baseUrls = AppConfig.apiBaseUrlCandidates.join(', ');
+    final baseUrls = AppConfig.authApiBaseUrlCandidates.join(', ');
     final networkReason = lastNetworkError ?? 'No reachable API login endpoint.';
+    final devHint = AppConfig.useLocalTunnelBackends
+        ? 'This build uses Cloudflare tunnel backends (USE_LOCAL_TUNNEL_BACKENDS=true). Ensure Cloudflared-hrmlocal is running and https://hrm.peoplesitsolution.online is healthy.'
+        : 'Production builds target https://hrm.peoplesitsolution.com. For tunnel dev builds use --dart-define=USE_LOCAL_TUNNEL_BACKENDS=true.';
     return AuthResult(
       success: false,
       message:
-          '$networkReason Verify backend URL/network. Default builds target https://hrm.peoplesitsolution.com. For local development, override with --dart-define=API_BASE_URL=http://192.168.x.x:8080. Tried bases: $baseUrls',
+          '$networkReason $devHint Tried bases: $baseUrls. Last URL: ${lastAttemptedLoginUrl ?? 'n/a'}. Details: ${lastNetworkDetails ?? 'n/a'}',
     );
   }
 
