@@ -15,6 +15,7 @@ import 'package:permission_handler/permission_handler.dart';
 import '../config/theme.dart';
 import '../services/face_recognition_service.dart';
 import '../services/attendance_request_service.dart';
+import '../services/auth_service.dart';
 
 // ================================================================
 // Face path helpers & progress painter
@@ -162,6 +163,7 @@ class _CheckInScreenState extends State<CheckInScreen>
   // ---- Services & Controllers ----
   final _faceService = FaceRecognitionService();
   final _attendanceRequestService = AttendanceRequestService();
+  final _authService = AuthService();
   CameraController? _cameraController;
 
   // ---- State ----
@@ -807,12 +809,15 @@ class _CheckInScreenState extends State<CheckInScreen>
 
       if (!mounted) return;
 
+      final profile = await _authService.getCurrentUserProfile();
+      final employeeId = profile?.canonicalEmployeeId;
+
       final attendanceResult = await _attendanceRequestService.submitSelfPunch(
+        employeeId: employeeId,
         isCheckOut: widget.isCheckOut,
         latitude: _position!.latitude,
         longitude: _position!.longitude,
         address: _address,
-        faceRegistration: _faceService.exportRegistrationData(),
       );
 
       if (!attendanceResult.success) {
