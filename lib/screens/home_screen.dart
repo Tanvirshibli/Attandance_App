@@ -73,7 +73,18 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   Future<void> _loadAttendanceRequests() async {
-    final records = await _attendanceRequestService.getAttendanceRecords();
+    var employeeId = _profile.canonicalEmployeeId;
+    if (employeeId == null) {
+      final profile = await _authService.getCurrentUserProfile();
+      employeeId = profile?.canonicalEmployeeId;
+      if (profile != null && mounted) {
+        setState(() => _profile = profile);
+      }
+    }
+
+    final records = await _attendanceRequestService.getAttendanceRecords(
+      employeeId: employeeId,
+    );
     if (!mounted) return;
 
     final today = DateFormat('yyyy-MM-dd').format(DateTime.now());

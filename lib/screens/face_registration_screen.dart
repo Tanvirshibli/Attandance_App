@@ -11,6 +11,7 @@ import 'package:permission_handler/permission_handler.dart';
 import '../config/theme.dart';
 import '../services/face_recognition_service.dart';
 import '../services/face_registration_api_service.dart';
+import '../services/auth_service.dart';
 
 /// 5-angle face registration screen with live camera preview.
 /// Automatically detects each target angle and captures when held.
@@ -27,6 +28,7 @@ class _FaceRegistrationScreenState extends State<FaceRegistrationScreen>
   // ---- Services & Controllers ----
   final _faceService = FaceRecognitionService();
   final _faceRegistrationApiService = FaceRegistrationApiService();
+  final _authService = AuthService();
   CameraController? _cameraController;
 
   // ---- State flags ----
@@ -370,8 +372,12 @@ class _FaceRegistrationScreenState extends State<FaceRegistrationScreen>
           var savedToBackend = false;
           final registrationData = _faceService.exportRegistrationData();
           if (registrationData != null) {
+            final profile = await _authService.getCurrentUserProfile();
             savedToBackend = await _faceRegistrationApiService
-                .saveFaceRegistration(registrationData);
+                .saveFaceRegistration(
+              registrationData,
+              canonicalEmployeeId: profile?.canonicalEmployeeId,
+            );
           }
 
           _frameTimer?.cancel();
