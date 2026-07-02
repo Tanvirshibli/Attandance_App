@@ -10,6 +10,7 @@ class AuthUserProfile {
     required this.employeeId,
     required this.phone,
     required this.joiningDate,
+    this.canonicalEmployeeId,
     this.faceRegistration,
   });
 
@@ -21,6 +22,7 @@ class AuthUserProfile {
   final String employeeId;
   final String phone;
   final String joiningDate;
+  final int? canonicalEmployeeId;
   final FaceRegistrationData? faceRegistration;
 
   String get avatarLetters {
@@ -83,9 +85,7 @@ class AuthUserProfile {
       ], fallback: 'N/A'),
       employeeId: _firstNonEmpty([
         json['employee_id'],
-        json['employeeId'],
         employee['emp_id'],
-        employee['employeeId'],
         employee['employee_id'],
       ], fallback: 'N/A'),
       phone: _firstNonEmpty([
@@ -104,6 +104,7 @@ class AuthUserProfile {
         employee['doj'],
         employee['date_of_joining'],
       ], fallback: 'N/A'),
+      canonicalEmployeeId: _parseCanonicalEmployeeId(json, employee),
       faceRegistration: FaceRegistrationData.fromJson(json['face_registration']),
     );
   }
@@ -118,8 +119,42 @@ class AuthUserProfile {
       employeeId: 'N/A',
       phone: 'N/A',
       joiningDate: 'N/A',
+      canonicalEmployeeId: null,
       faceRegistration: null,
     );
+  }
+
+  static int? _parseCanonicalEmployeeId(
+    Map<String, dynamic> json,
+    Map<String, dynamic> employee,
+  ) {
+    for (final value in [
+      json['employeeId'],
+      json['canonical_employee_id'],
+      employee['id'],
+      employee['employeeId'],
+    ]) {
+      final parsed = _toPositiveInt(value);
+      if (parsed != null) {
+        return parsed;
+      }
+    }
+    return null;
+  }
+
+  static int? _toPositiveInt(Object? value) {
+    if (value is int) {
+      return value > 0 ? value : null;
+    }
+    if (value is num) {
+      final parsed = value.toInt();
+      return parsed > 0 ? parsed : null;
+    }
+    final parsed = int.tryParse(value?.toString() ?? '');
+    if (parsed == null || parsed <= 0) {
+      return null;
+    }
+    return parsed;
   }
 
   static Map<String, dynamic> _readMap(Object? value) {
