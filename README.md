@@ -4,83 +4,116 @@ Flutter Android app for PPHL attendance.
 
 ## Current integration scope
 
-- Login/auth session: backend JWT (`pphl_erp`)
-- Face registration: persisted to backend table `face_registration_android`
-- Check-in/check-out: submitted as attendance requests to backend table `new_attendance_requests`
+- Login/auth session: JWT on `pphl_erp`
+- Face registration: JWT on `pphl_erp` → `face_registration_android`
+- Check-in/check-out + attendance history: public API on `zkteco-Automation-management-PPHL` (no JWT; `employee_id` required) with HRM JWT mobile attendance preferred when logged in
+- **Employee services (v2.1.0):** attendance full report, leave balance/history/apply, loan payment post/report, payroll read, sales info (placeholder metrics), geo tracking scaffold
 - Home screen attendance actions: separate `Check In` and `Check Out` buttons with enable/disable rules
 - Attendance records shown in app: real backend records across requested, approved, and rejected workflow states
 - Dummy UI data retained for visual consistency (stats/other placeholders)
 - Persistent per-install device identity sent with attendance and face-registration requests
 
-## Backend auth integration
+See [docs/MOBILE_EMPLOYEE_FEATURES.md](docs/MOBILE_EMPLOYEE_FEATURES.md) for API wiring status per feature.
 
-This app authenticates against `pphl_erp` JWT endpoints:
+## Backend split
+
+| Feature | Backend | Auth |
+|---------|---------|------|
+| Login, profile, logout, face registration, future ERP modules | `pphl_erp` | JWT |
+| Attendance list + check-in/out | `zkteco-Automation-management-PPHL` | None + `employee_id` |
+
+### Production URLs (default APK)
+
+| Backend | URL |
+|---------|-----|
+| HRM / ERP | `https://hrm.peoplesitsolution.com` |
+| ZKTeco attendance | `https://zkteco.peoplesitsolution.online` |
+
+### Development URLs (Cloudflare tunnel on dev PC)
+
+| Backend | URL | Docker stack |
+|---------|-----|--------------|
+| HRM / ERP | `https://hrm.peoplesitsolution.online` | `hrm-production` (:8020) |
+| ZKTeco attendance | `https://zktecolocal.peoplesitsolution.online` | `zkteco-production` (:8095) |
+
+See [docs/TUNNEL_DEVELOPMENT.md](docs/TUNNEL_DEVELOPMENT.md) for Windows services, tunnel profiles, and verification steps.
+
+### pphl_erp (JWT)
 
 - `POST /api/v1/a/login`
 - `GET /api/v1/get-my-info`
 - `GET /api/v1/logout?token=...`
 - `GET /api/v1/mobile/face-registration`
 - `POST /api/v1/mobile/face-registration`
-- `GET /api/v1/mobile/attendance-requests`
-- `GET /api/v1/mobile/attendance-requests?status=requested`
-- `POST /api/v1/mobile/attendance-requests`
 
-The app stores JWT token locally, loads profile + face registration from backend, keeps face data in memory for matching, and invalidates session on logout.
+### zkteco app (public mobile API)
+
+- `GET /api/v1/mobile/attendance-requests?employee_id=...`
+- `POST /api/v1/mobile/attendance-requests` with `employee_id` in body
+
+The app stores JWT locally for ERP routes only. Attendance calls use the canonical `employees.id` from `get-my-info` (`user.employeeId`).
 
 ## Canonical device and employee mapping
 
-- the app never chooses the canonical employee ID itself; backend identity comes from the authenticated user
-- mobile submissions now include a persistent `deviceIdentifier` stored in `SharedPreferences`
-- backend registers that device in `new_attendance_devices`
-- any ZKTeco linkage for the same employee must use `employees.id` as the canonical PIN
+- display employee code comes from `employee_id` / `emp_id` in profile
+- attendance submissions use `canonicalEmployeeId` (`employees.id`) for zkteco PIN alignment
+- mobile submissions include a persistent `deviceIdentifier` stored in `SharedPreferences`
+- zkteco registers that device in `new_attendance_devices`
 
-## Workflow behavior
+## Build commands
 
-- Android check-in/check-out submits one daily attendance request row that the backend updates with in and out times
-- The app now reads all latest records, not just pending ones, so checkout state remains correct after approvals
-- Team leader and HR decisions are reflected through the returned workflow fields
-- Submitted requests include mobile device metadata so the web app can approve and audit the real device source
+### Dev APK (tunnel backends — install on phone for testing)
 
-## Default backend target
+```powershell
+cd Attandance_App
+powershell -ExecutionPolicy Bypass -File .\scripts\build-dev-tunnel-apk.ps1
+```
 
-Production and release builds now target:
+Equivalent manual command:
 
-- `https://hrm.peoplesitsolution.com`
+```powershell
+flutter pub get
+flutter build apk --release --target-platform android-arm,android-arm64 --dart-define=USE_LOCAL_TUNNEL_BACKENDS=true
+```
 
-## Run backend for local network
+### Production APK
 
-From the workspace root, use the canonical script documented in `SERVER_COMMANDS.md`:
+```powershell
+flutter pub get
+flutter build apk --release --target-platform android-arm,android-arm64
+```
 
-- `powershell -ExecutionPolicy Bypass -File .\start_pphl_erp_and_frontend.ps1`
+Output: `build/app/outputs/flutter-apk/app-release.apk`
 
-Use your laptop LAN IP for Android physical devices only when you intentionally point the app back to a local `pphl_erp` instance for development.
+## Configuration (`lib/config/app_config.dart`)
 
-## Flutter build for cloud backend
+| Define | Purpose |
+|--------|---------|
+| `USE_LOCAL_TUNNEL_BACKENDS` | `true` → tunnel hostnames above |
+| `AUTH_API_BASE_URL` | Override HRM/ERP base |
+| `ATTENDANCE_API_BASE_URL` | Override ZKTeco base |
+| `API_BASE_URL` | Legacy alias for auth/ERP base |
+| `API_BASE_URLS` | Auth fallback list (comma-separated) |
+| `ATTENDANCE_API_BASE_URLS` | Attendance fallback list |
 
-From `employee_attendance`:
+`backendApiBaseUrl` is an alias for the HRM/ERP base (leaves, holidays, sales, payments, etc.).
 
-- `flutter pub get`
-- `flutter build apk --release`
+## Run backends locally (Docker)
 
-Default primary base (when no `dart-define` is passed): `https://hrm.peoplesitsolution.com`.
-Default fallback bases: none.
+**ERP** — from workspace root:
 
-## Flutter build with local backend override
+```powershell
+powershell -ExecutionPolicy Bypass -File .\start_pphl_erp_and_frontend.ps1
+```
 
-From `employee_attendance`:
+**ZKTeco** — sync and redeploy:
 
-- `flutter pub get`
-- `flutter build apk --release --dart-define=API_BASE_URL=http://192.168.x.x:8080 --dart-define=API_BASE_URLS=http://10.0.2.2:8080,http://192.168.x.x:8080,http://127.0.0.1:8080`
+```powershell
+cd .\zkteco_deployment\scripts
+powershell -ExecutionPolicy Bypass -File .\sync-full-backend.ps1
+cd ..\docker
+powershell -ExecutionPolicy Bypass -File .\scripts\up.ps1 -Build
+powershell -ExecutionPolicy Bypass -File .\scripts\migrate.ps1
+```
 
-`API_BASE_URL` is primary.
-`API_BASE_URLS` is optional comma-separated fallback list.
-
-Checkout button behavior:
-
-- the home screen refreshes attendance state on app resume
-- the app refreshes attendance state again right before opening check-in or check-out flow
-- this avoids stale disabled checkout actions after network changes or background/resume cycles
-
-Latest release build output:
-
-- `build/app/outputs/flutter-apk/app-release.apk`
+Ensure Cloudflared services `Cloudflared-hrmlocal` and `Cloudflared-zktecolocal` are running before testing the dev APK on a phone.

@@ -1,99 +1,88 @@
-# Authentication & Mobile Attendance Integration (employee_attendance ↔ pphl_erp)
+# Authentication & Mobile Attendance Integration
 
-Last updated: March 7, 2026
+Last updated: July 2, 2026
 
 ## Summary
 
-The app now uses live backend APIs for:
+The app uses a **dual-backend** integration aligned with PeoplesHRM:
 
-- JWT login/session
-- user profile fetch (`get-my-info`)
-- face registration persistence (`face_registration_android`)
-- check-in/check-out attendance request submission (`new_attendance_requests`)
-- attendance history records (`requested` status only)
-- persistent device identity registration for Android attendance clients
-- canonical employee ID alignment with the backend and ZKTeco flows
+- **pphl_erp** — JWT auth, profile, face registration, and future ERP features (leave, holiday, sales, payment)
+- **zkteco-Automation-management-PPHL** — public mobile attendance requests (no JWT)
 
-## Backend endpoints used
+## Backend endpoints
 
-- `POST /api/v1/a/login`
-- `GET /api/v1/get-my-info`
-- `GET /api/v1/logout?token=...`
-- `GET /api/v1/mobile/face-registration`
-- `POST /api/v1/mobile/face-registration`
-- `GET /api/v1/mobile/attendance-requests?status=requested`
-- `POST /api/v1/mobile/attendance-requests`
+### pphl_erp (JWT required)
 
-Mobile write payloads now also include:
+| Method | Path | Purpose |
+|--------|------|---------|
+| POST | `/api/v1/a/login` | Login |
+| GET | `/api/v1/get-my-info` | Profile + `face_registration` |
+| GET | `/api/v1/logout?token=...` | Logout |
+| GET | `/api/v1/mobile/face-registration` | Optional face fetch |
+| POST | `/api/v1/mobile/face-registration` | Face upsert + `zktecoPin` |
 
-- `deviceIdentifier`
-- `deviceName`
-- `deviceModel`
-- `deviceVendor`
+### zkteco app (no JWT)
 
-The backend uses these fields to upsert rows in `new_attendance_devices`.
+| Method | Path | Purpose |
+|--------|------|---------|
+| GET | `/api/v1/mobile/attendance-requests?employee_id=` | List employee records |
+| POST | `/api/v1/mobile/attendance-requests` | Check-in/out self punch |
 
-## App architecture updates
+POST body includes `employee_id` (canonical `employees.id`), `direction`, geo fields, and device metadata.
 
-### New files
+Face embeddings are **not** sent to zkteco; they remain on pphl_erp only.
 
-- `lib/models/face_registration_data.dart`
-- `lib/models/attendance_request_record.dart`
-- `lib/services/face_registration_api_service.dart`
-- `lib/services/attendance_request_service.dart`
-- `lib/services/device_identity_service.dart`
+## Employee ID rules
 
-### Updated files
+| Field | Source | Use |
+|-------|--------|-----|
+| `employeeId` (display) | `user.employee_id` / `emp_id` | UI labels |
+| `canonicalEmployeeId` | `user.employeeId` | zkteco attendance API |
 
-- `lib/services/face_recognition_service.dart`
-  - face templates are no longer persisted in local storage
-  - templates are held in memory and hydrated from backend payloads
-- `lib/models/auth_user_profile.dart`
-  - now parses employee full name, sector, department, designation, joining date, phone, current facility, and `faceRegistration`
-- `lib/screens/login_screen.dart`
-  - email/password only sign-in UI
-  - hydrates face registration after successful login
-- `lib/main.dart`
-  - bootstrap loads profile + face registration for existing token sessions
-- `lib/screens/profile_screen.dart`
-  - profile load hydrates face registration memory
-  - profile info card now renders sector from the live backend profile contract
-  - logout clears in-memory registration
-- `lib/screens/face_registration_screen.dart`
-  - completed registration is synced to backend
-- `lib/screens/check_in_screen.dart`
-  - verified check-in/check-out submits attendance request to backend
-- `lib/services/device_identity_service.dart`
-  - creates and persists a per-install device identifier via `SharedPreferences`
-  - injects device metadata into both attendance and face-registration API payloads
-- `lib/screens/home_screen.dart`
-  - recent attendance records now come from backend
-  - header identity now comes from `get-my-info` instead of `DummyData`
-- `lib/screens/attendance_history_screen.dart`
-  - dummy attendance records replaced by backend requested records
+## App configuration
 
-## Notes
+See `lib/config/app_config.dart` and [TUNNEL_DEVELOPMENT.md](TUNNEL_DEVELOPMENT.md).
 
-- Dummy data is still used for non-attendance visual placeholders to keep UI consistency.
-- Dummy data is no longer the source for the signed-in user's name/avatar/profile summary.
-- App attendance list currently shows only records in `requested` state.
-- Backend maps DB `pending` to API `requested` for mobile display.
-- Home screen now exposes separate `Check In` and `Check Out` buttons.
-  - `Check In` is enabled only when user is not clocked in.
-  - `Check Out` is enabled only when user is clocked in.
-  - Clocked-in state is derived from today's attendance request first, preventing stale/latest-record conflicts that could disable checkout incorrectly.
-- The attendance platform now standardizes on `employees.id` as the canonical employee ID across Android, backend workflow, and ZKTeco registration.
-- The mobile app now treats invalid `requestedOutTime < requestedInTime` payloads as non-checkout state, and the backend also cleans those rows during workflow updates and data backfill.
+| Mode | HRM / ERP | ZKTeco attendance |
+|------|-----------|-------------------|
+| Production (default) | `https://hrm.peoplesitsolution.com` | `https://zkteco.peoplesitsolution.online` |
+| Dev tunnel | `https://hrm.peoplesitsolution.online` | `https://zktecolocal.peoplesitsolution.online` |
 
-## Current `get-my-info` fields relied on by the app
+Dev tunnel build:
 
-- `user.name`
-- `user.email`
-- `user.employee_id`
-- `user.phone`
-- `user.joiningDate`
-- `user.sector`
-- `user.department`
-- `user.designation`
-- `user.current_facility`
-- `user.face_registration`
+```powershell
+flutter build apk --release --dart-define=USE_LOCAL_TUNNEL_BACKENDS=true
+```
+
+Or use `scripts/build-dev-tunnel-apk.ps1`.
+
+Optional overrides:
+
+- `AUTH_API_BASE_URL` → pphl_erp login/profile/face
+- `ATTENDANCE_API_BASE_URL` → zkteco mobile attendance
+- `backendApiBaseUrl` getter → same as auth base for future ERP modules
+
+## Key services
+
+- `AuthService` — ERP JWT session
+- `FaceRegistrationApiService` — ERP face upsert
+- `AttendanceRequestService` — zkteco attendance (authless, requires local login + `employee_id`)
+- `DeviceIdentityService` — stable Android device identifier
+
+## Local zkteco stack redeploy
+
+After backend changes in `zkteco-Automation-management-PPHL`:
+
+```powershell
+cd zkteco_deployment\scripts
+powershell -ExecutionPolicy Bypass -File .\sync-full-backend.ps1
+cd ..\docker
+powershell -ExecutionPolicy Bypass -File .\scripts\up.ps1 -Build
+powershell -ExecutionPolicy Bypass -File .\scripts\migrate.ps1
+```
+
+Verify mobile API:
+
+```powershell
+curl "http://127.0.0.1:8095/api/v1/mobile/attendance-requests?employee_id=1&limit=1"
+```

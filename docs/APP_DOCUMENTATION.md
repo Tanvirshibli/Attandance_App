@@ -15,6 +15,8 @@
 
 > March 8, 2026 ZKTeco workflow update: backend ZKTeco attendance now also ingests ADMS `querydata` transaction history when live `rtlog` uploads are missing. Machine punches aggregate per day so the first punch becomes check-in and the last punch becomes check-out.
 
+> July 2, 2026 employee services update (v2.1.0): Added attendance full report, leave module, payments, sales info placeholder, and geo tracking scaffold. See `docs/MOBILE_EMPLOYEE_FEATURES.md` for API wiring status.
+
 ---
 
 ## Table of Contents
@@ -49,7 +51,7 @@
 | **Organization** | PPHL (Peoples Poultry & Hatchery Ltd.) |
 | **Platform** | Android (Flutter cross-platform, only Android targeted) |
 | **Purpose** | Employee attendance tracking with on-device face recognition and GPS verification |
-| **Version** | 2.0.0+2 |
+| **Version** | 2.1.0+4 |
 | **Dart SDK** | ^3.11.0 |
 | **Flutter Channel** | Stable (3.41.2) |
 | **APK Size** | ~105.6 MB (latest release build) |
