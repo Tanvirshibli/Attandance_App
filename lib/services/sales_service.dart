@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 import '../config/app_config.dart';
 import '../models/api_result.dart';
 import 'auth_service.dart';
+import 'endpoint_config_service.dart';
 
 class SalesProfile {
   const SalesProfile({
@@ -17,12 +18,23 @@ class SalesProfile {
 }
 
 class SalesService {
-  SalesService({AuthService? authService})
-      : _authService = authService ?? AuthService();
+  SalesService({
+    AuthService? authService,
+    EndpointConfigService? configService,
+  })  : _authService = authService ?? AuthService(),
+        _configService = configService ?? EndpointConfigService.instance;
 
   final AuthService _authService;
+  final EndpointConfigService _configService;
+
+  Future<bool> isSalesEnabled() =>
+      _configService.isFeatureEnabled('sales.enabled', defaultValue: false);
 
   Future<ApiResult<SalesProfile>> checkEligibility(int? employeeId) async {
+    if (!await isSalesEnabled()) {
+      return ApiResult.ok(const SalesProfile(isEligible: false));
+    }
+
     if (employeeId == null || employeeId <= 0) {
       return ApiResult.ok(const SalesProfile(isEligible: false));
     }
@@ -32,14 +44,17 @@ class SalesService {
       return ApiResult.fail('Please login to continue.');
     }
 
+    final url = await _configService.resolveUrl('sales.eligibility') ??
+        AppConfig.salesEmployeeListUrl;
+
     try {
       final response = await http
           .get(
-            Uri.parse(AppConfig.salesEmployeeListUrl),
+            Uri.parse(url),
             headers: {
               'Accept': 'application/json',
               'Authorization': 'Bearer $token',
-              'User-Agent': 'PPHLAttendance/2.0 (Android; Flutter)',
+              'User-Agent': 'PPHLAttendance/2.1 (Android; Flutter)',
             },
           )
           .timeout(const Duration(seconds: 15));
