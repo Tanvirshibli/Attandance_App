@@ -12,8 +12,9 @@ class LeaveService {
   final HrmApiClient _apiClient;
 
   Future<ApiResult<List<LeaveBalance>>> getBalances(int employeeId) async {
-    final result = await _apiClient.getJson(
-      '/api/v1/new-leave-stocks',
+    final result = await _apiClient.getByKey(
+      'leave.balance',
+      fallbackPath: '/api/v1/new-leave-stocks',
       queryParameters: {'employeeId': '$employeeId', 'limit': '50'},
     );
 
@@ -38,7 +39,11 @@ class LeaveService {
       params['status'] = status.toLowerCase();
     }
 
-    final result = await _apiClient.getJson('/api/v1/leaves', queryParameters: params);
+    final result = await _apiClient.getByKey(
+      'leave.history',
+      fallbackPath: '/api/v1/leaves',
+      queryParameters: params,
+    );
     if (!result.success) {
       return ApiResult.fail(result.message ?? 'Could not load leave history.');
     }
@@ -48,7 +53,10 @@ class LeaveService {
   }
 
   Future<ApiResult<List<LeaveType>>> getLeaveTypes() async {
-    final result = await _apiClient.getJson('/api/v1/leavetypes');
+    final result = await _apiClient.getByKey(
+      'leave.types',
+      fallbackPath: '/api/v1/leavetypes',
+    );
     if (!result.success) {
       return ApiResult.fail(result.message ?? 'Could not load leave types.');
     }
@@ -91,6 +99,30 @@ class LeaveService {
     return ApiResult.ok(
       result.data?['message']?.toString() ?? 'Leave submitted successfully.',
     );
+  }
+
+  Future<ApiResult<List<Map<String, dynamic>>>> getHolidays({
+    String? from,
+    String? to,
+  }) async {
+    final params = <String, String>{};
+    if (from != null && to != null) {
+      params['from'] = from;
+      params['to'] = to;
+    }
+
+    final result = await _apiClient.getByKey(
+      'leave.holidays',
+      fallbackPath: '/api/v1/mobile/holidays',
+      queryParameters: params.isEmpty ? null : params,
+    );
+
+    if (!result.success) {
+      return ApiResult.fail(result.message ?? 'Could not load holidays.');
+    }
+
+    final items = _extractList(result.data, keys: ['data']);
+    return ApiResult.ok(items);
   }
 
   List<Map<String, dynamic>> _extractList(

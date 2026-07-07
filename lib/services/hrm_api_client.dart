@@ -5,14 +5,17 @@ import 'package:http/http.dart' as http;
 import '../config/app_config.dart';
 import '../models/api_result.dart';
 import 'auth_service.dart';
+import 'endpoint_config_service.dart';
 
 class HrmApiClient {
-  HrmApiClient({AuthService? authService})
-      : _authService = authService ?? AuthService();
+  HrmApiClient({AuthService? authService, EndpointConfigService? configService})
+      : _authService = authService ?? AuthService(),
+        _configService = configService ?? EndpointConfigService.instance;
 
   final AuthService _authService;
+  final EndpointConfigService _configService;
 
-  static const String _userAgent = 'PPHLAttendance/2.0 (Android; Flutter)';
+  static const String _userAgent = 'PPHLAttendance/2.1 (Android; Flutter)';
 
   Future<Map<String, String>> _authHeaders({bool jsonBody = false}) async {
     final token = await _authService.getToken();
@@ -24,37 +27,42 @@ class HrmApiClient {
     };
   }
 
+  Future<String> _resolveEndpoint(String endpointKey, String fallbackPath) async {
+    final url = await _configService.resolveUrl(endpointKey);
+    if (url != null && url.isNotEmpty) {
+      return url;
+    }
+    return '${AppConfig.backendApiBaseUrl}$fallbackPath';
+  }
+
+  Future<ApiResult<Map<String, dynamic>>> getByKey(
+    String endpointKey, {
+    required String fallbackPath,
+    Map<String, String>? queryParameters,
+  }) async {
+    final uri = Uri.parse(
+      await _resolveEndpoint(endpointKey, fallbackPath),
+    ).replace(queryParameters: queryParameters);
+    return _getUri(uri);
+  }
+
+  Future<ApiResult<Map<String, dynamic>>> postByKey(
+    String endpointKey, {
+    required String fallbackPath,
+    Map<String, dynamic>? body,
+  }) async {
+    final uri = Uri.parse(await _resolveEndpoint(endpointKey, fallbackPath));
+    return _postUri(uri, body: body);
+  }
+
   Future<ApiResult<Map<String, dynamic>>> getJson(
     String path, {
     Map<String, String>? queryParameters,
     String? baseUrl,
   }) async {
-    final token = await _authService.getToken();
-    if (token == null || token.isEmpty) {
-      return ApiResult.fail('Please login to continue.');
-    }
-
     final uri = Uri.parse('${baseUrl ?? AppConfig.backendApiBaseUrl}$path')
         .replace(queryParameters: queryParameters);
-
-    try {
-      final response = await http
-          .get(uri, headers: await _authHeaders())
-          .timeout(const Duration(seconds: 20));
-
-      final data = _decodeMap(response.body);
-      if (response.statusCode >= 200 && response.statusCode < 300) {
-        return ApiResult.ok(data, statusCode: response.statusCode);
-      }
-
-      return ApiResult.fail(
-        data['message']?.toString() ??
-            'Request failed (${response.statusCode}).',
-        statusCode: response.statusCode,
-      );
-    } catch (error) {
-      return ApiResult.fail('Network error: $error');
-    }
+    return _getUri(uri);
   }
 
   Future<ApiResult<Map<String, dynamic>>> postJson(
@@ -62,35 +70,8 @@ class HrmApiClient {
     Map<String, dynamic>? body,
     String? baseUrl,
   }) async {
-    final token = await _authService.getToken();
-    if (token == null || token.isEmpty) {
-      return ApiResult.fail('Please login to continue.');
-    }
-
     final uri = Uri.parse('${baseUrl ?? AppConfig.backendApiBaseUrl}$path');
-
-    try {
-      final response = await http
-          .post(
-            uri,
-            headers: await _authHeaders(jsonBody: true),
-            body: jsonEncode(body ?? {}),
-          )
-          .timeout(const Duration(seconds: 25));
-
-      final data = _decodeMap(response.body);
-      if (response.statusCode >= 200 && response.statusCode < 300) {
-        return ApiResult.ok(data, statusCode: response.statusCode);
-      }
-
-      return ApiResult.fail(
-        data['message']?.toString() ??
-            'Request failed (${response.statusCode}).',
-        statusCode: response.statusCode,
-      );
-    } catch (error) {
-      return ApiResult.fail('Network error: $error');
-    }
+    return _postUri(uri, body: body);
   }
 
   Future<ApiResult<Map<String, dynamic>>> postMultipart(
@@ -116,6 +97,65 @@ class HrmApiClient {
       final response = await http.Response.fromStream(streamed);
       final data = _decodeMap(response.body);
 
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        return ApiResult.ok(data, statusCode: response.statusCode);
+      }
+
+      return ApiResult.fail(
+        data['message']?.toString() ??
+            'Request failed (${response.statusCode}).',
+        statusCode: response.statusCode,
+      );
+    } catch (error) {
+      return ApiResult.fail('Network error: $error');
+    }
+  }
+
+  Future<ApiResult<Map<String, dynamic>>> _getUri(Uri uri) async {
+    final token = await _authService.getToken();
+    if (token == null || token.isEmpty) {
+      return ApiResult.fail('Please login to continue.');
+    }
+
+    try {
+      final response = await http
+          .get(uri, headers: await _authHeaders())
+          .timeout(const Duration(seconds: 20));
+
+      final data = _decodeMap(response.body);
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        return ApiResult.ok(data, statusCode: response.statusCode);
+      }
+
+      return ApiResult.fail(
+        data['message']?.toString() ??
+            'Request failed (${response.statusCode}).',
+        statusCode: response.statusCode,
+      );
+    } catch (error) {
+      return ApiResult.fail('Network error: $error');
+    }
+  }
+
+  Future<ApiResult<Map<String, dynamic>>> _postUri(
+    Uri uri, {
+    Map<String, dynamic>? body,
+  }) async {
+    final token = await _authService.getToken();
+    if (token == null || token.isEmpty) {
+      return ApiResult.fail('Please login to continue.');
+    }
+
+    try {
+      final response = await http
+          .post(
+            uri,
+            headers: await _authHeaders(jsonBody: true),
+            body: jsonEncode(body ?? {}),
+          )
+          .timeout(const Duration(seconds: 25));
+
+      final data = _decodeMap(response.body);
       if (response.statusCode >= 200 && response.statusCode < 300) {
         return ApiResult.ok(data, statusCode: response.statusCode);
       }
