@@ -16,8 +16,9 @@ class AttendanceReportService {
     final fromStr = _dateStr(from);
     final toStr = _dateStr(to);
 
-    final result = await _apiClient.getJson(
-      '/api/v1/single-employee-attendance-details',
+    final result = await _apiClient.getByKey(
+      'attendance.summary',
+      fallbackPath: '/api/v1/single-employee-attendance-details',
       queryParameters: {
         'employee_id': '$employeeId',
         'start_date': fromStr,
