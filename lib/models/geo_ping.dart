@@ -4,6 +4,7 @@ class GeoPing {
     required this.longitude,
     required this.capturedAt,
     this.address,
+    this.accuracyM,
     this.uploaded = false,
   });
 
@@ -11,6 +12,7 @@ class GeoPing {
   final double longitude;
   final DateTime capturedAt;
   final String? address;
+  final double? accuracyM;
   final bool uploaded;
 
   Map<String, dynamic> toJson() => {
@@ -18,6 +20,7 @@ class GeoPing {
         'longitude': longitude,
         'capturedAt': capturedAt.toIso8601String(),
         'address': address,
+        if (accuracyM != null) 'accuracyM': accuracyM,
         'uploaded': uploaded,
       };
 
@@ -28,6 +31,9 @@ class GeoPing {
       capturedAt: DateTime.tryParse(json['capturedAt']?.toString() ?? '') ??
           DateTime.now(),
       address: json['address']?.toString(),
+      accuracyM: json['accuracyM'] == null
+          ? null
+          : _toDouble(json['accuracyM']),
       uploaded: json['uploaded'] == true,
     );
   }

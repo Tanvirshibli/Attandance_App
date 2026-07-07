@@ -154,6 +154,45 @@ class _AttendanceReportScreenState extends State<AttendanceReportScreen> {
                 ),
               ),
             ),
+            if (_records.isNotEmpty)
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 8, 20, 8),
+                  child: Text(
+                    'Punch Timeline',
+                    style: GoogleFonts.poppins(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ),
+            if (_records.isNotEmpty)
+              SliverPadding(
+                padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+                sliver: SliverList.separated(
+                  itemCount: _records.length,
+                  separatorBuilder: (_, __) => const SizedBox(height: 8),
+                  itemBuilder: (context, index) {
+                    return FadeInUp(
+                      delay: Duration(milliseconds: 40 * (index % 5)),
+                      child: _buildPunchCard(_records[index]),
+                    );
+                  },
+                ),
+              ),
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
+                child: Text(
+                  'Daily Summary',
+                  style: GoogleFonts.poppins(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ),
             if (_isLoading)
               const SliverToBoxAdapter(
                 child: Padding(
@@ -193,20 +232,6 @@ class _AttendanceReportScreenState extends State<AttendanceReportScreen> {
     );
   }
 
-  Widget _buildSummaryRow(AttendanceSummary summary) {
-    return Row(
-      children: [
-        _summaryCard('Present', summary.presentCount, AppColors.success),
-        const SizedBox(width: 8),
-        _summaryCard('Leave', summary.leaveCount, AppColors.info),
-        const SizedBox(width: 8),
-        _summaryCard('Absent', summary.absentCount, AppColors.error),
-        const SizedBox(width: 8),
-        _summaryCard('Holiday', summary.holidayCount, AppColors.warning),
-      ],
-    );
-  }
-
   Widget _summaryCard(String label, int value, Color color) {
     return Expanded(
       child: SectionCard(
@@ -231,6 +256,104 @@ class _AttendanceReportScreenState extends State<AttendanceReportScreen> {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildSummaryRow(AttendanceSummary summary) {
+    return Row(
+      children: [
+        _summaryCard('Present', summary.presentCount, AppColors.success),
+        const SizedBox(width: 8),
+        _summaryCard('Leave', summary.leaveCount, AppColors.info),
+        const SizedBox(width: 8),
+        _summaryCard('Absent', summary.absentCount, AppColors.error),
+        const SizedBox(width: 8),
+        _summaryCard('Holiday', summary.holidayCount, AppColors.warning),
+      ],
+    );
+  }
+
+  Widget _buildPunchCard(AttendanceRequestRecord record) {
+    final hasGeo = record.latitude != null && record.longitude != null;
+    return SectionCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  record.attDate,
+                  style: GoogleFonts.poppins(
+                    fontWeight: FontWeight.w600,
+                    fontSize: 14,
+                  ),
+                ),
+              ),
+              if (record.faceVerified == true)
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: AppColors.success.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.verified_user,
+                          size: 14, color: AppColors.success),
+                      const SizedBox(width: 4),
+                      Text(
+                        'Face',
+                        style: GoogleFonts.poppins(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.success,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'In: ${record.checkInText}  •  Out: ${record.checkOutText}',
+            style: GoogleFonts.poppins(
+              fontSize: 12,
+              color: AppColors.textSecondary,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'Status: ${record.status}',
+            style: GoogleFonts.poppins(fontSize: 12),
+          ),
+          if (hasGeo || (record.address?.isNotEmpty ?? false)) ...[
+            const SizedBox(height: 8),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(Icons.location_on_outlined,
+                    size: 16, color: AppColors.primary),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    record.address?.isNotEmpty == true
+                        ? record.address!
+                        : '${record.latitude!.toStringAsFixed(5)}, ${record.longitude!.toStringAsFixed(5)}',
+                    style: GoogleFonts.poppins(
+                      fontSize: 11,
+                      color: AppColors.textSecondary,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ],
       ),
     );
   }
