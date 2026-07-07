@@ -11,7 +11,9 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../config/app_config.dart';
 import '../models/geo_ping.dart';
 import 'auth_service.dart';
+import 'endpoint_config_service.dart';
 import 'fcm_wake_handler.dart';
+import 'geo_background_worker.dart';
 
 const String _enabledKey = 'geo_tracking_enabled';
 const String _lastPingKey = 'geo_last_ping_json';
@@ -19,18 +21,23 @@ const String _queueKey = 'geo_ping_queue';
 const String _lastCaptureKey = 'geo_last_capture_ms';
 
 class GeoTrackingService {
-  GeoTrackingService({AuthService? authService})
-      : _authService = authService ?? AuthService();
+  GeoTrackingService({
+    AuthService? authService,
+    EndpointConfigService? configService,
+  })  : _authService = authService ?? AuthService(),
+        _configService = configService ?? EndpointConfigService.instance;
 
   final AuthService _authService;
+  final EndpointConfigService _configService;
   static Timer? _foregroundTimer;
 
   static Future<void> initialize() async {
     FcmWakeHandler.register();
+    await GeoBackgroundWorker.initialize();
     final prefs = await SharedPreferences.getInstance();
     final enabled = prefs.getBool(_enabledKey) ?? false;
     if (enabled) {
-      _startForegroundTimer();
+      await _startForegroundTimer();
     }
   }
 
@@ -39,24 +46,32 @@ class GeoTrackingService {
     return prefs.getBool(_enabledKey) ?? false;
   }
 
+  Future<bool> isGeoFeatureEnabled() =>
+      _configService.isFeatureEnabled('geo.tracking.enabled', defaultValue: true);
+
   Future<void> setEnabled(bool enabled) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_enabledKey, enabled);
 
     if (enabled) {
-      _startForegroundTimer();
-      await captureAndQueue();
+      await _startForegroundTimer();
+      await GeoBackgroundWorker.registerPeriodicTask();
+      await captureAndQueue(source: 'manual');
     } else {
       _foregroundTimer?.cancel();
       _foregroundTimer = null;
+      await GeoBackgroundWorker.cancelPeriodicTask();
     }
   }
 
-  static void _startForegroundTimer() {
+  static Future<void> _startForegroundTimer() async {
+    final service = GeoTrackingService();
+    final intervalMinutes = await service._configService.geoIntervalMinutes();
+
     _foregroundTimer?.cancel();
     _foregroundTimer = Timer.periodic(
-      Duration(minutes: AppConfig.geoTrackingIntervalMinutes),
-      (_) => GeoTrackingService().captureAndQueue(),
+      Duration(minutes: intervalMinutes),
+      (_) => GeoTrackingService().captureAndQueue(source: 'foreground'),
     );
   }
 
@@ -64,6 +79,9 @@ class GeoTrackingService {
     var status = await Permission.locationWhenInUse.request();
     if (status.isGranted) {
       status = await Permission.locationAlways.request();
+    }
+    if (status.isGranted) {
+      await Permission.notification.request();
     }
     return status;
   }
@@ -94,12 +112,17 @@ class GeoTrackingService {
     return queue.where((p) => !p.uploaded).length;
   }
 
-  Future<void> captureAndQueue() async {
+  Future<void> captureAndQueue({String source = 'foreground'}) async {
+    if (!await isGeoFeatureEnabled()) return;
+
     final prefs = await SharedPreferences.getInstance();
     final lastMs = prefs.getInt(_lastCaptureKey) ?? 0;
     final elapsed = DateTime.now().millisecondsSinceEpoch - lastMs;
-    final minIntervalMs = AppConfig.geoTrackingIntervalMinutes * 60 * 1000;
-    if (elapsed < minIntervalMs && lastMs > 0) return;
+    final intervalMinutes = await _configService.geoIntervalMinutes();
+    final minIntervalMs = intervalMinutes * 60 * 1000;
+    if (elapsed < minIntervalMs && lastMs > 0 && source == 'foreground') {
+      return;
+    }
 
     final serviceEnabled = await Geolocator.isLocationServiceEnabled();
     if (!serviceEnabled) return;
@@ -146,31 +169,37 @@ class GeoTrackingService {
       queue.add(ping);
       await _saveQueue(queue);
 
-      await _tryUpload(ping);
+      await _tryUpload(ping, source: source);
     } catch (error) {
       debugPrint('Geo capture failed: $error');
     }
   }
 
-  Future<void> _tryUpload(GeoPing ping) async {
-    final token = await _authService.getToken();
-    if (token == null || token.isEmpty) return;
+  Future<void> _tryUpload(GeoPing ping, {String source = 'foreground'}) async {
+    final profile = await _authService.getCurrentUserProfile();
+    final employeeId = profile?.canonicalEmployeeId;
+    if (employeeId == null || employeeId <= 0) return;
+
+    final uploadUrl = await _configService.resolveUrl('geo.upload') ??
+        AppConfig.geoLocationUploadUrl;
 
     try {
       final response = await http
           .post(
-            Uri.parse(AppConfig.geoLocationUploadUrl),
+            Uri.parse(uploadUrl),
             headers: {
               'Accept': 'application/json',
               'Content-Type': 'application/json',
-              'Authorization': 'Bearer $token',
-              'User-Agent': 'PPHLAttendance/2.0 (Android; Flutter)',
+              'User-Agent': 'PPHLAttendance/2.1 (Android; Flutter)',
             },
             body: jsonEncode({
+              'employee_id': employeeId,
               'lat': ping.latitude,
               'lng': ping.longitude,
               'address': ping.address,
-              'capturedAt': ping.capturedAt.toIso8601String(),
+              'accuracy_m': ping.accuracyM,
+              'captured_at': ping.capturedAt.toIso8601String(),
+              'source': source,
             }),
           )
           .timeout(const Duration(seconds: 15));
@@ -179,7 +208,14 @@ class GeoTrackingService {
         await _markUploaded(ping);
       }
     } catch (_) {
-      // Keep queued — backend endpoint not ready yet.
+      // Keep queued for retry.
+    }
+  }
+
+  Future<void> flushQueue() async {
+    final queue = await _loadQueue();
+    for (final ping in queue.where((p) => !p.uploaded)) {
+      await _tryUpload(ping, source: 'background');
     }
   }
 
@@ -193,6 +229,7 @@ class GeoTrackingService {
                   longitude: item.longitude,
                   capturedAt: item.capturedAt,
                   address: item.address,
+                  accuracyM: item.accuracyM,
                   uploaded: true,
                 )
               : item,
