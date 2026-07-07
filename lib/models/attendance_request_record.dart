@@ -13,6 +13,9 @@ class AttendanceRequestRecord {
     this.supervisorStatus,
     this.hrStatus,
     this.address,
+    this.latitude,
+    this.longitude,
+    this.faceVerified,
     this.createdAt,
   });
 
@@ -27,6 +30,9 @@ class AttendanceRequestRecord {
   final String? supervisorStatus;
   final String? hrStatus;
   final String? address;
+  final double? latitude;
+  final double? longitude;
+  final bool? faceVerified;
   final String? createdAt;
 
   bool get isRejected => status.toLowerCase() == 'rejected';
@@ -92,8 +98,18 @@ class AttendanceRequestRecord {
       supervisorStatus: json['supervisorStatus']?.toString(),
       hrStatus: json['hrStatus']?.toString(),
       address: json['address']?.toString(),
+      latitude: _toDouble(json['lat']),
+      longitude: _toDouble(json['lng']),
+      faceVerified: json['faceVerified'] == true || json['face_verified'] == true,
       createdAt: json['createdAt']?.toString(),
     );
+  }
+
+  static double? _toDouble(Object? value) {
+    if (value == null) return null;
+    if (value is double) return value;
+    if (value is num) return value.toDouble();
+    return double.tryParse(value.toString());
   }
 
   static int? _toInt(Object? value) {
