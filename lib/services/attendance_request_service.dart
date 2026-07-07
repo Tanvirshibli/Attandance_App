@@ -7,6 +7,7 @@ import '../config/app_config.dart';
 import '../models/attendance_request_record.dart';
 import 'auth_service.dart';
 import 'device_identity_service.dart';
+import 'endpoint_config_service.dart';
 
 class AttendanceSubmitResult {
   const AttendanceSubmitResult({
@@ -24,6 +25,7 @@ class AttendanceRequestService {
 
   final AuthService _authService;
   final DeviceIdentityService _deviceIdentityService = DeviceIdentityService();
+  final EndpointConfigService _configService = EndpointConfigService.instance;
 
   Future<List<AttendanceRequestRecord>> getAttendanceRecords({
     required int? employeeId,
@@ -56,7 +58,7 @@ class AttendanceRequestService {
       return const [];
     }
 
-    for (final url in AppConfig.attendanceRequestUrls) {
+    for (final url in await _attendanceListUrls()) {
       try {
         final queryParameters = <String, String>{
           'employee_id': '$employeeId',
@@ -112,7 +114,7 @@ class AttendanceRequestService {
     DateTime? to,
     int limit = 100,
   }) async {
-    for (final url in AppConfig.mobileAttendanceJwtUrls) {
+    for (final url in await _jwtAttendanceUrls()) {
       try {
         final queryParameters = <String, String>{
           'limit': '$limit',
@@ -171,6 +173,7 @@ class AttendanceRequestService {
     required double latitude,
     required double longitude,
     required String address,
+    bool faceVerified = false,
   }) async {
     if (!await _hasLocalSession()) {
       return const AttendanceSubmitResult(
@@ -196,13 +199,14 @@ class AttendanceRequestService {
       'lat': latitude,
       'lng': longitude,
       'address': address,
+      'face_verified': faceVerified,
       'requestType': 'self_punch',
       ...deviceMetadata,
     };
 
     String? networkError;
 
-    for (final url in AppConfig.attendanceRequestUrls) {
+    for (final url in await _attendancePunchUrls()) {
       try {
         final response = await http
             .post(
@@ -244,6 +248,34 @@ class AttendanceRequestService {
       success: false,
       message: networkError ?? 'No reachable attendance endpoint.',
     );
+  }
+
+  Future<List<String>> _attendanceListUrls() async {
+    final dynamicUrl = await _configService.resolveUrl('attendance.list');
+    if (dynamicUrl != null && dynamicUrl.isNotEmpty) {
+      return [dynamicUrl, ...AppConfig.attendanceRequestUrls];
+    }
+    return AppConfig.attendanceRequestUrls;
+  }
+
+  Future<List<String>> _attendancePunchUrls() async {
+    final dynamicUrl = await _configService.resolveUrl('attendance.punch');
+    if (dynamicUrl != null && dynamicUrl.isNotEmpty) {
+      return [dynamicUrl, ...AppConfig.attendanceRequestUrls];
+    }
+    return AppConfig.attendanceRequestUrls;
+  }
+
+  Future<List<String>> _jwtAttendanceUrls() async {
+    final dynamicUrl = await _configService.resolveUrl('attendance.list');
+    final hrmUrl = await _configService.resolveUrl('auth.profile');
+    // JWT attendance on HRM uses same path pattern
+    if (hrmUrl != null) {
+      final hrmBase = hrmUrl.replaceAll('/api/v1/get-my-info', '');
+      final jwtUrl = '$hrmBase/api/v1/mobile/attendance-requests';
+      return [jwtUrl, ...AppConfig.mobileAttendanceJwtUrls];
+    }
+    return AppConfig.mobileAttendanceJwtUrls;
   }
 
   Future<bool> _hasLocalSession() async {

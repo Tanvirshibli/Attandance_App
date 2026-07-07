@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../config/app_config.dart';
 import '../models/auth_user_profile.dart';
+import 'endpoint_config_service.dart';
 
 class AuthResult {
   const AuthResult({
@@ -25,6 +26,8 @@ class AuthService {
   static const String _emailKey = 'auth_email';
   static const String _rememberKey = 'remember_me';
 
+  final EndpointConfigService _configService = EndpointConfigService.instance;
+
   Future<AuthResult> login({
     required String email,
     required String password,
@@ -34,7 +37,7 @@ class AuthService {
     String? lastNetworkDetails;
     String? lastAttemptedLoginUrl;
 
-    for (final loginUrl in AppConfig.loginUrls) {
+    for (final loginUrl in await _loginUrls()) {
       lastAttemptedLoginUrl = loginUrl;
       try {
         final response = await http
@@ -136,7 +139,7 @@ class AuthService {
       return null;
     }
 
-    for (final url in AppConfig.currentUserUrls) {
+    for (final url in await _profileUrls()) {
       try {
         final response = await _authorizedGet(url: url, token: token)
             .timeout(const Duration(seconds: 15));
@@ -214,7 +217,7 @@ class AuthService {
     final token = await getToken();
 
     if (invalidateServerSession && token != null && token.isNotEmpty) {
-      for (final url in AppConfig.logoutUrls) {
+      for (final url in await _logoutUrls()) {
         try {
           final logoutUrl = Uri.parse(url).replace(queryParameters: {
             'token': token,
@@ -238,6 +241,30 @@ class AuthService {
     await prefs.remove(_tokenKey);
     await prefs.remove(_rememberKey);
     await prefs.remove(_emailKey);
+  }
+
+  Future<List<String>> _loginUrls() async {
+    final dynamicUrl = await _configService.resolveUrl('auth.login');
+    if (dynamicUrl != null && dynamicUrl.isNotEmpty) {
+      return [dynamicUrl, ...AppConfig.loginUrls];
+    }
+    return AppConfig.loginUrls;
+  }
+
+  Future<List<String>> _profileUrls() async {
+    final dynamicUrl = await _configService.resolveUrl('auth.profile');
+    if (dynamicUrl != null && dynamicUrl.isNotEmpty) {
+      return [dynamicUrl, ...AppConfig.currentUserUrls];
+    }
+    return AppConfig.currentUserUrls;
+  }
+
+  Future<List<String>> _logoutUrls() async {
+    final dynamicUrl = await _configService.resolveUrl('auth.logout');
+    if (dynamicUrl != null && dynamicUrl.isNotEmpty) {
+      return [dynamicUrl, ...AppConfig.logoutUrls];
+    }
+    return AppConfig.logoutUrls;
   }
 
   Future<http.Response> _authorizedGet({
