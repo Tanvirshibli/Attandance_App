@@ -3,7 +3,9 @@ import 'package:flutter/services.dart';
 import 'config/theme.dart';
 import 'screens/login_screen.dart';
 import 'screens/main_shell.dart';
+import 'screens/server_bootstrap_screen.dart';
 import 'services/auth_service.dart';
+import 'services/endpoint_config_service.dart';
 import 'services/face_recognition_service.dart';
 import 'services/geo_tracking_service.dart';
 
@@ -43,30 +45,38 @@ class AppBootstrap extends StatefulWidget {
 class _AppBootstrapState extends State<AppBootstrap> {
   final AuthService _authService = AuthService();
   final FaceRecognitionService _faceRecognitionService = FaceRecognitionService();
-  late Future<bool> _isLoggedInFuture;
+  final EndpointConfigService _configService = EndpointConfigService.instance;
+  late Future<_BootstrapState> _bootstrapFuture;
 
   @override
   void initState() {
     super.initState();
-    _isLoggedInFuture = _prepareSession();
+    _bootstrapFuture = _prepare();
   }
 
-  Future<bool> _prepareSession() async {
+  Future<_BootstrapState> _prepare() async {
+    final hasBootstrap = await _configService.hasBootstrapUrl();
+    if (!hasBootstrap) {
+      return _BootstrapState.needsBootstrap;
+    }
+
+    await _configService.getConfig();
+
     final isLoggedIn = await _authService.isLoggedIn();
     if (!isLoggedIn) {
       _faceRecognitionService.clearRegistrationMemory();
-      return false;
+      return _BootstrapState.needsLogin;
     }
 
     final profile = await _authService.getCurrentUserProfile();
     _faceRecognitionService.hydrateRegistration(profile?.faceRegistration);
-    return true;
+    return _BootstrapState.authenticated;
   }
 
   @override
   Widget build(BuildContext context) {
-    return FutureBuilder<bool>(
-      future: _isLoggedInFuture,
+    return FutureBuilder<_BootstrapState>(
+      future: _bootstrapFuture,
       builder: (context, snapshot) {
         if (!snapshot.hasData) {
           return const Scaffold(
@@ -74,12 +84,18 @@ class _AppBootstrapState extends State<AppBootstrap> {
           );
         }
 
-        if (snapshot.data == true) {
-          return const MainShell();
-        }
-
-        return const LoginScreen();
+        return switch (snapshot.data!) {
+          _BootstrapState.needsBootstrap => const ServerBootstrapScreen(),
+          _BootstrapState.authenticated => const MainShell(),
+          _BootstrapState.needsLogin => const LoginScreen(),
+        };
       },
     );
   }
+}
+
+enum _BootstrapState {
+  needsBootstrap,
+  needsLogin,
+  authenticated,
 }

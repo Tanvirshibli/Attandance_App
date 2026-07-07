@@ -178,5 +178,5 @@ class AppConfig {
   static String get geoLocationUploadUrl =>
       '$backendApiBaseUrl/api/v1/mobile/geo-location';
 
-  static const int geoTrackingIntervalMinutes = 10;
+  static const int geoTrackingIntervalMinutes = 5;
 }
