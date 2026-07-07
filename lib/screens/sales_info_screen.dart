@@ -22,6 +22,7 @@ class _SalesInfoScreenState extends State<SalesInfoScreen> {
 
   bool _isLoading = true;
   bool _isEligible = false;
+  bool _salesEnabled = false;
   String? _employeeName;
 
   @override
@@ -32,12 +33,14 @@ class _SalesInfoScreenState extends State<SalesInfoScreen> {
 
   Future<void> _load() async {
     setState(() => _isLoading = true);
+    final salesEnabled = await _salesService.isSalesEnabled();
     final profile = await _authService.getCurrentUserProfile();
     final result = await _salesService.checkEligibility(
       profile?.canonicalEmployeeId,
     );
     if (!mounted) return;
     setState(() {
+      _salesEnabled = salesEnabled;
       _isEligible = result.data?.isEligible ?? false;
       _employeeName = result.data?.employeeName ?? profile?.name;
       _isLoading = false;
@@ -62,6 +65,18 @@ class _SalesInfoScreenState extends State<SalesInfoScreen> {
               child: Padding(
                 padding: EdgeInsets.all(40),
                 child: Center(child: CircularProgressIndicator()),
+              ),
+            )
+          else if (!_salesEnabled)
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.all(20),
+                child: ApiEmptyState(
+                  icon: Icons.hourglass_top_rounded,
+                  title: 'Coming Soon',
+                  subtitle:
+                      'Sales reporting will be available once the sales backend is connected via the ZKTeco API dashboard.',
+                ),
               ),
             )
           else if (!_isEligible)
