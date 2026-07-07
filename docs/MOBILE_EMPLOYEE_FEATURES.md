@@ -40,10 +40,18 @@ This document describes the employee self-service modules added to **Attandance_
 | Payroll slips | HRM `GET /api/v1/payroll?employeeId=` | **Wired** |
 | Sales eligibility | HRM `GET /api/get-sales-employee-list` | **Wired** (gate only) |
 | Sales metrics | — | **Pending** (UI placeholder) |
-| Geo location upload | `POST /api/v1/mobile/geo-location` | **Pending** (client queues locally) |
+| Geo location upload | ZKTeco `POST /api/v1/mobile/geo-location` | **Wired** (ZKTeco DB) |
+| App endpoint config | ZKTeco `GET /api/v1/mobile/app-config` | **Wired** (bootstrap) |
+| Holidays | HRM `GET /api/v1/mobile/holidays` | **Wired** |
 | FCM wake for geo | Firebase Cloud Messaging | **Pending** (`google-services.json` not configured) |
 
-All HRM calls use `AppConfig.backendApiBaseUrl` with JWT from login.
+All HRM calls use dynamic endpoints from `EndpointConfigService` (fetched from ZKTeco `GET /api/v1/mobile/app-config`) with JWT from login. Fallback: `AppConfig` compile-time URLs when config fetch fails.
+
+### Endpoint configuration (v2.2)
+
+- First launch: **Server Bootstrap** screen — enter ZKTeco base URL only
+- Admin maps all APIs in ZKTeco dashboard: **Settings → Mobile App API**
+- Feature flags: `sales.enabled`, `payment.enabled`, `geo.tracking.enabled` (payment/sales default off)
 
 ---
 

@@ -1,0 +1,15 @@
+flowchart TD
+  Bootstrap[Server Setup] --> Login
+  Login --> Home
+  Home --> CheckIn[Face Check-in/out]
+  Home --> Shell[Main Tabs]
+  Shell --> Home
+  Shell --> AttendanceHistory
+  Shell --> Notifications
+  Shell --> Profile
+  Profile --> Services[Employee Services]
+  Services --> AttReport[Attendance Report]
+  Services --> Leave[Leave Hub]
+  Services --> Payment[Payments]
+  Services --> Sales[Sales Info]
+  Services --> Geo[Geo Tracking]

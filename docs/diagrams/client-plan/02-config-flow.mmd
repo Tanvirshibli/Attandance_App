@@ -1,0 +1,12 @@
+sequenceDiagram
+  participant User
+  participant App
+  participant ZKTeco
+  participant HRM
+  User->>App: Enter ZKTeco URL once
+  App->>ZKTeco: GET /api/v1/mobile/app-config
+  ZKTeco-->>App: endpoints + feature flags
+  User->>App: Login
+  App->>HRM: POST auth.login URL from config
+  HRM-->>App: JWT token
+  App->>ZKTeco: POST attendance.punch with employee_id

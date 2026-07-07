@@ -1,0 +1,18 @@
+flowchart LR
+  subgraph mobile [Android App]
+    App[PPHL Attendance]
+  end
+  subgraph zkteco [ZKTeco Production]
+    Config[API Config Dashboard]
+    Att[Attendance API]
+    Geo[Geo API]
+  end
+  subgraph hrm [HRM Production]
+    Auth[JWT Auth]
+    Leave[Leave API]
+    Face[Face Registration]
+  end
+  App -->|bootstrap once| Config
+  App -->|JWT| hrm
+  App -->|employee_id| zkteco
+  Config --> App
