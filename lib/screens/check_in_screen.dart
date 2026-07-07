@@ -818,6 +818,7 @@ class _CheckInScreenState extends State<CheckInScreen>
         latitude: _position!.latitude,
         longitude: _position!.longitude,
         address: _address,
+        faceVerified: true,
       );
 
       if (!attendanceResult.success) {

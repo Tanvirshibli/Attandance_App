@@ -25,6 +25,7 @@ class _LeaveHubScreenState extends State<LeaveHubScreen> {
   final AuthService _authService = AuthService();
 
   List<LeaveBalance> _balances = const [];
+  List<Map<String, dynamic>> _holidays = const [];
   bool _isLoading = true;
 
   @override
@@ -47,9 +48,11 @@ class _LeaveHubScreenState extends State<LeaveHubScreen> {
     }
 
     final result = await _leaveService.getBalances(employeeId);
+    final holidaysResult = await _leaveService.getHolidays();
     if (!mounted) return;
     setState(() {
       _balances = result.data ?? const [];
+      _holidays = holidaysResult.data ?? const [];
       _isLoading = false;
     });
   }
@@ -112,6 +115,59 @@ class _LeaveHubScreenState extends State<LeaveHubScreen> {
               ),
             ),
           ),
+          if (_holidays.isNotEmpty)
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(20, 8, 20, 8),
+                child: Text(
+                  'Upcoming Holidays',
+                  style: GoogleFonts.poppins(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ),
+          if (_holidays.isNotEmpty)
+            SliverPadding(
+              padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+              sliver: SliverList.separated(
+                itemCount: _holidays.length.clamp(0, 5),
+                separatorBuilder: (_, __) => const SizedBox(height: 8),
+                itemBuilder: (context, index) {
+                  final h = _holidays[index];
+                  return SectionCard(
+                    child: Row(
+                      children: [
+                        Icon(Icons.event_outlined, color: AppColors.warning),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                h['holidayName']?.toString() ?? 'Holiday',
+                                style: GoogleFonts.poppins(
+                                  fontWeight: FontWeight.w600,
+                                  fontSize: 13,
+                                ),
+                              ),
+                              Text(
+                                '${h['startDate']} → ${h['endDate']}',
+                                style: GoogleFonts.poppins(
+                                  fontSize: 11,
+                                  color: AppColors.textSecondary,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                },
+              ),
+            ),
           SliverToBoxAdapter(
             child: Padding(
               padding: const EdgeInsets.fromLTRB(20, 8, 20, 8),
