@@ -7,6 +7,7 @@ import '../config/app_config.dart';
 import '../models/face_registration_data.dart';
 import 'auth_service.dart';
 import 'device_identity_service.dart';
+import 'endpoint_config_service.dart';
 
 class FaceRegistrationApiService {
   FaceRegistrationApiService({AuthService? authService})
@@ -14,6 +15,7 @@ class FaceRegistrationApiService {
 
   final AuthService _authService;
   final DeviceIdentityService _deviceIdentityService = DeviceIdentityService();
+  final EndpointConfigService _configService = EndpointConfigService.instance;
 
   Future<FaceRegistrationData?> fetchCurrentUserFaceRegistration() async {
     final token = await _authService.getToken();
@@ -21,7 +23,7 @@ class FaceRegistrationApiService {
       return null;
     }
 
-    for (final url in AppConfig.faceRegistrationUrls) {
+    for (final url in await _faceRegistrationUrls()) {
       try {
         final response = await http.get(
           Uri.parse(url),
@@ -71,7 +73,7 @@ class FaceRegistrationApiService {
         'zktecoPin': '$canonicalEmployeeId',
     };
 
-    for (final url in AppConfig.faceRegistrationUrls) {
+    for (final url in await _faceRegistrationUrls()) {
       try {
         final response = await http
             .post(
@@ -103,6 +105,16 @@ class FaceRegistrationApiService {
     }
 
     return false;
+  }
+
+  Future<List<String>> _faceRegistrationUrls() async {
+    final getUrl = await _configService.resolveUrl('face.registration.get');
+    final postUrl = await _configService.resolveUrl('face.registration');
+    final urls = <String>{};
+    if (getUrl != null) urls.add(getUrl);
+    if (postUrl != null) urls.add(postUrl);
+    urls.addAll(AppConfig.faceRegistrationUrls);
+    return urls.toList();
   }
 
   Map<String, dynamic> _decodeMap(String responseBody) {
