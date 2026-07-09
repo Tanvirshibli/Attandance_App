@@ -87,7 +87,7 @@ class HrmApiClient {
 
     final uri = Uri.parse('${baseUrl ?? AppConfig.backendApiBaseUrl}$path');
 
-    try {
+    Future<ApiResult<Map<String, dynamic>>> sendOnce() async {
       final request = http.MultipartRequest('POST', uri);
       request.headers.addAll(await _authHeaders());
       request.fields.addAll(fields);
@@ -95,17 +95,21 @@ class HrmApiClient {
 
       final streamed = await request.send().timeout(const Duration(seconds: 30));
       final response = await http.Response.fromStream(streamed);
-      final data = _decodeMap(response.body);
+      return _mapResponse(response);
+    }
 
-      if (response.statusCode >= 200 && response.statusCode < 300) {
-        return ApiResult.ok(data, statusCode: response.statusCode);
+    try {
+      final first = await sendOnce();
+      if (first.statusCode != 401) {
+        return first;
       }
 
-      return ApiResult.fail(
-        data['message']?.toString() ??
-            'Request failed (${response.statusCode}).',
-        statusCode: response.statusCode,
-      );
+      final refreshed = await _authService.refreshToken();
+      if (!refreshed) {
+        await _authService.logout(invalidateServerSession: false);
+        return ApiResult.fail('Session expired. Please login again.', statusCode: 401);
+      }
+      return sendOnce();
     } catch (error) {
       return ApiResult.fail('Network error: $error');
     }
@@ -118,20 +122,25 @@ class HrmApiClient {
     }
 
     try {
-      final response = await http
+      var response = await http
           .get(uri, headers: await _authHeaders())
           .timeout(const Duration(seconds: 20));
 
-      final data = _decodeMap(response.body);
-      if (response.statusCode >= 200 && response.statusCode < 300) {
-        return ApiResult.ok(data, statusCode: response.statusCode);
+      if (response.statusCode == 401) {
+        final refreshed = await _authService.refreshToken();
+        if (!refreshed) {
+          await _authService.logout(invalidateServerSession: false);
+          return ApiResult.fail(
+            'Session expired. Please login again.',
+            statusCode: 401,
+          );
+        }
+        response = await http
+            .get(uri, headers: await _authHeaders())
+            .timeout(const Duration(seconds: 20));
       }
 
-      return ApiResult.fail(
-        data['message']?.toString() ??
-            'Request failed (${response.statusCode}).',
-        statusCode: response.statusCode,
-      );
+      return _mapResponse(response);
     } catch (error) {
       return ApiResult.fail('Network error: $error');
     }
@@ -147,7 +156,7 @@ class HrmApiClient {
     }
 
     try {
-      final response = await http
+      var response = await http
           .post(
             uri,
             headers: await _authHeaders(jsonBody: true),
@@ -155,19 +164,41 @@ class HrmApiClient {
           )
           .timeout(const Duration(seconds: 25));
 
-      final data = _decodeMap(response.body);
-      if (response.statusCode >= 200 && response.statusCode < 300) {
-        return ApiResult.ok(data, statusCode: response.statusCode);
+      if (response.statusCode == 401) {
+        final refreshed = await _authService.refreshToken();
+        if (!refreshed) {
+          await _authService.logout(invalidateServerSession: false);
+          return ApiResult.fail(
+            'Session expired. Please login again.',
+            statusCode: 401,
+          );
+        }
+        response = await http
+            .post(
+              uri,
+              headers: await _authHeaders(jsonBody: true),
+              body: jsonEncode(body ?? {}),
+            )
+            .timeout(const Duration(seconds: 25));
       }
 
-      return ApiResult.fail(
-        data['message']?.toString() ??
-            'Request failed (${response.statusCode}).',
-        statusCode: response.statusCode,
-      );
+      return _mapResponse(response);
     } catch (error) {
       return ApiResult.fail('Network error: $error');
     }
+  }
+
+  ApiResult<Map<String, dynamic>> _mapResponse(http.Response response) {
+    final data = _decodeMap(response.body);
+    if (response.statusCode >= 200 && response.statusCode < 300) {
+      return ApiResult.ok(data, statusCode: response.statusCode);
+    }
+
+    return ApiResult.fail(
+      data['message']?.toString() ??
+          'Request failed (${response.statusCode}).',
+      statusCode: response.statusCode,
+    );
   }
 
   Map<String, dynamic> _decodeMap(String responseBody) {
