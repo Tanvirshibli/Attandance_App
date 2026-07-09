@@ -27,6 +27,11 @@ class AttendanceRequestService {
   final DeviceIdentityService _deviceIdentityService = DeviceIdentityService();
   final EndpointConfigService _configService = EndpointConfigService.instance;
 
+  /// Loads attendance for Home / History / Report.
+  ///
+  /// ZKTeco BFF is primary (same DB as the web Attendance Requests grid).
+  /// HRM JWT rows are merged in so android-only ERP punches are not lost.
+  /// Same calendar day collapses to one display row (earliest in, latest out).
   Future<List<AttendanceRequestRecord>> getAttendanceRecords({
     required int? employeeId,
     String? status,
@@ -40,24 +45,57 @@ class AttendanceRequestService {
 
     final token = await _authService.getToken();
 
-    // Prefer HRM JWT endpoint (auto-scoped to logged-in employee).
-    if (token != null && token.isNotEmpty) {
-      final jwtRecords = await _fetchFromJwtEndpoint(
-        token: token,
-        status: status,
-        from: from,
-        to: to,
-        limit: limit,
+    final futures = <Future<List<AttendanceRequestRecord>>>[];
+
+    if (employeeId != null && employeeId > 0) {
+      futures.add(
+        _fetchFromZktecoEndpoint(
+          employeeId: employeeId,
+          status: status,
+          from: from,
+          to: to,
+          limit: limit,
+        ),
       );
-      if (jwtRecords != null) {
-        return jwtRecords;
-      }
     }
 
-    if (employeeId == null || employeeId <= 0) {
+    if (token != null && token.isNotEmpty) {
+      futures.add(
+        () async {
+          final jwt = await _fetchFromJwtEndpoint(
+            token: token,
+            status: status,
+            from: from,
+            to: to,
+            limit: limit,
+          );
+          return jwt ?? const <AttendanceRequestRecord>[];
+        }(),
+      );
+    }
+
+    if (futures.isEmpty) {
       return const [];
     }
 
+    final batches = await Future.wait(futures);
+    final merged = _mergeByCalendarDay([
+      for (final batch in batches) ...batch,
+    ]);
+
+    if (merged.length > limit) {
+      return merged.take(limit).toList();
+    }
+    return merged;
+  }
+
+  Future<List<AttendanceRequestRecord>> _fetchFromZktecoEndpoint({
+    required int employeeId,
+    String? status,
+    DateTime? from,
+    DateTime? to,
+    int limit = 100,
+  }) async {
     for (final url in await _attendanceListUrls()) {
       try {
         final queryParameters = <String, String>{
@@ -156,6 +194,142 @@ class AttendanceRequestService {
       }
     }
     return null;
+  }
+
+  /// One display row per calendar day: earliest in, latest out, prefer non-rejected.
+  List<AttendanceRequestRecord> _mergeByCalendarDay(
+    List<AttendanceRequestRecord> records,
+  ) {
+    if (records.isEmpty) return const [];
+
+    final byDay = <String, List<AttendanceRequestRecord>>{};
+    for (final record in records) {
+      final day = record.attDateOnly;
+      final key = day == null
+          ? 'raw:${record.attDate}|${record.id}'
+          : '${day.year.toString().padLeft(4, '0')}-'
+              '${day.month.toString().padLeft(2, '0')}-'
+              '${day.day.toString().padLeft(2, '0')}';
+      byDay.putIfAbsent(key, () => <AttendanceRequestRecord>[]).add(record);
+    }
+
+    final merged = <AttendanceRequestRecord>[];
+    for (final entry in byDay.entries) {
+      final group = entry.value;
+      if (group.length == 1) {
+        merged.add(group.first);
+        continue;
+      }
+      merged.add(_mergeDayGroup(group));
+    }
+
+    merged.sort((a, b) {
+      final aDay = a.attDateOnly;
+      final bDay = b.attDateOnly;
+      if (aDay != null && bDay != null) {
+        final cmp = bDay.compareTo(aDay);
+        if (cmp != 0) return cmp;
+      }
+      return b.id.compareTo(a.id);
+    });
+
+    return merged;
+  }
+
+  AttendanceRequestRecord _mergeDayGroup(List<AttendanceRequestRecord> group) {
+    DateTime? earliestIn;
+    String? earliestInRaw;
+    DateTime? latestOut;
+    String? latestOutRaw;
+    var anyRejected = true;
+    var maxId = 0;
+    String attDate = group.first.attDate;
+    String requestType = group.first.requestType;
+    String? workflowStage;
+    String? supervisorStatus;
+    String? hrStatus;
+    String? address;
+    double? latitude;
+    double? longitude;
+    bool? faceVerified;
+    String? createdAt;
+    final deviceTypes = <String>{};
+
+    for (final r in group) {
+      if (r.id > maxId) maxId = r.id;
+      if (r.attDate.isNotEmpty) attDate = r.attDate;
+      if (!r.isRejected) anyRejected = false;
+
+      final dt = (r.deviceType ?? '').trim().toLowerCase();
+      if (dt.isNotEmpty) deviceTypes.add(dt);
+
+      final inParsed =
+          AttendanceRequestRecord.parseFlexibleDateTime(r.requestedInTime);
+      if (inParsed != null &&
+          (earliestIn == null || inParsed.isBefore(earliestIn))) {
+        earliestIn = inParsed;
+        earliestInRaw = r.requestedInTime;
+      }
+
+      final outParsed =
+          AttendanceRequestRecord.parseFlexibleDateTime(r.requestedOutTime);
+      if (outParsed != null &&
+          (latestOut == null || outParsed.isAfter(latestOut))) {
+        latestOut = outParsed;
+        latestOutRaw = r.requestedOutTime;
+      }
+
+      workflowStage ??= r.workflowStage;
+      supervisorStatus ??= r.supervisorStatus;
+      hrStatus ??= r.hrStatus;
+      address ??= r.address;
+      latitude ??= r.latitude;
+      longitude ??= r.longitude;
+      faceVerified ??= r.faceVerified;
+      createdAt ??= r.createdAt;
+
+      if (r.requestType == 'zkteco_daily_span' ||
+          (r.deviceType ?? '').toLowerCase() == 'zkteco') {
+        requestType = r.requestType;
+      }
+    }
+
+    String? deviceType;
+    if (deviceTypes.length > 1) {
+      deviceType = 'mixed';
+    } else if (deviceTypes.isNotEmpty) {
+      deviceType = deviceTypes.first;
+    }
+
+    // Prefer a non-rejected status label from the group.
+    String status = 'requested';
+    for (final r in group) {
+      if (!r.isRejected) {
+        status = r.status;
+        break;
+      }
+    }
+    if (anyRejected && group.every((r) => r.isRejected)) {
+      status = 'rejected';
+    }
+
+    return AttendanceRequestRecord(
+      id: maxId,
+      attDate: attDate,
+      requestType: requestType,
+      status: status,
+      requestedInTime: earliestInRaw,
+      requestedOutTime: latestOutRaw,
+      deviceType: deviceType,
+      workflowStage: workflowStage,
+      supervisorStatus: supervisorStatus,
+      hrStatus: hrStatus,
+      address: address,
+      latitude: latitude,
+      longitude: longitude,
+      faceVerified: faceVerified,
+      createdAt: createdAt,
+    );
   }
 
   String _dateStr(DateTime d) =>
@@ -266,16 +440,20 @@ class AttendanceRequestService {
     return AppConfig.attendanceRequestUrls;
   }
 
+  /// HRM JWT attendance URLs only — never ZKTeco `attendance.list`.
   Future<List<String>> _jwtAttendanceUrls() async {
-    final dynamicUrl = await _configService.resolveUrl('attendance.list');
+    final urls = <String>[];
     final hrmUrl = await _configService.resolveUrl('auth.profile');
-    // JWT attendance on HRM uses same path pattern
-    if (hrmUrl != null) {
+    if (hrmUrl != null && hrmUrl.isNotEmpty) {
       final hrmBase = hrmUrl.replaceAll('/api/v1/get-my-info', '');
-      final jwtUrl = '$hrmBase/api/v1/mobile/attendance-requests';
-      return [jwtUrl, ...AppConfig.mobileAttendanceJwtUrls];
+      urls.add('$hrmBase/api/v1/mobile/attendance-requests');
     }
-    return AppConfig.mobileAttendanceJwtUrls;
+    for (final fallback in AppConfig.mobileAttendanceJwtUrls) {
+      if (!urls.contains(fallback)) {
+        urls.add(fallback);
+      }
+    }
+    return urls;
   }
 
   Future<bool> _hasLocalSession() async {
