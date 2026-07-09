@@ -7,7 +7,6 @@ import '../services/auth_service.dart';
 import '../services/face_recognition_service.dart';
 import 'login_screen.dart';
 import 'face_registration_screen.dart';
-import 'employee_services_hub_screen.dart';
 import 'leave_hub_screen.dart';
 import 'attendance_report_screen.dart';
 import 'geo_tracking_screen.dart';
@@ -93,19 +92,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ),
           SliverToBoxAdapter(
             child: Padding(
-              padding: const EdgeInsets.fromLTRB(20, 12, 20, 8),
-              child: FadeInUp(
-                delay: const Duration(milliseconds: 350),
-                duration: const Duration(milliseconds: 500),
-                child: _buildEmployeeServices(context),
-              ),
-            ),
-          ),
-          SliverToBoxAdapter(
-            child: Padding(
               padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
               child: FadeInUp(
-                delay: const Duration(milliseconds: 400),
+                delay: const Duration(milliseconds: 350),
                 duration: const Duration(milliseconds: 500),
                 child: _buildSettingsSection(),
               ),
@@ -395,86 +384,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
             const SizedBox(width: 12),
             _quickActionCard(Icons.qr_code_outlined, 'My QR\nCode', AppColors.primary),
           ],
-        ),
-      ],
-    );
-  }
-
-  Widget _buildEmployeeServices(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          'Employee Services',
-          style: GoogleFonts.poppins(
-            fontSize: 15,
-            fontWeight: FontWeight.w600,
-            color: AppColors.textPrimary,
-          ),
-        ),
-        const SizedBox(height: 12),
-        Material(
-          color: AppColors.surface,
-          borderRadius: BorderRadius.circular(16),
-          child: InkWell(
-            onTap: () {
-              Navigator.of(context).push(
-                MaterialPageRoute(
-                  builder: (_) => const EmployeeServicesHubScreen(),
-                ),
-              );
-            },
-            borderRadius: BorderRadius.circular(16),
-            child: Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(16),
-                boxShadow: [
-                  BoxShadow(
-                    color: AppColors.shadow.withValues(alpha: 0.04),
-                    blurRadius: 8,
-                    offset: const Offset(0, 3),
-                  ),
-                ],
-              ),
-              child: Row(
-                children: [
-                  Container(
-                    width: 44,
-                    height: 44,
-                    decoration: BoxDecoration(
-                      gradient: AppColors.primaryGradient,
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: const Icon(Icons.apps_rounded, color: Colors.white),
-                  ),
-                  const SizedBox(width: 14),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'All Services',
-                          style: GoogleFonts.poppins(
-                            fontWeight: FontWeight.w600,
-                            fontSize: 14,
-                          ),
-                        ),
-                        Text(
-                          'Leave, payments, sales, geo tracking',
-                          style: GoogleFonts.poppins(
-                            fontSize: 11,
-                            color: AppColors.textSecondary,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  Icon(Icons.chevron_right_rounded, color: AppColors.textHint),
-                ],
-              ),
-            ),
-          ),
         ),
       ],
     );
