@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../config/theme.dart';
+import '../services/endpoint_config_service.dart';
 import 'home_screen.dart';
 import 'attendance_history_screen.dart';
 import 'notifications_screen.dart';
@@ -14,7 +15,7 @@ class MainShell extends StatefulWidget {
   State<MainShell> createState() => _MainShellState();
 }
 
-class _MainShellState extends State<MainShell> {
+class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
   int _selectedIndex = 0;
 
   final List<Widget> _screens = const [
@@ -24,6 +25,28 @@ class _MainShellState extends State<MainShell> {
     ProfileScreen(),
     EmployeeServicesHubScreen(showAsTabRoot: true),
   ];
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      EndpointConfigService.instance.refreshConfig().catchError((Object error) {
+        debugPrint('Endpoint config refresh on resume failed: $error');
+        return null;
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {

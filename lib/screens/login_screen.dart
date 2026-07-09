@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:animate_do/animate_do.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -5,6 +7,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import '../config/theme.dart';
 import '../screens/main_shell.dart';
 import '../services/auth_service.dart';
+import '../services/endpoint_config_service.dart';
 import '../services/face_recognition_service.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -73,6 +76,9 @@ class _LoginScreenState extends State<LoginScreen> {
       );
       return;
     }
+
+    // Refresh dashboard endpoint map after login (non-blocking).
+    unawaited(EndpointConfigService.instance.refreshConfig());
 
     final profile = await _authService.getCurrentUserProfile();
     _faceRecognitionService.hydrateRegistration(profile?.faceRegistration);
