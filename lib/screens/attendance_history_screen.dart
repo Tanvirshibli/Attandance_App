@@ -3,8 +3,9 @@ import 'package:animate_do/animate_do.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:percent_indicator/circular_percent_indicator.dart';
 import '../config/theme.dart';
-import '../data/dummy_data.dart';
 import '../models/attendance_request_record.dart';
+import '../models/attendance_summary.dart';
+import '../services/attendance_report_service.dart';
 import '../services/attendance_request_service.dart';
 import '../services/auth_service.dart';
 import '../widgets/attendance_tile.dart';
@@ -21,11 +22,13 @@ class AttendanceHistoryScreen extends StatefulWidget {
 class _AttendanceHistoryScreenState extends State<AttendanceHistoryScreen> {
   final AttendanceRequestService _attendanceRequestService =
       AttendanceRequestService();
+  final AttendanceReportService _reportService = AttendanceReportService();
   final AuthService _authService = AuthService();
 
   String _selectedFilter = 'All';
   final List<String> _filters = ['All', 'Requested', 'Approved', 'Rejected'];
   List<AttendanceRequestRecord> _records = const [];
+  AttendanceSummary _summary = const AttendanceSummary();
   bool _isLoading = false;
 
   @override
@@ -37,14 +40,55 @@ class _AttendanceHistoryScreenState extends State<AttendanceHistoryScreen> {
   Future<void> _loadRecords() async {
     setState(() => _isLoading = true);
     final profile = await _authService.getCurrentUserProfile();
+    final employeeId = profile?.canonicalEmployeeId;
     final records = await _attendanceRequestService.getAttendanceRecords(
-      employeeId: profile?.canonicalEmployeeId,
+      employeeId: employeeId,
     );
+
+    AttendanceSummary summary = const AttendanceSummary();
+    if (employeeId != null && employeeId > 0) {
+      final now = DateTime.now();
+      final from = DateTime(now.year, now.month, 1);
+      final to = DateTime(now.year, now.month + 1, 0);
+      final result = await _reportService.getSummary(
+        employeeId: employeeId,
+        from: from,
+        to: to,
+      );
+      if (result.success && result.data != null) {
+        summary = result.data!;
+      } else {
+        final approved =
+            records.where((r) => r.status.toLowerCase() == 'approved').length;
+        final requested =
+            records.where((r) => r.status.toLowerCase() == 'requested').length;
+        final rejected =
+            records.where((r) => r.status.toLowerCase() == 'rejected').length;
+        summary = AttendanceSummary.fromRecords(
+          approved: approved,
+          requested: requested,
+          rejected: rejected,
+        );
+      }
+    }
+
     if (!mounted) return;
     setState(() {
       _records = records;
+      _summary = summary;
       _isLoading = false;
     });
+  }
+
+  double get _attendancePercent {
+    final total = _summary.totalDays > 0
+        ? _summary.totalDays
+        : (_summary.presentCount +
+            _summary.absentCount +
+            _summary.leaveCount +
+            _summary.holidayCount);
+    if (total <= 0) return 0;
+    return (_summary.presentCount / total).clamp(0.0, 1.0);
   }
 
   List<Map<String, dynamic>> get _filteredRecords {
@@ -234,9 +278,9 @@ class _AttendanceHistoryScreenState extends State<AttendanceHistoryScreen> {
                 CircularPercentIndicator(
                   radius: 44,
                   lineWidth: 8,
-                  percent: DummyData.attendancePercentage / 100,
+                  percent: _attendancePercent,
                   center: Text(
-                    '${DummyData.attendancePercentage.toStringAsFixed(0)}%',
+                    '${(_attendancePercent * 100).toStringAsFixed(0)}%',
                     style: GoogleFonts.poppins(
                       fontSize: 17,
                       fontWeight: FontWeight.w700,
@@ -262,7 +306,7 @@ class _AttendanceHistoryScreenState extends State<AttendanceHistoryScreen> {
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        '${DummyData.presentDays} of ${DummyData.totalWorkingDays} working days attended',
+                        '${_summary.presentCount} present · ${_summary.totalDays > 0 ? _summary.totalDays : (_summary.presentCount + _summary.absentCount + _summary.leaveCount)} days tracked',
                         style: GoogleFonts.poppins(
                           fontSize: 12,
                           color: Colors.white60,
@@ -296,17 +340,20 @@ class _AttendanceHistoryScreenState extends State<AttendanceHistoryScreen> {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceAround,
         children: [
-          _summaryStat('Working\nDays', '${DummyData.totalWorkingDays}',
+          _summaryStat(
+              'Working\nDays',
+              '${_summary.totalDays > 0 ? _summary.totalDays : (_summary.presentCount + _summary.absentCount + _summary.leaveCount)}',
               AppColors.textPrimary),
           _divider(),
           _summaryStat(
-              'Present', '${DummyData.presentDays}', AppColors.success),
+              'Present', '${_summary.presentCount}', AppColors.success),
           _divider(),
-          _summaryStat('Late', '${DummyData.lateDays}', AppColors.warning),
+          _summaryStat(
+              'Holiday', '${_summary.holidayCount}', AppColors.warning),
           _divider(),
-          _summaryStat('Absent', '${DummyData.absentDays}', AppColors.error),
+          _summaryStat('Absent', '${_summary.absentCount}', AppColors.error),
           _divider(),
-          _summaryStat('Leave', '${DummyData.leaveDays}', AppColors.info),
+          _summaryStat('Leave', '${_summary.leaveCount}', AppColors.info),
         ],
       ),
     );

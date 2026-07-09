@@ -38,6 +38,21 @@ class GeoPing {
     );
   }
 
+  /// Maps ZKTeco `GET /api/v1/mobile/geo-location` record shape.
+  factory GeoPing.fromServerJson(Map<String, dynamic> json) {
+    return GeoPing(
+      latitude: _toDouble(json['lat'] ?? json['latitude']),
+      longitude: _toDouble(json['lng'] ?? json['longitude']),
+      capturedAt: DateTime.tryParse(json['capturedAt']?.toString() ?? '') ??
+          DateTime.now(),
+      address: json['address']?.toString(),
+      accuracyM: json['accuracyM'] == null
+          ? null
+          : _toDouble(json['accuracyM']),
+      uploaded: true,
+    );
+  }
+
   static double _toDouble(Object? v) {
     if (v is double) return v;
     if (v is num) return v.toDouble();
