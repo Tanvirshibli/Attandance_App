@@ -2,11 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:animate_do/animate_do.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:intl/intl.dart';
 import '../config/theme.dart';
-import '../data/dummy_data.dart';
 import '../models/attendance_request_record.dart';
+import '../models/attendance_summary.dart';
 import '../models/auth_user_profile.dart';
+import '../services/attendance_report_service.dart';
 import '../services/attendance_request_service.dart';
 import '../services/auth_service.dart';
 import '../widgets/stat_card.dart';
@@ -23,12 +23,16 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   final AttendanceRequestService _attendanceRequestService =
       AttendanceRequestService();
+  final AttendanceReportService _reportService = AttendanceReportService();
   final AuthService _authService = AuthService();
 
-  bool _isClockedIn = DummyData.isClockedIn;
-  String _checkInTime = DummyData.todayCheckIn;
-  String _checkOutTime = DummyData.todayCheckOut;
+  bool _isClockedIn = false;
+  String _checkInTime = '--';
+  String _checkOutTime = '--';
+  String _todayWorkHours = '--';
   List<AttendanceRequestRecord> _requestedRecords = const [];
+  AttendanceSummary _summary = const AttendanceSummary();
+  List<double> _weeklyHours = List<double>.filled(7, 0);
   AuthUserProfile _profile = AuthUserProfile.fallback();
   bool _isLoadingProfile = true;
 
@@ -36,8 +40,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _loadAttendanceRequests();
-    _loadProfile();
+    _refreshHomeData();
   }
 
   @override
@@ -49,9 +52,15 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
-      _loadAttendanceRequests();
-      _loadProfile();
+      _refreshHomeData();
     }
+  }
+
+  /// Profile first, then attendance list + summary (avoids employeeId race).
+  Future<void> _refreshHomeData() async {
+    await _loadProfile();
+    if (!mounted) return;
+    await _loadAttendanceRequests();
   }
 
   Future<void> _loadProfile() async {
@@ -78,7 +87,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       final profile = await _authService.getCurrentUserProfile();
       employeeId = profile?.canonicalEmployeeId;
       if (profile != null && mounted) {
-        setState(() => _profile = profile);
+        setState(() {
+          _profile = profile;
+          _isLoadingProfile = false;
+        });
       }
     }
 
@@ -87,36 +99,126 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     );
     if (!mounted) return;
 
-    final today = DateFormat('yyyy-MM-dd').format(DateTime.now());
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
     AttendanceRequestRecord? todayRecord;
     for (final record in records) {
-      if (record.attDate == today) {
+      if (record.isSameCalendarDay(today)) {
         todayRecord = record;
         break;
       }
     }
 
-    final referenceRecord = todayRecord ?? (records.isNotEmpty ? records.first : null);
-    final isClockedIn = todayRecord != null
-        ? todayRecord.canTreatAsActiveCheckIn
-        : referenceRecord?.canTreatAsActiveCheckIn ?? false;
+    // Clocked-in is today-only — never use a prior day's open punch.
+    final isClockedIn = todayRecord?.canTreatAsActiveCheckIn ?? false;
 
     setState(() {
       _requestedRecords = records;
       if (todayRecord != null && todayRecord.hasCheckIn) {
         _checkInTime = todayRecord.checkInText;
       } else {
-        _checkInTime = DummyData.todayCheckIn;
+        _checkInTime = '--';
       }
 
       if (todayRecord != null && todayRecord.hasCheckOut) {
         _checkOutTime = todayRecord.checkOutText;
       } else {
-        _checkOutTime = DummyData.todayCheckOut;
+        _checkOutTime = '--';
       }
 
+      _todayWorkHours = _computeTodayHours(todayRecord);
+      _weeklyHours = _computeWeeklyHours(records);
       _isClockedIn = isClockedIn;
     });
+
+    if (employeeId != null && employeeId > 0) {
+      await _loadSummary(employeeId);
+    }
+  }
+
+  Future<void> _loadSummary(int employeeId) async {
+    final now = DateTime.now();
+    final from = DateTime(now.year, now.month, 1);
+    final to = DateTime(now.year, now.month + 1, 0);
+    final result = await _reportService.getSummary(
+      employeeId: employeeId,
+      from: from,
+      to: to,
+    );
+    if (!mounted) return;
+
+    if (result.success && result.data != null) {
+      final summary = result.data!;
+      // Prefer API rows/summary when shape is known and has KPIs, or when
+      // there are no local punches to estimate from.
+      if (summary.parsedFromKnownShape) {
+        if (summary.hasAnyKpi || _monthPunchPresentDays(from, to) == 0) {
+          setState(() => _summary = summary);
+          return;
+        }
+      }
+    }
+
+    setState(() => _summary = _summaryFromPunchRecords(from, to));
+  }
+
+  int _monthPunchPresentDays(DateTime from, DateTime to) {
+    final days = <String>{};
+    for (final record in _requestedRecords) {
+      if (!record.hasCheckIn || record.isRejected) continue;
+      final day = record.attDateOnly;
+      if (day == null) continue;
+      if (day.isBefore(from) || day.isAfter(to)) continue;
+      days.add(
+        '${day.year.toString().padLeft(4, '0')}-'
+        '${day.month.toString().padLeft(2, '0')}-'
+        '${day.day.toString().padLeft(2, '0')}',
+      );
+    }
+    return days.length;
+  }
+
+  AttendanceSummary _summaryFromPunchRecords(DateTime from, DateTime to) {
+    return AttendanceSummary.fromPunchRecords(
+      presentDays: _monthPunchPresentDays(from, to),
+    );
+  }
+
+  String _computeTodayHours(AttendanceRequestRecord? todayRecord) {
+    if (todayRecord == null) return '--';
+    final inTime =
+        AttendanceRequestRecord.parseFlexibleDateTime(todayRecord.requestedInTime);
+    final outTime =
+        AttendanceRequestRecord.parseFlexibleDateTime(todayRecord.requestedOutTime);
+    if (inTime == null) return '--';
+    final end = outTime ?? DateTime.now();
+    if (end.isBefore(inTime)) return '--';
+    final hours = end.difference(inTime).inMinutes / 60.0;
+    return hours.toStringAsFixed(1);
+  }
+
+  List<double> _computeWeeklyHours(List<AttendanceRequestRecord> records) {
+    final hours = List<double>.filled(7, 0);
+    final now = DateTime.now();
+    final monday = DateTime(now.year, now.month, now.day)
+        .subtract(Duration(days: now.weekday - 1));
+
+    for (final record in records) {
+      final day = record.attDateOnly;
+      if (day == null) continue;
+      final diff = day.difference(monday).inDays;
+      if (diff < 0 || diff > 6) continue;
+
+      final inTime =
+          AttendanceRequestRecord.parseFlexibleDateTime(record.requestedInTime);
+      final outTime =
+          AttendanceRequestRecord.parseFlexibleDateTime(record.requestedOutTime);
+      if (inTime == null) continue;
+      final end = outTime ?? now;
+      if (end.isBefore(inTime)) continue;
+      hours[diff] += end.difference(inTime).inMinutes / 60.0;
+    }
+    return hours;
   }
 
   Future<void> _openCheckFlow({required bool isCheckOut}) async {
@@ -153,7 +255,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               } else {
                 _isClockedIn = true;
                 _checkInTime = TimeOfDay.now().format(context);
-                _checkOutTime = DummyData.todayCheckOut;
+                _checkOutTime = '--';
               }
             });
             _loadAttendanceRequests();
@@ -418,7 +520,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     color: Colors.white.withValues(alpha: 0.2),
                   ),
                   _buildTodayStat(
-                      'Hours', DummyData.todayWorkHours, Icons.timer_outlined),
+                      'Hours', _todayWorkHours, Icons.timer_outlined),
                 ],
               ),
             ),
@@ -458,7 +560,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         Expanded(
           child: StatCard(
             label: 'Present',
-            value: '${DummyData.presentDays}',
+            value: '${_summary.presentCount}',
             icon: Icons.check_circle_outline,
             color: AppColors.success,
           ),
@@ -467,7 +569,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         Expanded(
           child: StatCard(
             label: 'Absent',
-            value: '${DummyData.absentDays}',
+            value: '${_summary.absentCount}',
             icon: Icons.cancel_outlined,
             color: AppColors.error,
           ),
@@ -475,9 +577,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         const SizedBox(width: 10),
         Expanded(
           child: StatCard(
-            label: 'Late',
-            value: '${DummyData.lateDays}',
-            icon: Icons.watch_later_outlined,
+            label: 'Holiday',
+            value: '${_summary.holidayCount}',
+            icon: Icons.celebration_outlined,
             color: AppColors.warning,
           ),
         ),
@@ -485,7 +587,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         Expanded(
           child: StatCard(
             label: 'Leave',
-            value: '${DummyData.leaveDays}',
+            value: '${_summary.leaveCount}',
             icon: Icons.event_busy_outlined,
             color: AppColors.info,
           ),
@@ -680,15 +782,15 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 ),
                 borderData: FlBorderData(show: false),
                 gridData: const FlGridData(show: false),
-                barGroups: DummyData.weeklyHours.asMap().entries.map((entry) {
-                  final index = entry.key;
-                  final data = entry.value;
-                  final hours = (data['hours'] as num).toDouble();
+                barGroups: List.generate(7, (index) {
+                  final hours = index < _weeklyHours.length
+                      ? _weeklyHours[index]
+                      : 0.0;
                   return BarChartGroupData(
                     x: index,
                     barRods: [
                       BarChartRodData(
-                        toY: hours,
+                        toY: hours.clamp(0, 12),
                         color: hours > 0 ? AppColors.primary : AppColors.divider,
                         width: 22,
                         borderRadius: const BorderRadius.only(
@@ -703,7 +805,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                       ),
                     ],
                   );
-                }).toList(),
+                }),
               ),
             ),
           ),
