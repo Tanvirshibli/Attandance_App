@@ -5,6 +5,7 @@ import 'home_screen.dart';
 import 'attendance_history_screen.dart';
 import 'notifications_screen.dart';
 import 'profile_screen.dart';
+import 'employee_services_hub_screen.dart';
 
 class MainShell extends StatefulWidget {
   const MainShell({super.key});
@@ -21,6 +22,7 @@ class _MainShellState extends State<MainShell> {
     AttendanceHistoryScreen(),
     NotificationsScreen(),
     ProfileScreen(),
+    EmployeeServicesHubScreen(showAsTabRoot: true),
   ];
 
   @override
@@ -51,7 +53,7 @@ class _MainShellState extends State<MainShell> {
             topRight: Radius.circular(24),
           ),
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceAround,
               children: [
@@ -71,6 +73,11 @@ class _MainShellState extends State<MainShell> {
                     Icons.person_outline_rounded,
                     Icons.person_rounded,
                     'Profile'),
+                _buildNavItem(
+                    4,
+                    Icons.apps_outlined,
+                    Icons.apps_rounded,
+                    'Services'),
               ],
             ),
           ),
@@ -89,7 +96,7 @@ class _MainShellState extends State<MainShell> {
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 250),
         padding: EdgeInsets.symmetric(
-          horizontal: isSelected ? 18 : 14,
+          horizontal: isSelected ? 14 : 10,
           vertical: 10,
         ),
         decoration: BoxDecoration(
