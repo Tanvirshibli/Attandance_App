@@ -133,15 +133,64 @@ class AuthService {
     );
   }
 
-  Future<AuthUserProfile?> getCurrentUserProfile() async {
+  /// Refresh JWT via HRM `auth.refresh` (`POST /api/v1/refresh`).
+  /// Returns true when a new token was stored.
+  Future<bool> refreshToken() async {
     final token = await getToken();
     if (token == null || token.isEmpty) {
+      return false;
+    }
+
+    final refreshUrl = await _configService.resolveUrl('auth.refresh') ??
+        '${AppConfig.backendApiBaseUrl}/api/v1/refresh';
+
+    try {
+      final response = await http
+          .post(
+            Uri.parse(refreshUrl),
+            headers: {
+              'Accept': 'application/json',
+              'Content-Type': 'application/json',
+              'Authorization': 'Bearer $token',
+              'User-Agent': 'PPHLAttendance/2.1 (Android; Flutter)',
+            },
+          )
+          .timeout(const Duration(seconds: 15));
+
+      final data = _decodeMap(response.body);
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        return false;
+      }
+
+      final newToken = data['token']?.toString();
+      if (newToken == null || newToken.isEmpty) {
+        return false;
+      }
+
+      final email = await getSavedEmail() ?? '';
+      final rememberMe = await getRememberMe();
+      await _saveSession(
+        token: newToken,
+        email: email,
+        rememberMe: rememberMe,
+      );
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<AuthUserProfile?> getCurrentUserProfile() async {
+    final initialToken = await getToken();
+    if (initialToken == null || initialToken.isEmpty) {
       return null;
     }
 
+    var token = initialToken;
+
     for (final url in await _profileUrls()) {
       try {
-        final response = await _authorizedGet(url: url, token: token)
+        var response = await _authorizedGet(url: url, token: token)
             .timeout(const Duration(seconds: 15));
 
         if (response.statusCode == 404) {
@@ -149,8 +198,22 @@ class AuthService {
         }
 
         if (response.statusCode == 401) {
-          await logout(invalidateServerSession: false);
-          return null;
+          final refreshed = await refreshToken();
+          if (!refreshed) {
+            await logout(invalidateServerSession: false);
+            return null;
+          }
+          final refreshedToken = await getToken();
+          if (refreshedToken == null || refreshedToken.isEmpty) {
+            return null;
+          }
+          token = refreshedToken;
+          response = await _authorizedGet(url: url, token: token)
+              .timeout(const Duration(seconds: 15));
+          if (response.statusCode == 401) {
+            await logout(invalidateServerSession: false);
+            return null;
+          }
         }
 
         final data = _decodeMap(response.body);
