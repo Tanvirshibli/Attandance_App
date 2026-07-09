@@ -15,7 +15,11 @@
 
 > March 8, 2026 ZKTeco workflow update: backend ZKTeco attendance now also ingests ADMS `querydata` transaction history when live `rtlog` uploads are missing. Machine punches aggregate per day so the first punch becomes check-in and the last punch becomes check-out.
 
-> July 2, 2026 employee services update (v2.1.0): Added attendance full report, leave module, payments, sales info placeholder, and geo tracking scaffold. See `docs/MOBILE_EMPLOYEE_FEATURES.md` for API wiring status.
+> July 9, 2026 reliability + geo map update: JWT refresh + 401 retry, endpoint config refresh on login/resume, geo history + ongoing notification + live OpenStreetMap (`flutter_map`), FCM scaffold (needs `google-services.json`), Home/Attendance KPIs from live summary (Alerts empty until notifications API). See `docs/MOBILE_EMPLOYEE_FEATURES.md`.
+>
+> July 9, 2026 Home dashboard data fix: today-only clocked-in (no non-today fallback), flexible punch datetime parsing, summary KPIs from single-employee `data.rows` attendance types, weekly hours include open shifts, sequenced profile→attendance load, JWT empty list → ZKTeco fallback.
+>
+> July 9, 2026 dual-device attendance: Home/History use ZKTeco-primary list merged with HRM JWT (one row per day). Machine and android punches both show. ZKTeco backend merges same-day machine-in + android-out onto one `new_attendance_requests` row (`device_type` may become `mixed`).
 
 ---
 
@@ -213,17 +217,19 @@ LoginScreen
 | **Nav Bar** | Custom `Row` of `GestureDetector` items with animated containers, rounded corners on the bar itself |
 | **Screen Stack** | `IndexedStack` — all screens stay alive |
 | **Services tab** | `EmployeeServicesHubScreen(showAsTabRoot: true)` — hub for Attendance Report, Leave, Payments, Sales Info, Geo Tracking |
+| **Resume** | Refreshes ZKTeco `app-config` via `EndpointConfigService.refreshConfig()` |
 
-### 6.3 HomeScreen (`home_screen.dart`, 545 lines)
+### 6.3 HomeScreen (`home_screen.dart`)
 
 | Aspect | Detail |
 |---|---|
-| **State** | `StatefulWidget` (tracks `_isClockedIn`, `_checkInTime`) |
+| **State** | `StatefulWidget` (tracks `_isClockedIn`, check-in/out/hours, summary KPIs, weekly hours) |
+| **Load order** | Profile → attendance list → month summary (resume uses same sequence) |
 | **Header** | Gradient card with live backend avatar letters, employee name, designation/employee ID, greeting (dynamic AM/PM), today's check-in/out/hours |
-| **Quick Stats** | 4 `StatCard` widgets: Present (18), Absent (1), Late (2), Leave (1) |
-| **Clock-In Card** | Gradient card that navigates to `CheckInScreen`. On success callback: sets `_isClockedIn = true`, updates `_checkInTime` |
-| **Weekly Chart** | `BarChart` from `fl_chart` showing Mon–Sun hours |
-| **Recent Attendance** | List of top 5 `AttendanceTile` widgets |
+| **Quick Stats** | 4 `StatCard` widgets: Present / Absent / Holiday / Leave from HRM single-employee daily `rows` (`attendanceType`); punch-day fallback when rows empty |
+| **Clock-In Card** | Today-only clocked-in; separate Check In / Check Out buttons → `CheckInScreen` |
+| **Weekly Chart** | `BarChart` from punch records (open shifts use `now` as end) |
+| **Recent Attendance** | List of top 5 `AttendanceTile` widgets from live requests |
 
 ### 6.4 CheckInScreen (`check_in_screen.dart`, ~1260 lines)
 
@@ -292,7 +298,7 @@ LoginScreen
 | Aspect | Detail |
 |---|---|
 | **State** | `StatelessWidget` |
-| **Sections** | "Today" (4 notifications from DummyData) + "Earlier" (3 hardcoded extras) |
+| **Sections** | Honest empty state until a notifications API exists |
 | **UI** | Each notification tile has icon mapping (alarm→warning, check_circle→success, etc.) and read/unread state |
 
 ### 6.8 ProfileScreen (`profile_screen.dart`, 472 lines)
@@ -574,17 +580,17 @@ A row widget displaying a single attendance record.
 
 ### 10.1 DummyData (`dummy_data.dart`)
 
-`DummyData` still exists for visual placeholders, but the app now uses live backend APIs for login, profile identity, face registration, and attendance history.
+`DummyData` may still exist as a legacy file, but Home / Attendance History / Alerts no longer bind to it. Home KPIs use live punches + HRM single-employee daily rows; Alerts shows an empty state.
 
 | Data | Source |
 |---|---|
 | **User profile** | Live backend profile from `GET /api/v1/get-my-info` |
-| **Attendance stats** | Hard-coded: 22 working days, 18 present, 1 absent, 2 late, 1 leave, 81.8% |
-| **Today's status** | Hard-coded: not clocked in, no check-in/out times |
-| **Recent attendance** | Hard-coded list of 10 records (Feb 15–24, 2026) |
-| **Weekly hours** | Hard-coded: Mon 9.0, Tue 9.2, Wed 0.0, Thu 9.5, Fri 8.5, Sat 0.0, Sun 0.0 |
-| **Notifications** | Hard-coded list of 4 + 3 "earlier" items |
-| **Team members** | Hard-coded list of 6 (not displayed currently) |
+| **Attendance stats** | HRM `single-employee-attendance-details` `data.rows` by `attendanceType`; fallback = distinct punch check-in days in month |
+| **Today's status** | Today’s attendance request only (clocked-in = open check-in today) |
+| **Recent attendance** | Live JWT / ZKTeco attendance request list |
+| **Weekly hours** | Computed from punch in/out (open shift → hours until now) |
+| **Notifications** | Empty until notifications API is wired |
+| **Team members** | Not displayed currently |
 
 ### 10.2 SharedPreferences (Face Data)
 
@@ -702,6 +708,8 @@ android:label="PPHL Attendance"
 | `camera` | ^0.11.1 | Live camera preview for face scanning & registration |
 | `geolocator` | ^14.0.2 | GPS coordinates |
 | `geocoding` | ^4.0.0 | Reverse geocoding (coords → address) |
+| `flutter_map` | ^8.1.1 | Live OpenStreetMap on Geo Tracking |
+| `latlong2` | ^0.9.1 | Map coordinates |
 | `permission_handler` | ^12.0.1 | Runtime permission requests |
 | `google_mlkit_face_detection` | ^0.13.2 | On-device face detection with landmarks + classification |
 | `tflite_flutter` | ^0.12.1 | TensorFlow Lite inference for MobileFaceNet |
@@ -858,6 +866,12 @@ The current stack uses **ML Kit for detection** and **MobileFaceNet for identity
 
 ### `lib/screens/main_shell.dart`
 - Bottom navigation shell with 5 tabs (Home, Attendance, Alerts, Profile, Services) using `IndexedStack`.
+- Refreshes mobile endpoint config when the app resumes.
+
+### Auth / geo reliability
+- `AuthService.refreshToken()` + `HrmApiClient` 401 retry.
+- Geo ongoing notification via `GeoNotificationService`; FCM wake remains scaffolded in `FcmWakeHandler` until Firebase is configured.
+- `GeoTrackingScreen` uses `LiveLocationMap` (OpenStreetMap / `flutter_map`) for a live GPS view with history pins.
 
 ### `lib/screens/home_screen.dart` (545 lines)
 - Dashboard with gradient header, stats row (4 StatCards), clock-in card (navigates to CheckInScreen), weekly bar chart, recent attendance list.

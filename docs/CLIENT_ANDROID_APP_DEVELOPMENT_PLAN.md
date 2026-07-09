@@ -26,7 +26,7 @@ The app is built on an **existing Flutter codebase** (not a rewrite). New work a
 | **ZKTeco** | `zkteco-production` | `http://127.0.0.1:8095` | `https://zkteco.peoplesitsolution.online` | Attendance, devices, geo pings, **app config** |
 | **Sales system** | TBD | — | — | Placeholder UI only |
 | **Payment system** | TBD | — | — | Placeholder UI only |
-| **Firebase (optional)** | — | — | — | FCM wake for geo (future) |
+| **Firebase (optional)** | — | — | — | FCM wake for geo (**scaffold in app**; needs `google-services.json`) |
 
 ### Architecture diagram
 
@@ -116,7 +116,7 @@ All API calls are **direct HTTP** — no extra middleware layer:
 
 | Screen | Function | Technology |
 |--------|----------|------------|
-| **Home** | Dashboard, check-in/out buttons | Profile from HRM |
+| **Home** | Dashboard, check-in/out buttons | Profile from HRM; ZKTeco-primary punches (machine+android) merged with HRM JWT; today-only clock; KPIs from daily rows |
 | **Check-in / Check-out** | Face liveness + GPS punch | ML Kit, TFLite, Geolocator, ZKTeco punch API |
 | **Face Registration** | 5-angle capture, server sync | Camera, TFLite, HRM face API |
 
@@ -143,7 +143,8 @@ All API calls are **direct HTTP** — no extra middleware layer:
 | Interval | **5 minutes** (configurable in dashboard) |
 | Storage | ZKTeco `mobile_location_pings` table |
 | Upload API | `POST /api/v1/mobile/geo-location` |
-| Background | Foreground timer + WorkManager + FCM (planned) |
+| Live map | OpenStreetMap via `flutter_map` — live GPS marker, history pins, recenter |
+| Background | Foreground timer + WorkManager + ongoing notification; FCM wake scaffolded (needs Firebase file) |
 | Permissions | Foreground + background location |
 
 ![Geo location capture and upload flow](images/client-plan/03-geo-tracking.png)
@@ -189,6 +190,13 @@ All API calls are **direct HTTP** — no extra middleware layer:
 | 5 | Face attendance detailed report | Done |
 | 6 | Geo 5-min + background worker | Done |
 | 7 | Sales/Payment dummy modules | Done |
+| 8 | JWT refresh + config refresh on login/resume | Done |
+| 9 | Geo UI polish, history, ongoing notification | Done |
+| 10 | FCM scaffold (no `google-services.json` yet) | Done |
+| 11 | Replace Home/Attendance/Alerts dummy KPIs | Done (Home: rows-based summary + today-only clock + open-shift weekly hours) |
+| 12 | Geo Tracking live map UI redesign (`flutter_map` / OSM) | Done |
+
+**Still external / blocked:** enable Firebase with `android/app/google-services.json`; Sales/Payment product backends + feature flags.
 
 ---
 

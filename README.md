@@ -8,9 +8,9 @@ Flutter Android app for PPHL attendance.
 - Face registration: JWT on `pphl_erp` → `face_registration_android`
 - Check-in/check-out + attendance history: public API on `zkteco-Automation-management-PPHL` (no JWT; `employee_id` required) with HRM JWT mobile attendance preferred when logged in
 - **Employee services (v2.1.0):** footer **Services** tab (Attendance Report, Leave, Payments, Sales Info, Geo Tracking), plus profile quick actions
-- Home screen attendance actions: separate `Check In` and `Check Out` buttons with enable/disable rules
-- Attendance records shown in app: real backend records across requested, approved, and rejected workflow states
-- Dummy UI data retained for visual consistency (stats/other placeholders)
+- Home / Attendance KPIs driven from live punches + HRM summary (Alerts empty until a notifications API exists)
+- JWT refresh on 401; endpoint config refresh after login and on app resume
+- Geo: live OpenStreetMap window, 5-min foreground timer, WorkManager, ongoing notification; FCM wake is **scaffold-only** until `android/app/google-services.json` is added
 - Persistent per-install device identity sent with attendance and face-registration requests
 
 See [docs/MOBILE_EMPLOYEE_FEATURES.md](docs/MOBILE_EMPLOYEE_FEATURES.md) for API wiring status per feature.

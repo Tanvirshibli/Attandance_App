@@ -1,13 +1,19 @@
 # Authentication & Mobile Attendance Integration
 
-Last updated: July 2, 2026
+Last updated: July 9, 2026
 
 ## Summary
 
 The app uses a **dual-backend** integration aligned with PeoplesHRM:
 
 - **pphl_erp** — JWT auth, profile, face registration, and future ERP features (leave, holiday, sales, payment)
-- **zkteco-Automation-management-PPHL** — public mobile attendance requests (no JWT)
+- **zkteco-Automation-management-PPHL** — public mobile attendance requests (no JWT); **primary** source for Home/History punches (same DB as the web Attendance Requests grid)
+
+### Attendance list merge (July 9, 2026)
+
+1. Fetch ZKTeco `GET /api/v1/mobile/attendance-requests?employee_id=` (machine + android rows).
+2. Fetch HRM JWT `GET /api/v1/mobile/attendance-requests` when a token exists.
+3. Merge by calendar day (earliest in / latest out). Do **not** stop after a non-empty JWT list — that previously hid ZKTeco machine punches.
 
 ## Backend endpoints
 
