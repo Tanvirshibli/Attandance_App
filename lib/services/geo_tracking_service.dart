@@ -14,6 +14,7 @@ import 'auth_service.dart';
 import 'endpoint_config_service.dart';
 import 'fcm_wake_handler.dart';
 import 'geo_background_worker.dart';
+import 'geo_notification_service.dart';
 
 const String _enabledKey = 'geo_tracking_enabled';
 const String _lastPingKey = 'geo_last_ping_json';
@@ -33,11 +34,15 @@ class GeoTrackingService {
 
   static Future<void> initialize() async {
     FcmWakeHandler.register();
+    await GeoNotificationService.instance.initialize();
     await GeoBackgroundWorker.initialize();
     final prefs = await SharedPreferences.getInstance();
     final enabled = prefs.getBool(_enabledKey) ?? false;
     if (enabled) {
       await _startForegroundTimer();
+      final interval = await GeoTrackingService()._configService.geoIntervalMinutes();
+      await GeoNotificationService.instance
+          .showTrackingActive(intervalMinutes: interval);
     }
   }
 
@@ -56,12 +61,68 @@ class GeoTrackingService {
     if (enabled) {
       await _startForegroundTimer();
       await GeoBackgroundWorker.registerPeriodicTask();
+      final intervalMinutes = await _configService.geoIntervalMinutes();
+      await GeoNotificationService.instance
+          .showTrackingActive(intervalMinutes: intervalMinutes);
       await captureAndQueue(source: 'manual');
     } else {
       _foregroundTimer?.cancel();
       _foregroundTimer = null;
       await GeoBackgroundWorker.cancelPeriodicTask();
+      await GeoNotificationService.instance.cancelTrackingNotification();
     }
+  }
+
+  Future<int> configuredIntervalMinutes() =>
+      _configService.geoIntervalMinutes();
+
+  /// Recent pings from ZKTeco `geo.history` (falls back to local queue).
+  Future<List<GeoPing>> fetchHistory({int limit = 20}) async {
+    final profile = await _authService.getCurrentUserProfile();
+    final employeeId = profile?.canonicalEmployeeId;
+    if (employeeId == null || employeeId <= 0) {
+      final queue = await _loadQueue();
+      return queue.reversed.take(limit).toList();
+    }
+
+    final historyUrl = await _configService.resolveUrl('geo.history') ??
+        '${AppConfig.attendanceApiBaseUrl}/api/v1/mobile/geo-location';
+
+    try {
+      final uri = Uri.parse(historyUrl).replace(queryParameters: {
+        'employee_id': '$employeeId',
+        'limit': '$limit',
+      });
+      final response = await http
+          .get(
+            uri,
+            headers: {
+              'Accept': 'application/json',
+              'User-Agent': 'PPHLAttendance/2.1 (Android; Flutter)',
+            },
+          )
+          .timeout(const Duration(seconds: 15));
+
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        final decoded = jsonDecode(response.body);
+        if (decoded is Map<String, dynamic>) {
+          final records = decoded['records'];
+          if (records is List) {
+            return records
+                .whereType<Map>()
+                .map((row) => GeoPing.fromServerJson(
+                      Map<String, dynamic>.from(row),
+                    ))
+                .toList();
+          }
+        }
+      }
+    } catch (error) {
+      debugPrint('Geo history fetch failed: $error');
+    }
+
+    final queue = await _loadQueue();
+    return queue.reversed.take(limit).toList();
   }
 
   static Future<void> _startForegroundTimer() async {
