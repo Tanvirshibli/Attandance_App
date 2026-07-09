@@ -11,7 +11,10 @@ import 'sales_info_screen.dart';
 import '../widgets/gradient_screen_header.dart';
 
 class EmployeeServicesHubScreen extends StatelessWidget {
-  const EmployeeServicesHubScreen({super.key});
+  const EmployeeServicesHubScreen({super.key, this.showAsTabRoot = false});
+
+  /// When true, hub is shown as a footer tab (no back button, title "Services").
+  final bool showAsTabRoot;
 
   @override
   Widget build(BuildContext context) {
@@ -53,10 +56,11 @@ class EmployeeServicesHubScreen extends StatelessWidget {
       body: CustomScrollView(
         physics: const BouncingScrollPhysics(),
         slivers: [
-          const SliverToBoxAdapter(
+          SliverToBoxAdapter(
             child: GradientScreenHeader(
-              title: 'Employee Services',
+              title: showAsTabRoot ? 'Services' : 'Employee Services',
               subtitle: 'Reports, leave, payments & more',
+              showBack: !showAsTabRoot,
             ),
           ),
           SliverPadding(
