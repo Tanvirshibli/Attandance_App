@@ -7,7 +7,7 @@ Flutter Android app for PPHL attendance.
 - Login/auth session: JWT on `pphl_erp`
 - Face registration: JWT on `pphl_erp` → `face_registration_android`
 - Check-in/check-out + attendance history: public API on `zkteco-Automation-management-PPHL` (no JWT; `employee_id` required) with HRM JWT mobile attendance preferred when logged in
-- **Employee services (v2.1.0):** attendance full report, leave balance/history/apply, loan payment post/report, payroll read, sales info (placeholder metrics), geo tracking scaffold
+- **Employee services (v2.1.0):** footer **Services** tab (Attendance Report, Leave, Payments, Sales Info, Geo Tracking), plus profile quick actions
 - Home screen attendance actions: separate `Check In` and `Check Out` buttons with enable/disable rules
 - Attendance records shown in app: real backend records across requested, approved, and rejected workflow states
 - Dummy UI data retained for visual consistency (stats/other placeholders)

@@ -114,7 +114,7 @@ employee_attendance/
 │   │   └── dummy_data.dart           # Static dummy data for all screens
 │   ├── screens/
 │   │   ├── login_screen.dart         # Login UI (real backend auth)
-│   │   ├── main_shell.dart           # Bottom nav shell (4 tabs)
+│   │   ├── main_shell.dart           # Bottom nav shell (5 tabs)
 │   │   ├── home_screen.dart          # Dashboard with stats, clock-in card, chart
 │   │   ├── check_in_screen.dart      # Live camera check-in with dynamic liveness steps + circular progress
 │   │   ├── face_registration_screen.dart  # 5-angle live camera face registration with face-path progress ring
@@ -149,7 +149,7 @@ The app uses a **simple stateful widget architecture** without a state managemen
 ### Data Flow
 
 ```
-User → Login (dummy) → MainShell → [Home | Attendance | Notifications | Profile]
+User → Login (dummy) → MainShell → [Home | Attendance | Notifications | Profile | Services]
                                       │                                    │
                                       ▼                                    ▼
                                  CheckInScreen                   FaceRegistrationScreen
@@ -170,17 +170,23 @@ User → Login (dummy) → MainShell → [Home | Attendance | Notifications | Pr
 
 ```
 LoginScreen
-  └─(Sign In)→ MainShell (IndexedStack with BottomNavigationBar)
+  └─(Sign In)→ MainShell (IndexedStack with bottom nav)
                   ├── Tab 0: HomeScreen
                   │     └─(Clock-In Card)→ CheckInScreen → (pop on success)
                   ├── Tab 1: AttendanceHistoryScreen
                   ├── Tab 2: NotificationsScreen
-                  └── Tab 3: ProfileScreen
-                        ├─(Register Face)→ FaceRegistrationScreen
-                        └─(Sign Out)→ LoginScreen (pushAndRemoveUntil)
+                  ├── Tab 3: ProfileScreen
+                  │     ├─(Register Face)→ FaceRegistrationScreen
+                  │     └─(Sign Out)→ LoginScreen (pushAndRemoveUntil)
+                  └── Tab 4: EmployeeServicesHubScreen (Services)
+                        ├─ AttendanceReportScreen
+                        ├─ LeaveHubScreen
+                        ├─ PaymentHubScreen
+                        ├─ SalesInfoScreen
+                        └─ GeoTrackingScreen
 ```
 
-- **MainShell** uses `IndexedStack` to keep all 4 tab screens alive.
+- **MainShell** uses `IndexedStack` to keep all 5 tab screens alive.
 - **CheckInScreen** is pushed as a `MaterialPageRoute` from HomeScreen and pops after success.
 - **FaceRegistrationScreen** is pushed from ProfileScreen's "Quick Actions → Register Face" card.
 
@@ -198,14 +204,15 @@ LoginScreen
 | **UI** | Dark gradient background (`AppColors.darkGradient`), animated PPHL GIF logo from `peoplespoultry.com`, login card with email/password fields, remember me checkbox |
 | **Logo URL** | `https://peoplespoultry.com/assets/front/img/1730297252134723053.gif` |
 
-### 6.2 MainShell (`main_shell.dart`, 126 lines)
+### 6.2 MainShell (`main_shell.dart`)
 
 | Aspect | Detail |
 |---|---|
 | **State** | `StatefulWidget` |
-| **Tabs** | Home, Attendance, Alerts, Profile |
+| **Tabs** | Home, Attendance, Alerts, Profile, Services |
 | **Nav Bar** | Custom `Row` of `GestureDetector` items with animated containers, rounded corners on the bar itself |
 | **Screen Stack** | `IndexedStack` — all screens stay alive |
+| **Services tab** | `EmployeeServicesHubScreen(showAsTabRoot: true)` — hub for Attendance Report, Leave, Payments, Sales Info, Geo Tracking |
 
 ### 6.3 HomeScreen (`home_screen.dart`, 545 lines)
 
@@ -849,8 +856,8 @@ The current stack uses **ML Kit for detection** and **MobileFaceNet for identity
 ### `lib/screens/login_screen.dart` (402 lines)
 - Animated login screen with PPHL GIF logo, email/password fields, dummy auth (2s delay), social login buttons.
 
-### `lib/screens/main_shell.dart` (126 lines)
-- Bottom navigation shell with 4 tabs (Home, Attendance, Alerts, Profile) using `IndexedStack`.
+### `lib/screens/main_shell.dart`
+- Bottom navigation shell with 5 tabs (Home, Attendance, Alerts, Profile, Services) using `IndexedStack`.
 
 ### `lib/screens/home_screen.dart` (545 lines)
 - Dashboard with gradient header, stats row (4 StatCards), clock-in card (navigates to CheckInScreen), weekly bar chart, recent attendance list.

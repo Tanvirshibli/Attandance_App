@@ -10,13 +10,13 @@ This document describes the employee self-service modules added to **Attandance_
 
 | Entry point | Destination |
 |-------------|-------------|
+| Footer **Services** tab | `EmployeeServicesHubScreen` (Attendance Report, Leave, Payments, Sales Info, Geo Tracking) |
 | Profile → Quick Actions → Leave Request | `LeaveHubScreen` |
 | Profile → Quick Actions → View Reports | `AttendanceReportScreen` |
-| Profile → Employee Services → All Services | `EmployeeServicesHubScreen` |
 | Profile → Settings → Location Services | `GeoTrackingScreen` |
 | Attendance tab → Full Report | `AttendanceReportScreen` |
 
-### Employee Services hub
+### Services tab (footer)
 
 - Attendance Report
 - Leave (balance, history, apply)

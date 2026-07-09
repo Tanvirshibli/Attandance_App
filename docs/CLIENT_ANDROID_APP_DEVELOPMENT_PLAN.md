@@ -162,10 +162,10 @@ All API calls are **direct HTTP** — no extra middleware layer:
 - Shows polished "Coming Soon" UI with sample rows  
 - Live HRM loan APIs preserved behind flag for future activation  
 
-### 4.7 Profile & Services Hub
+### 4.7 Profile & Services
 
-- Employee Services hub links to all modules  
-- Profile shows user info from HRM `get-my-info`  
+- **Services** footer tab (5th item) opens the employee services hub with all modules  
+- Profile shows user info from HRM `get-my-info` and quick-action shortcuts  
 - Settings include geo tracking toggle  
 
 ---
