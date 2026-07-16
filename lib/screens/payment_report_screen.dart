@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:intl/intl.dart';
 
 import '../config/theme.dart';
 import '../models/payment_models.dart';
@@ -43,17 +42,11 @@ class _PaymentReportScreenState extends State<PaymentReportScreen>
   Future<void> _load() async {
     setState(() => _isLoading = true);
     final profile = await _authService.getCurrentUserProfile();
-    final employeeId = profile?.canonicalEmployeeId;
-    if (employeeId == null) {
-      if (!mounted) return;
-      setState(() => _isLoading = false);
-      return;
-    }
+    final employeeId = profile?.canonicalEmployeeId ?? 0;
 
     final payments = await _paymentService.getLoanPayments(employeeId);
     final payrolls = await _paymentService.getPayrollRecords(
       employeeId: employeeId,
-      month: DateFormat('yyyy-MM').format(DateTime.now()),
     );
 
     if (!mounted) return;
