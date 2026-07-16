@@ -11,6 +11,22 @@ class AppConfig {
     defaultValue: false,
   );
 
+  /// When true (default), Sales Info uses local demo data until the external
+  /// sales backend is ready. Pass `--dart-define=USE_SALES_DEMO_DATA=false` to
+  /// call live sales endpoints.
+  static const bool useSalesDemoData = bool.fromEnvironment(
+    'USE_SALES_DEMO_DATA',
+    defaultValue: true,
+  );
+
+  /// When true (default), Payments hub uses local demo data shaped like HRM
+  /// resources. Pass `--dart-define=USE_PAYMENT_DEMO_DATA=false` with
+  /// `payment.enabled` to hit live pphl_erp payment APIs.
+  static const bool usePaymentDemoData = bool.fromEnvironment(
+    'USE_PAYMENT_DEMO_DATA',
+    defaultValue: true,
+  );
+
   /// HRM / pphl_erp tunnel — auth, profile, face registration, leaves, holidays, sales, payments, etc.
   static const String _localTunnelBackendBaseUrl =
       'https://hrm.peoplesitsolution.online';
