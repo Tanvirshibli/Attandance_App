@@ -7,13 +7,13 @@ Flutter Android app for PPHL attendance.
 - Login/auth session: JWT on `pphl_erp`
 - Face registration: JWT on `pphl_erp` → `face_registration_android`
 - Check-in/check-out + attendance history: public API on `zkteco-Automation-management-PPHL` (no JWT; `employee_id` required) with HRM JWT mobile attendance preferred when logged in
-- **Employee services (v2.1.0):** footer **Services** tab (Attendance Report, Leave, Payments, Sales Info, Geo Tracking), plus profile quick actions
+- **Employee services (v2.2.0):** footer **Services** tab (Attendance Report, Leave, Payments hub with payslips/loans/PF/mess/compensation, Sales Info with post-sale, Geo Tracking). Sales & Payments use **demo data by default**; see [docs/SALES_AND_PAYMENTS_API_CONTRACT.md](docs/SALES_AND_PAYMENTS_API_CONTRACT.md)
 - Home / Attendance KPIs driven from live punches + HRM summary (Alerts empty until a notifications API exists)
 - JWT refresh on 401; endpoint config refresh after login and on app resume
 - Geo: live OpenStreetMap window, 5-min foreground timer, WorkManager, ongoing notification; FCM wake is **scaffold-only** until `android/app/google-services.json` is added
 - Persistent per-install device identity sent with attendance and face-registration requests
 
-See [docs/MOBILE_EMPLOYEE_FEATURES.md](docs/MOBILE_EMPLOYEE_FEATURES.md) for API wiring status per feature.
+See [docs/MOBILE_EMPLOYEE_FEATURES.md](docs/MOBILE_EMPLOYEE_FEATURES.md) for API wiring status per feature. Backend handoff for Sales/Payments: [docs/SALES_AND_PAYMENTS_API_CONTRACT.md](docs/SALES_AND_PAYMENTS_API_CONTRACT.md). Emulator workflow: [docs/EMULATOR_TESTING.md](docs/EMULATOR_TESTING.md).
 
 ## Backend split
 
@@ -62,6 +62,18 @@ The app stores JWT locally for ERP routes only. Attendance calls use the canonic
 
 ## Build commands
 
+### Run on Android Emulator (Cursor)
+
+See [docs/EMULATOR_TESTING.md](docs/EMULATOR_TESTING.md).
+
+```powershell
+cd Attandance_App
+powershell -ExecutionPolicy Bypass -File .\scripts\start-android-emulator.ps1
+C:\flutter\bin\flutter.bat run -d emulator-5554
+```
+
+In Cursor: **Tasks: Run Task** → **Start Android Emulator**, then **Run and Debug** → **Attandance_App (emulator)**.
+
 ### Dev APK (tunnel backends — install on phone for testing)
 
 ```powershell
@@ -73,8 +85,10 @@ Equivalent manual command:
 
 ```powershell
 flutter pub get
-flutter build apk --release --target-platform android-arm,android-arm64 --dart-define=USE_LOCAL_TUNNEL_BACKENDS=true
+flutter build apk --release --target-platform android-arm,android-arm64,android-x64 --dart-define=USE_LOCAL_TUNNEL_BACKENDS=true
 ```
+
+Include `android-x64` when installing on the Android Emulator (x86_64 AVD). Phone installs only need `android-arm,android-arm64`.
 
 ### Production APK
 
@@ -95,6 +109,8 @@ Output: `build/app/outputs/flutter-apk/app-release.apk`
 | `API_BASE_URL` | Legacy alias for auth/ERP base |
 | `API_BASE_URLS` | Auth fallback list (comma-separated) |
 | `ATTENDANCE_API_BASE_URLS` | Attendance fallback list |
+| `USE_SALES_DEMO_DATA` | `true` (default) → Sales Info demo UI; `false` → live sales APIs |
+| `USE_PAYMENT_DEMO_DATA` | `true` (default) → Payments demo UI; `false` → live HRM payment APIs |
 
 `backendApiBaseUrl` is an alias for the HRM/ERP base (leaves, holidays, sales, payments, etc.).
 

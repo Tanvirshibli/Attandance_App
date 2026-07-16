@@ -1,0 +1,1151 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Android App Development Contract — Peoples Poultry &amp; Hatchery Ltd.</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@600;700&family=Source+Sans+3:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --ink: #1a2332;
+      --ink-soft: #3d4a5c;
+      --muted: #5c6b7a;
+      --line: #c5d0db;
+      --line-soft: #e4ebf1;
+      --navy: #0f2744;
+      --navy-mid: #1a3a5c;
+      --teal: #2a6f7a;
+      --teal-soft: #e8f2f4;
+      --paper: #fafbfc;
+      --white: #ffffff;
+      --accent-bar: #2a6f7a;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    html {
+      font-size: 11pt;
+    }
+
+    body {
+      font-family: "Source Sans 3", "Segoe UI", sans-serif;
+      color: var(--ink);
+      background: #e8eef3;
+      line-height: 1.55;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+
+    .sheet {
+      max-width: 210mm;
+      margin: 24px auto;
+      background: var(--white);
+      box-shadow: 0 8px 32px rgba(15, 39, 68, 0.12);
+      padding: 18mm 18mm 22mm;
+      position: relative;
+    }
+
+    /* —— Screen letterhead —— */
+    .letterhead {
+      border-bottom: 2.5px solid var(--navy);
+      padding-bottom: 14px;
+      margin-bottom: 28px;
+      position: relative;
+    }
+
+    .letterhead::after {
+      content: "";
+      display: block;
+      height: 3px;
+      width: 72px;
+      background: var(--teal);
+      margin-top: 10px;
+    }
+
+    .letterhead-company {
+      font-family: "Cormorant Garamond", Georgia, serif;
+      font-size: 1.85rem;
+      font-weight: 700;
+      color: var(--navy);
+      letter-spacing: 0.02em;
+      line-height: 1.15;
+    }
+
+    .letterhead-address {
+      margin-top: 6px;
+      font-size: 0.78rem;
+      color: var(--muted);
+      font-weight: 500;
+      letter-spacing: 0.01em;
+    }
+
+    .letterhead-meta {
+      margin-top: 10px;
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    .doc-badge {
+      display: inline-block;
+      font-size: 0.68rem;
+      font-weight: 700;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--teal);
+      border: 1px solid var(--teal);
+      padding: 3px 10px;
+    }
+
+    .doc-ref {
+      font-size: 0.75rem;
+      color: var(--muted);
+    }
+
+    /* —— Cover —— */
+    .cover {
+      text-align: center;
+      padding: 36px 12px 40px;
+      border: 1px solid var(--line);
+      background: linear-gradient(180deg, var(--teal-soft) 0%, var(--white) 55%);
+      margin-bottom: 36px;
+      page-break-after: always;
+    }
+
+    .cover-kicker {
+      font-size: 0.72rem;
+      font-weight: 700;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--teal);
+      margin-bottom: 16px;
+    }
+
+    .cover h1 {
+      font-family: "Cormorant Garamond", Georgia, serif;
+      font-size: 2.35rem;
+      font-weight: 700;
+      color: var(--navy);
+      line-height: 1.2;
+      margin-bottom: 12px;
+    }
+
+    .cover-sub {
+      font-size: 1.05rem;
+      color: var(--ink-soft);
+      max-width: 420px;
+      margin: 0 auto 28px;
+    }
+
+    .cover-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+      max-width: 480px;
+      margin: 0 auto;
+      text-align: left;
+    }
+
+    .cover-card {
+      background: var(--white);
+      border: 1px solid var(--line);
+      border-left: 3px solid var(--navy);
+      padding: 12px 14px;
+    }
+
+    .cover-card dt {
+      font-size: 0.68rem;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 4px;
+    }
+
+    .cover-card dd {
+      font-size: 0.92rem;
+      font-weight: 600;
+      color: var(--navy);
+    }
+
+    .cover-fee {
+      margin-top: 24px;
+      font-size: 1.05rem;
+      font-weight: 600;
+      color: var(--navy);
+    }
+
+    .cover-fee span {
+      color: var(--teal);
+      font-weight: 700;
+    }
+
+    /* —— Typography —— */
+    h2 {
+      font-family: "Cormorant Garamond", Georgia, serif;
+      font-size: 1.45rem;
+      font-weight: 700;
+      color: var(--navy);
+      margin: 28px 0 12px;
+      padding-bottom: 6px;
+      border-bottom: 1px solid var(--line);
+      page-break-after: avoid;
+    }
+
+    h2 .sec-num {
+      color: var(--teal);
+      font-weight: 600;
+      margin-right: 6px;
+    }
+
+    h3 {
+      font-size: 0.95rem;
+      font-weight: 700;
+      color: var(--navy-mid);
+      margin: 18px 0 8px;
+      page-break-after: avoid;
+    }
+
+    p {
+      margin-bottom: 10px;
+      color: var(--ink);
+    }
+
+    ul, ol {
+      margin: 0 0 12px 1.25rem;
+    }
+
+    li {
+      margin-bottom: 5px;
+    }
+
+    .lead {
+      font-size: 1.02rem;
+      color: var(--ink-soft);
+    }
+
+    .muted {
+      color: var(--muted);
+    }
+
+    strong {
+      font-weight: 650;
+      color: var(--navy);
+    }
+
+    /* —— Tables —— */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 12px 0 18px;
+      font-size: 0.88rem;
+      page-break-inside: avoid;
+    }
+
+    thead th {
+      background: var(--navy);
+      color: var(--white);
+      font-weight: 600;
+      text-align: left;
+      padding: 9px 11px;
+      letter-spacing: 0.02em;
+    }
+
+    tbody td {
+      padding: 9px 11px;
+      border-bottom: 1px solid var(--line-soft);
+      vertical-align: top;
+    }
+
+    tbody tr:nth-child(even) td {
+      background: var(--paper);
+    }
+
+    td.phase {
+      font-weight: 650;
+      color: var(--navy);
+      white-space: nowrap;
+    }
+
+    td.dates {
+      white-space: nowrap;
+      color: var(--teal);
+      font-weight: 600;
+    }
+
+    /* —— Callout —— */
+    .callout {
+      background: var(--teal-soft);
+      border-left: 3px solid var(--teal);
+      padding: 12px 14px;
+      margin: 14px 0 18px;
+      font-size: 0.9rem;
+    }
+
+    .callout strong {
+      color: var(--teal);
+    }
+
+    /* —— Module cards —— */
+    .module {
+      border: 1px solid var(--line-soft);
+      border-top: 2px solid var(--navy-mid);
+      padding: 12px 14px;
+      margin-bottom: 12px;
+      page-break-inside: avoid;
+      background: var(--white);
+    }
+
+    .module h3 {
+      margin-top: 0;
+      margin-bottom: 6px;
+      display: flex;
+      align-items: baseline;
+      gap: 8px;
+    }
+
+    .module-tag {
+      font-size: 0.65rem;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--teal);
+      background: var(--teal-soft);
+      padding: 2px 7px;
+      border-radius: 2px;
+    }
+
+    .module p:last-child {
+      margin-bottom: 0;
+    }
+
+    .tech-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin: 12px 0 18px;
+    }
+
+    .tech-item {
+      border: 1px solid var(--line-soft);
+      padding: 10px 12px;
+      page-break-inside: avoid;
+    }
+
+    .tech-item dt {
+      font-size: 0.68rem;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 3px;
+    }
+
+    .tech-item dd {
+      font-size: 0.88rem;
+      font-weight: 550;
+      color: var(--navy);
+    }
+
+    /* —— Signature blocks —— */
+    .sig-section {
+      margin-top: 8px;
+    }
+
+    .sig-intro {
+      margin-bottom: 20px;
+    }
+
+    .sig-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px 24px;
+      margin-top: 8px;
+    }
+
+    .sig-block {
+      border: 1px solid var(--line);
+      padding: 16px 16px 14px;
+      page-break-inside: avoid;
+      background: var(--paper);
+      min-height: 210px;
+    }
+
+    .sig-block.client {
+      grid-column: 1 / -1;
+      background: linear-gradient(180deg, var(--teal-soft) 0%, var(--paper) 40%);
+      border-color: var(--teal);
+    }
+
+    .sig-role {
+      font-size: 0.68rem;
+      font-weight: 700;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--teal);
+      margin-bottom: 14px;
+    }
+
+    .sig-field {
+      margin-bottom: 16px;
+    }
+
+    .sig-field label {
+      display: block;
+      font-size: 0.72rem;
+      font-weight: 600;
+      color: var(--muted);
+      margin-bottom: 6px;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+
+    .sig-line {
+      border-bottom: 1px solid var(--ink-soft);
+      min-height: 28px;
+      width: 100%;
+    }
+
+    .sig-line.tall {
+      min-height: 48px;
+    }
+
+    .sig-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+    }
+
+    /* —— Footer (screen) —— */
+    .doc-footer {
+      margin-top: 40px;
+      padding-top: 12px;
+      border-top: 1.5px solid var(--navy);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      font-size: 0.7rem;
+      color: var(--muted);
+    }
+
+    .doc-footer .brand {
+      font-weight: 600;
+      color: var(--navy-mid);
+    }
+
+    /* Print chrome: fixed bands repeat on each printed page in Chromium */
+    .print-running-header,
+    .print-running-footer {
+      display: none;
+    }
+
+    .print-hint {
+      max-width: 210mm;
+      margin: 0 auto 8px;
+      padding: 10px 14px;
+      font-size: 0.82rem;
+      color: var(--ink-soft);
+      background: #fff8e8;
+      border: 1px solid #e6d4a8;
+      border-radius: 4px;
+    }
+
+    .print-hint strong {
+      color: var(--navy);
+    }
+
+    /* —— Print —— */
+    @page {
+      size: A4;
+      margin: 20mm 16mm 18mm 16mm;
+
+      @top-center {
+        content: "Peoples Poultry & Hatchery Ltd.  ·  OFFICE: 3 Shahid Tajuddin Ahmed Sharani, 3rd Floor, Maghbazar, Dhaka-1217";
+        font-family: "Source Sans 3", "Segoe UI", sans-serif;
+        font-size: 7.5pt;
+        color: #0f2744;
+        font-weight: 600;
+        border-bottom: 0.6pt solid #0f2744;
+        padding-bottom: 3mm;
+        width: 100%;
+      }
+
+      @bottom-left {
+        content: "Android App Development Contract — July 2026  ·  Confidential";
+        font-family: "Source Sans 3", "Segoe UI", sans-serif;
+        font-size: 7.5pt;
+        color: #5c6b7a;
+      }
+
+      @bottom-right {
+        content: "Page " counter(page) " of " counter(pages);
+        font-family: "Source Sans 3", "Segoe UI", sans-serif;
+        font-size: 8pt;
+        color: #0f2744;
+        font-weight: 600;
+      }
+    }
+
+    @page :first {
+      @top-center {
+        content: none;
+      }
+    }
+
+    @media print {
+      body {
+        background: white;
+      }
+
+      .print-hint {
+        display: none !important;
+      }
+
+      .sheet {
+        max-width: none;
+        margin: 0;
+        padding: 0;
+        box-shadow: none;
+      }
+
+      /* Preserve full letterhead look from the HTML UI */
+      .letterhead {
+        display: block;
+        margin-bottom: 18px;
+      }
+
+      .doc-footer {
+        display: none !important;
+      }
+
+      /* Avoid stacking a second header band over the letterhead */
+      .print-running-header,
+      .print-running-footer {
+        display: none !important;
+      }
+
+      .cover {
+        page-break-after: always;
+        border: 1px solid #c5d0db;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+        background: linear-gradient(180deg, #e8f2f4 0%, #ffffff 55%) !important;
+      }
+
+      h2 {
+        page-break-after: avoid;
+      }
+
+      .module,
+      .sig-block,
+      table,
+      .callout,
+      .tech-item {
+        page-break-inside: avoid;
+      }
+
+      a {
+        color: inherit;
+        text-decoration: none;
+      }
+
+      thead th,
+      .cover-card,
+      .callout,
+      .doc-badge,
+      .module-tag {
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+      }
+    }
+
+    @media screen and (max-width: 720px) {
+      .sheet {
+        margin: 0;
+        padding: 20px 16px 32px;
+        box-shadow: none;
+      }
+
+      .cover-grid,
+      .tech-grid,
+      .sig-grid,
+      .sig-row {
+        grid-template-columns: 1fr;
+      }
+
+      .sig-block.client {
+        grid-column: auto;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <p class="print-hint">
+    <strong>Print tip:</strong> Open this file in Chrome or Edge → Ctrl+P → Destination: Save as PDF.
+    Enable background graphics for the letterhead colours. Headers, footers, and page numbers appear on each printed page.
+  </p>
+
+  <div class="print-running-header" aria-hidden="true">
+    <span class="rh-company">Peoples Poultry &amp; Hatchery Ltd.</span>
+    <span class="rh-address">OFFICE: 3 Shahid Tajuddin Ahmed Sharani, 3rd Floor, Maghbazar, Dhaka-1217</span>
+  </div>
+  <div class="print-running-footer" aria-hidden="true">
+    <span class="rf-meta">Android App Development Contract — July 2026 · Confidential</span>
+    <span class="rf-page"></span>
+  </div>
+
+  <article class="sheet">
+
+    <header class="letterhead">
+      <div class="letterhead-company">Peoples Poultry &amp; Hatchery Ltd.</div>
+      <div class="letterhead-address">
+        OFFICE: 3 Shahid Tajuddin Ahmed Sharani, 3rd Floor, Maghbazar, Dhaka-1217
+      </div>
+      <div class="letterhead-meta">
+        <span class="doc-badge">Development Contract</span>
+        <span class="doc-ref">Ref: PPHL / ANDROID / JUL-2026</span>
+      </div>
+    </header>
+
+    <!-- ===================== COVER ===================== -->
+    <section class="cover">
+      <p class="cover-kicker">Software Development Agreement</p>
+      <h1>Android App Development Contract</h1>
+      <p class="cover-sub">
+        Employee Attendance System &amp; Sales Person Tracking Application
+      </p>
+      <div class="cover-grid">
+        <div class="cover-card">
+          <dl>
+            <dt>Client</dt>
+            <dd>Peoples Poultry &amp; Hatchery Ltd.</dd>
+          </dl>
+        </div>
+        <div class="cover-card">
+          <dl>
+            <dt>Developers</dt>
+            <dd>Three (3) Independent Developers</dd>
+          </dl>
+        </div>
+        <div class="cover-card">
+          <dl>
+            <dt>Engagement Period</dt>
+            <dd>1 July 2026 – 31 July 2026</dd>
+          </dl>
+        </div>
+        <div class="cover-card">
+          <dl>
+            <dt>Platform</dt>
+            <dd>Android (Flutter)</dd>
+          </dl>
+        </div>
+      </div>
+      <p class="cover-fee">
+        Total Development Estimate: <span>BDT 80,000</span>
+        <br /><span style="font-size:0.85rem;font-weight:500;color:var(--muted)">(Eighty Thousand Taka Only)</span>
+      </p>
+    </section>
+
+    <!-- ===================== 1. PARTIES ===================== -->
+    <h2><span class="sec-num">1.</span> Parties &amp; Definitions</h2>
+
+    <p>
+      This Android App Development Contract (the “<strong>Agreement</strong>”) is entered into as of
+      <strong>1 July 2026</strong> (the “<strong>Effective Date</strong>”) by and between:
+    </p>
+
+    <h3>1.1 Client</h3>
+    <p>
+      <strong>Peoples Poultry &amp; Hatchery Ltd.</strong> (hereinafter the “<strong>Client</strong>”),
+      with office at 3 Shahid Tajuddin Ahmed Sharani, 3rd Floor, Maghbazar, Dhaka-1217, Bangladesh.
+    </p>
+
+    <h3>1.2 Developers</h3>
+    <p>
+      Three (3) individual software developers (hereinafter collectively the “<strong>Developers</strong>”
+      and individually a “<strong>Developer</strong>”), whose full names and signatures appear in
+      Section&nbsp;12 of this Agreement. The Developers jointly undertake to design, develop, test,
+      and deliver the Application described herein within the Engagement Period.
+    </p>
+
+    <h3>1.3 Key definitions</h3>
+    <ul>
+      <li><strong>Application</strong> — the Android mobile application for employee attendance and sales/field person tracking to be developed under this Agreement, branded for use by the Client (working title: <em>PPHL Attendance</em>).</li>
+      <li><strong>Engagement Period</strong> — 1 July 2026 through 31 July 2026 (inclusive), being exactly one (1) calendar month.</li>
+      <li><strong>Deliverables</strong> — the modules, builds, documentation, and handoff items listed in Sections&nbsp;5–7.</li>
+      <li><strong>Acceptance</strong> — written or email confirmation by the Client that the Deliverables substantially conform to the scope in this Agreement.</li>
+      <li><strong>Fee</strong> — BDT&nbsp;80,000 (Eighty Thousand Taka Only), payable as set out in Section&nbsp;8.</li>
+    </ul>
+
+    <!-- ===================== 2. OVERVIEW ===================== -->
+    <h2><span class="sec-num">2.</span> Project Overview</h2>
+
+    <p class="lead">
+      The Developers shall develop a native-packaged <strong>Android application</strong> that enables
+      Client employees to manage attendance with face verification and GPS, and enables the Client to
+      monitor sales and field personnel through periodic location tracking.
+    </p>
+
+    <p>The Application shall integrate with the Client’s existing backend systems:</p>
+    <ul>
+      <li><strong>HRM backend</strong> — employee authentication (JWT), profile, face registration storage, leave, holidays, and payroll-related views.</li>
+      <li><strong>ZKTeco / attendance backend</strong> — attendance punches, device identity, geo-location uploads, mobile API configuration, and attendance history.</li>
+    </ul>
+
+    <div class="callout">
+      <strong>Purpose.</strong> A single employee-facing Android app combining face-verified check-in/check-out,
+      attendance reporting, leave self-service, field geo tracking with live map, and role-gated sales information —
+      configured dynamically from the Client’s attendance administration dashboard.
+    </div>
+
+    <!-- ===================== 3. TECHNOLOGY ===================== -->
+    <h2><span class="sec-num">3.</span> Technology Stack</h2>
+
+    <p>
+      The parties agree that the Application shall be built using the following technology choices,
+      selected for on-device face recognition, reliable location services, and dual-backend connectivity.
+    </p>
+
+    <div class="tech-grid">
+      <dl class="tech-item">
+        <dt>Framework</dt>
+        <dd>Flutter 3.x (Dart 3.11+) · Material 3 UI</dd>
+      </dl>
+      <dl class="tech-item">
+        <dt>Platform</dt>
+        <dd>Android only · Minimum API 26 (Android 8.0)</dd>
+      </dl>
+      <dl class="tech-item">
+        <dt>Face Recognition</dt>
+        <dd>Google ML Kit Face Detection + TensorFlow Lite (MobileFaceNet)</dd>
+      </dl>
+      <dl class="tech-item">
+        <dt>Camera &amp; Media</dt>
+        <dd>camera · image_picker</dd>
+      </dl>
+      <dl class="tech-item">
+        <dt>Location</dt>
+        <dd>geolocator · geocoding · permission_handler</dd>
+      </dl>
+      <dl class="tech-item">
+        <dt>Maps</dt>
+        <dd>flutter_map + OpenStreetMap</dd>
+      </dl>
+      <dl class="tech-item">
+        <dt>Background Work</dt>
+        <dd>WorkManager · local notifications (foreground tracking)</dd>
+      </dl>
+      <dl class="tech-item">
+        <dt>Local Storage</dt>
+        <dd>shared_preferences (session, embeddings, geo queue, config)</dd>
+      </dl>
+      <dl class="tech-item">
+        <dt>Networking</dt>
+        <dd>HTTP · JWT Bearer (HRM) · employee_id mobile APIs (ZKTeco)</dd>
+      </dl>
+      <dl class="tech-item">
+        <dt>UI / Charts</dt>
+        <dd>google_fonts · fl_chart · shimmer · lottie · animate_do</dd>
+      </dl>
+      <dl class="tech-item">
+        <dt>Device Identity</dt>
+        <dd>Stable Android device identifier bound to punches</dd>
+      </dl>
+      <dl class="tech-item">
+        <dt>Backend Stacks</dt>
+        <dd>HRM: Laravel + MySQL + JWT · ZKTeco: Laravel + PostgreSQL</dd>
+      </dl>
+    </div>
+
+    <!-- ===================== 4. PLATFORM ===================== -->
+    <h2><span class="sec-num">4.</span> Platform &amp; Delivery Format</h2>
+    <ul>
+      <li>Target platform: <strong>Android only</strong> (iOS is out of scope).</li>
+      <li>Minimum supported OS: <strong>Android 8.0 (API 26)</strong>.</li>
+      <li>Required permissions: camera; fine/coarse and background location; internet; foreground service (location); notifications; boot completed / wake lock as needed for geo tracking.</li>
+      <li>Handoff: signed or unsigned <strong>release APK</strong> (or App Bundle if requested), source project access as agreed, and brief operator documentation.</li>
+      <li>Offline behaviour: partial — geo pings may queue locally when upload fails; login and core attendance require network connectivity.</li>
+    </ul>
+
+    <!-- ===================== 5. MODULES ===================== -->
+    <h2><span class="sec-num">5.</span> Modules &amp; Deliverables</h2>
+
+    <p>
+      The Developers shall deliver the following functional modules as part of the Application.
+      Feature availability for Sales and Payments may be controlled by remote feature flags
+      configured from the Client’s attendance administration dashboard.
+    </p>
+
+    <div class="module">
+      <h3>5.1 Authentication &amp; Session <span class="module-tag">Core</span></h3>
+      <p>
+        Email/password login against the HRM API with JWT session management, profile hydration,
+        secure logout, token refresh with retry on unauthorized responses, and persistent session
+        across app restarts.
+      </p>
+    </div>
+
+    <div class="module">
+      <h3>5.2 Server Bootstrap &amp; Dynamic API Configuration <span class="module-tag">Core</span></h3>
+      <p>
+        First-launch server bootstrap to capture the attendance (ZKTeco) base URL; fetch and cache
+        mobile app configuration (base URLs, endpoint paths, feature flags, geo interval); refresh
+        configuration after login and on app resume. Administrators map API paths from the ZKTeco
+        web dashboard without requiring an app store update for URL changes.
+      </p>
+    </div>
+
+    <div class="module">
+      <h3>5.3 Face Registration <span class="module-tag">Attendance</span></h3>
+      <p>
+        Multi-angle live face enrollment (straight, left, right, up, down) with placement and quality
+        gates, same-person validation across captures, on-device embedding generation, and sync of
+        face templates to the HRM backend for the enrolled employee.
+      </p>
+    </div>
+
+    <div class="module">
+      <h3>5.4 Face-Verified Attendance (Check-In / Check-Out) <span class="module-tag">Attendance</span></h3>
+      <p>
+        Separate check-in and check-out flows with randomized liveness challenges (look straight,
+        smile, blink, turn left/right), on-device identity matching against enrolled templates,
+        GPS capture with reverse geocoding on successful punch, submission to the attendance API
+        with employee and device identifiers, and alignment with the Client’s device registry.
+      </p>
+    </div>
+
+    <div class="module">
+      <h3>5.5 Home Dashboard <span class="module-tag">Attendance</span></h3>
+      <p>
+        Employee greeting and identity, today’s clock status and hours, monthly KPI summary
+        (Present / Absent / Holiday / Leave), weekly hours chart, and recent attendance list
+        merged from attendance and HRM data sources as applicable.
+      </p>
+    </div>
+
+    <div class="module">
+      <h3>5.6 Attendance History &amp; Report <span class="module-tag">Attendance</span></h3>
+      <p>
+        Filterable attendance history with monthly summary; full attendance report including punch
+        timeline, face-verified indicator, GPS address where available, and summary cards.
+      </p>
+    </div>
+
+    <div class="module">
+      <h3>5.7 Leave Management <span class="module-tag">HR</span></h3>
+      <p>
+        Leave hub with balance snapshot and upcoming holidays; leave balance detail; leave history;
+        and leave application (leave types and submission) via HRM APIs.
+      </p>
+    </div>
+
+    <div class="module">
+      <h3>5.8 Geo Tracking (Field / Sales Person Tracking) <span class="module-tag">Tracking</span></h3>
+      <p>
+        Toggleable location tracking with configurable interval (default five minutes); live map
+        with GPS marker, accuracy circle, history pins, and recenter; manual capture; foreground
+        timer and background WorkManager capture; ongoing notification while tracking; local offline
+        queue when upload fails; upload and history via attendance geo-location APIs.
+      </p>
+    </div>
+
+    <div class="module">
+      <h3>5.9 Sales Info <span class="module-tag">Sales</span></h3>
+      <p>
+        Eligibility gate based on the Client’s sales-employee list; feature-flag control; sales
+        information UI (target, orders, revenue, conversion metrics) prepared for connection to the
+        Client’s sales product backend when available.
+      </p>
+    </div>
+
+    <div class="module">
+      <h3>5.10 Payments Hub <span class="module-tag">HR</span></h3>
+      <p>
+        Feature-flag-gated payment hub for post-loan payment, payment reports, and payroll slip
+        views via HRM APIs, with a clear unavailable state when the flag is disabled.
+      </p>
+    </div>
+
+    <div class="module">
+      <h3>5.11 Profile, Settings &amp; Alerts <span class="module-tag">Shell</span></h3>
+      <p>
+        Employee profile from HRM; settings entry points (including location services / geo tracking);
+        services hub navigation to reports, leave, payments, sales, and geo; alerts tab UI; sign out.
+      </p>
+    </div>
+
+    <h3>5.12 Primary user journeys (acceptance reference)</h3>
+    <ol>
+      <li>Bootstrap attendance server URL → download endpoint configuration → Login → Home.</li>
+      <li>Register face (multi-angle) → sync templates to HRM.</li>
+      <li>Check in / out → liveness → face match → GPS → punch API.</li>
+      <li>Enable geo tracking → periodic/background pings → map and history.</li>
+      <li>Apply leave / view payments / open Sales Info when flagged and eligible.</li>
+    </ol>
+
+    <!-- ===================== 6. TIMELINE ===================== -->
+    <h2><span class="sec-num">6.</span> Timeline — July 2026 (One Month)</h2>
+
+    <p>
+      The Engagement Period is fixed at exactly one (1) month:
+      <strong>1 July 2026</strong> through <strong>31 July 2026</strong> (inclusive).
+      All design, development, testing, and handoff activities under this Agreement shall be completed
+      within this window — <strong>no earlier completion obligation to reduce the month, and no extension beyond 31 July 2026</strong>
+      except by written amendment signed by both parties.
+    </p>
+
+    <div class="callout">
+      <strong>Calendar commitment.</strong> Work proceeds across the full month of July 2026.
+      The phase ranges below allocate every day of the Engagement Period to concrete deliverables.
+    </div>
+
+    <table>
+      <thead>
+        <tr>
+          <th>Phase</th>
+          <th>Date range</th>
+          <th>Scope of work</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="phase">Week 1 — Foundation</td>
+          <td class="dates">1 – 7 July 2026</td>
+          <td>
+            Project setup; Flutter Android scaffold; authentication &amp; session;
+            server bootstrap and dynamic API configuration; profile shell and main navigation.
+          </td>
+        </tr>
+        <tr>
+          <td class="phase">Week 2 — Attendance Core</td>
+          <td class="dates">8 – 14 July 2026</td>
+          <td>
+            Face registration (multi-angle); face check-in / check-out with liveness and GPS;
+            device identity binding; home dashboard KPIs and today’s attendance status.
+          </td>
+        </tr>
+        <tr>
+          <td class="phase">Week 3 — Tracking &amp; HR</td>
+          <td class="dates">15 – 21 July 2026</td>
+          <td>
+            Geo tracking (live map, background capture, offline queue); attendance history and
+            full report; leave management (balance, history, apply).
+          </td>
+        </tr>
+        <tr>
+          <td class="phase">Week 4 — Sales, Polish &amp; Handoff</td>
+          <td class="dates">22 – 31 July 2026</td>
+          <td>
+            Sales Info module (eligibility + UI); payments hub (feature-flagged); alerts UI;
+            end-to-end QA; release APK build; documentation and Client acceptance.
+          </td>
+        </tr>
+      </tbody>
+    </table>
+
+    <p>
+      <strong>Final delivery target:</strong> on or before <strong>31 July 2026</strong>.
+      Acceptance review shall commence promptly upon delivery so that the Engagement Period closes
+      within July as agreed.
+    </p>
+
+    <!-- ===================== 7. OUT OF SCOPE ===================== -->
+    <h2><span class="sec-num">7.</span> Scope Boundaries</h2>
+    <p>Unless expressly added by written amendment, the following are <strong>out of scope</strong>:</p>
+    <ul>
+      <li>iOS application development or App Store publication.</li>
+      <li>Development or hosting of the HRM or ZKTeco backend servers (integration only).</li>
+      <li>Full sales analytics product backend (Sales Info UI and eligibility gate are in scope; deep sales backend productisation is not).</li>
+      <li>Google Play Store listing, paid developer account fees, or production keystore procurement (Developers may assist with build packaging; Client retains store ownership).</li>
+      <li>Firebase / FCM production enablement beyond scaffolding, unless the Client supplies <code>google-services.json</code> and requests activation within the Engagement Period.</li>
+    </ul>
+
+    <!-- ===================== 8. FEES ===================== -->
+    <h2><span class="sec-num">8.</span> Fees &amp; Payment</h2>
+
+    <p>
+      The total development estimate for the Deliverables described in this Agreement is
+      <strong>BDT 80,000 (Eighty Thousand Taka Only)</strong>.
+    </p>
+
+    <div class="callout">
+      <strong>Payment terms.</strong> There is <em>no advance payment</em> and there are
+      <em>no mid-project installments</em>. One hundred percent (100%) of the Fee —
+      <strong>BDT 80,000</strong> — is payable by the Client <strong>only after</strong>
+      project delivery and Client Acceptance of the Deliverables (target: upon or following
+      final handoff by 31 July 2026).
+    </div>
+
+    <ul>
+      <li>Payment shall be made to the Developers (or their nominated account) as jointly instructed in writing at handoff.</li>
+      <li>The Fee covers the scope in Sections&nbsp;3–6. Material scope changes may adjust the Fee only by written amendment.</li>
+      <li>Taxes, if applicable under Bangladesh law, shall be handled as mutually agreed in writing at the time of payment.</li>
+    </ul>
+
+    <!-- ===================== 9. CLIENT RESPONSIBILITIES ===================== -->
+    <h2><span class="sec-num">9.</span> Client Responsibilities</h2>
+    <p>To enable completion within the Engagement Period, the Client shall timely provide:</p>
+    <ul>
+      <li>Access to HRM and ZKTeco / attendance API environments (staging and/or production as appropriate), including base URLs and credentials for test employees.</li>
+      <li>Administrative access or coordination for Mobile App API configuration in the attendance dashboard.</li>
+      <li>Test devices or approval for sideloading APKs during QA.</li>
+      <li>Feedback on demos and milestone reviews within a reasonable window (typically within two business days) so that Week&nbsp;4 handoff remains achievable.</li>
+      <li>A designated company authority empowered to grant Acceptance and execute this Agreement.</li>
+    </ul>
+
+    <!-- ===================== 10. ACCEPTANCE ===================== -->
+    <h2><span class="sec-num">10.</span> Acceptance &amp; Warranty</h2>
+    <ul>
+      <li>Upon delivery of the release build and documentation, the Client shall review the Deliverables against Sections&nbsp;5–6.</li>
+      <li><strong>Acceptance</strong> occurs when the Client confirms in writing (including email) that the Application substantially conforms to the agreed modules, or when seven (7) calendar days pass after delivery without a written list of material defects — whichever is earlier.</li>
+      <li>For seven (7) calendar days after Acceptance, the Developers shall remedy, at no additional Fee, material defects in the delivered scope that prevent core attendance or geo-tracking journeys from functioning as described herein.</li>
+      <li>Enhancement requests outside the agreed modules are new work and are not covered by the Fee or the warranty window.</li>
+    </ul>
+
+    <!-- ===================== 11. IP ===================== -->
+    <h2><span class="sec-num">11.</span> Intellectual Property &amp; Confidentiality</h2>
+    <ul>
+      <li>Upon receipt of full payment of the Fee, all custom Application source code, assets, and documentation created specifically for the Client under this Agreement shall be assigned to the Client.</li>
+      <li>Third-party open-source libraries and SDKs remain subject to their respective licenses; the Developers shall not knowingly introduce copyleft obligations that prevent Client commercial use without prior notice.</li>
+      <li>Each party shall keep confidential the other party’s non-public technical and business information obtained during the Engagement Period, and shall use such information only to perform this Agreement.</li>
+      <li>The Developers may reference the engagement as professional experience only after public launch or with the Client’s written permission, without disclosing confidential details.</li>
+    </ul>
+
+    <h3>11.1 Governing understanding</h3>
+    <p>
+      This Agreement constitutes the entire understanding between the Client and the Developers
+      regarding the July 2026 Android Application engagement. Amendments must be in writing and
+      signed (or confirmed by email) by the Client authority and the Developers.
+    </p>
+
+    <!-- ===================== 12. SIGNATURES ===================== -->
+    <h2><span class="sec-num">12.</span> Signatures</h2>
+
+    <div class="sig-section">
+      <p class="sig-intro">
+        By signing below, the parties acknowledge that they have read, understood, and agree to
+        the terms of this Android App Development Contract, including the one-month Engagement Period
+        (1–31 July 2026), the modules and technology described herein, and the Fee of BDT&nbsp;80,000
+        payable after delivery and Acceptance.
+      </p>
+
+      <div class="sig-grid">
+
+        <div class="sig-block">
+          <div class="sig-role">Developer 1</div>
+          <div class="sig-field">
+            <label>Full name</label>
+            <div class="sig-line"></div>
+          </div>
+          <div class="sig-field">
+            <label>Signature</label>
+            <div class="sig-line tall"></div>
+          </div>
+          <div class="sig-row">
+            <div class="sig-field">
+              <label>Date</label>
+              <div class="sig-line"></div>
+            </div>
+            <div class="sig-field">
+              <label>Contact (optional)</label>
+              <div class="sig-line"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="sig-block">
+          <div class="sig-role">Developer 2</div>
+          <div class="sig-field">
+            <label>Full name</label>
+            <div class="sig-line"></div>
+          </div>
+          <div class="sig-field">
+            <label>Signature</label>
+            <div class="sig-line tall"></div>
+          </div>
+          <div class="sig-row">
+            <div class="sig-field">
+              <label>Date</label>
+              <div class="sig-line"></div>
+            </div>
+            <div class="sig-field">
+              <label>Contact (optional)</label>
+              <div class="sig-line"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="sig-block">
+          <div class="sig-role">Developer 3</div>
+          <div class="sig-field">
+            <label>Full name</label>
+            <div class="sig-line"></div>
+          </div>
+          <div class="sig-field">
+            <label>Signature</label>
+            <div class="sig-line tall"></div>
+          </div>
+          <div class="sig-row">
+            <div class="sig-field">
+              <label>Date</label>
+              <div class="sig-line"></div>
+            </div>
+            <div class="sig-field">
+              <label>Contact (optional)</label>
+              <div class="sig-line"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="sig-block client">
+          <div class="sig-role">Client Authority — Peoples Poultry &amp; Hatchery Ltd.</div>
+          <div class="sig-field">
+            <label>Full name</label>
+            <div class="sig-line"></div>
+          </div>
+          <div class="sig-field">
+            <label>Designation / Title</label>
+            <div class="sig-line"></div>
+          </div>
+          <div class="sig-field">
+            <label>Signature</label>
+            <div class="sig-line tall"></div>
+          </div>
+          <div class="sig-row">
+            <div class="sig-field">
+              <label>Date</label>
+              <div class="sig-line"></div>
+            </div>
+            <div class="sig-field">
+              <label>Company stamp (if any)</label>
+              <div class="sig-line"></div>
+            </div>
+          </div>
+          <p class="muted" style="margin:8px 0 0;font-size:0.78rem;">
+            On behalf of Peoples Poultry &amp; Hatchery Ltd., OFFICE: 3 Shahid Tajuddin Ahmed Sharani,
+            3rd Floor, Maghbazar, Dhaka-1217.
+          </p>
+        </div>
+
+      </div>
+    </div>
+
+    <footer class="doc-footer">
+      <span class="brand">Peoples Poultry &amp; Hatchery Ltd.</span>
+      <span>Android App Development Contract — July 2026 · Confidential</span>
+    </footer>
+
+  </article>
+
+</body>
+</html>

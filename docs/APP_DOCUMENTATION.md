@@ -55,7 +55,7 @@
 | **Organization** | PPHL (Peoples Poultry & Hatchery Ltd.) |
 | **Platform** | Android (Flutter cross-platform, only Android targeted) |
 | **Purpose** | Employee attendance tracking with on-device face recognition and GPS verification |
-| **Version** | 2.1.0+4 |
+| **Version** | 2.2.0+5 |
 | **Dart SDK** | ^3.11.0 |
 | **Flutter Channel** | Stable (3.41.2) |
 | **APK Size** | ~105.6 MB (latest release build) |
@@ -184,9 +184,14 @@ LoginScreen
                   │     └─(Sign Out)→ LoginScreen (pushAndRemoveUntil)
                   └── Tab 4: EmployeeServicesHubScreen (Services)
                         ├─ AttendanceReportScreen
-                        ├─ LeaveHubScreen
-                        ├─ PaymentHubScreen
-                        ├─ SalesInfoScreen
+                        ├─ LeaveHubScreen (balance cards + leave report)
+                        ├─ PaymentHubScreen (payslips, loans, PF, mess, compensation)
+                        │   ├─ PayslipListScreen / PayslipDetailScreen
+                        │   ├─ LoanListScreen / LoanDetailScreen
+                        │   ├─ PostPaymentScreen / PaymentReportScreen
+                        │   ├─ ProvidentFundScreen / MessDepositScreen / CompensationScreen
+                        ├─ SalesInfoScreen (overview + own postings)
+                        │   └─ PostSaleScreen
                         └─ GeoTrackingScreen
 ```
 
