@@ -4,14 +4,15 @@ import 'package:google_fonts/google_fonts.dart';
 
 import '../config/theme.dart';
 import '../models/leave_balance.dart';
+import '../models/leave_record.dart';
 import '../services/auth_service.dart';
 import '../services/leave_service.dart';
 import '../widgets/api_empty_state.dart';
+import '../widgets/filter_chip_row.dart';
 import '../widgets/gradient_screen_header.dart';
+import '../widgets/leave_balance_card.dart';
 import '../widgets/section_card.dart';
 import 'apply_leave_screen.dart';
-import 'leave_balance_screen.dart';
-import 'leave_report_screen.dart';
 
 class LeaveHubScreen extends StatefulWidget {
   const LeaveHubScreen({super.key});
@@ -25,8 +26,12 @@ class _LeaveHubScreenState extends State<LeaveHubScreen> {
   final AuthService _authService = AuthService();
 
   List<LeaveBalance> _balances = const [];
+  List<LeaveRecord> _records = const [];
   List<Map<String, dynamic>> _holidays = const [];
-  bool _isLoading = true;
+  bool _isLoadingBalances = true;
+  bool _isLoadingHistory = true;
+  String _selectedFilter = 'All';
+  final List<String> _filters = ['All', 'Pending', 'Approved', 'Rejected'];
 
   @override
   void initState() {
@@ -35,26 +40,77 @@ class _LeaveHubScreenState extends State<LeaveHubScreen> {
   }
 
   Future<void> _load() async {
-    setState(() => _isLoading = true);
+    setState(() {
+      _isLoadingBalances = true;
+      _isLoadingHistory = true;
+    });
+
     final profile = await _authService.getCurrentUserProfile();
     final employeeId = profile?.canonicalEmployeeId;
     if (employeeId == null) {
       if (!mounted) return;
       setState(() {
         _balances = const [];
-        _isLoading = false;
+        _records = const [];
+        _holidays = const [];
+        _isLoadingBalances = false;
+        _isLoadingHistory = false;
       });
       return;
     }
 
-    final result = await _leaveService.getBalances(employeeId);
+    final balancesResult = await _leaveService.getBalances(employeeId);
     final holidaysResult = await _leaveService.getHolidays();
+    final historyResult = await _leaveService.getLeaveHistory(
+      employeeId: employeeId,
+      status: _selectedFilter,
+    );
+
     if (!mounted) return;
     setState(() {
-      _balances = result.data ?? const [];
+      _balances = balancesResult.data ?? const [];
       _holidays = holidaysResult.data ?? const [];
-      _isLoading = false;
+      _records = historyResult.data ?? const [];
+      _isLoadingBalances = false;
+      _isLoadingHistory = false;
     });
+  }
+
+  Future<void> _loadHistoryOnly() async {
+    setState(() => _isLoadingHistory = true);
+
+    final profile = await _authService.getCurrentUserProfile();
+    final employeeId = profile?.canonicalEmployeeId;
+    if (employeeId == null) {
+      if (!mounted) return;
+      setState(() {
+        _records = const [];
+        _isLoadingHistory = false;
+      });
+      return;
+    }
+
+    final historyResult = await _leaveService.getLeaveHistory(
+      employeeId: employeeId,
+      status: _selectedFilter,
+    );
+
+    if (!mounted) return;
+    setState(() {
+      _records = historyResult.data ?? const [];
+      _isLoadingHistory = false;
+    });
+  }
+
+  Color _statusColor(String status) {
+    switch (status.toLowerCase()) {
+      case 'approved':
+        return AppColors.success;
+      case 'rejected':
+        return AppColors.error;
+      default:
+        return AppColors.warning;
+    }
   }
 
   @override
@@ -78,211 +134,273 @@ class _LeaveHubScreenState extends State<LeaveHubScreen> {
           ),
         ),
       ),
-      body: CustomScrollView(
-        physics: const BouncingScrollPhysics(),
-        slivers: [
-          const SliverToBoxAdapter(
-            child: GradientScreenHeader(
-              title: 'Leave',
-              subtitle: 'Balance, history & applications',
-            ),
+      body: RefreshIndicator(
+        onRefresh: _load,
+        child: CustomScrollView(
+          physics: const AlwaysScrollableScrollPhysics(
+            parent: BouncingScrollPhysics(),
           ),
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: _navCard(
-                      context,
-                      icon: Icons.account_balance_wallet_outlined,
-                      label: 'Balance',
-                      color: AppColors.info,
-                      screen: const LeaveBalanceScreen(),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: _navCard(
-                      context,
-                      icon: Icons.history_rounded,
-                      label: 'Report',
-                      color: AppColors.success,
-                      screen: const LeaveReportScreen(),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          if (_holidays.isNotEmpty)
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(20, 8, 20, 8),
-                child: Text(
-                  'Upcoming Holidays',
-                  style: GoogleFonts.poppins(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
-            ),
-          if (_holidays.isNotEmpty)
-            SliverPadding(
-              padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
-              sliver: SliverList.separated(
-                itemCount: _holidays.length.clamp(0, 5),
-                separatorBuilder: (_, __) => const SizedBox(height: 8),
-                itemBuilder: (context, index) {
-                  final h = _holidays[index];
-                  return SectionCard(
-                    child: Row(
-                      children: [
-                        Icon(Icons.event_outlined, color: AppColors.warning),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                h['holidayName']?.toString() ?? 'Holiday',
-                                style: GoogleFonts.poppins(
-                                  fontWeight: FontWeight.w600,
-                                  fontSize: 13,
-                                ),
-                              ),
-                              Text(
-                                '${h['startDate']} → ${h['endDate']}',
-                                style: GoogleFonts.poppins(
-                                  fontSize: 11,
-                                  color: AppColors.textSecondary,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                  );
-                },
-              ),
-            ),
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(20, 8, 20, 8),
-              child: Text(
-                'Quick Balance',
-                style: GoogleFonts.poppins(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w600,
-                  color: AppColors.textPrimary,
-                ),
-              ),
-            ),
-          ),
-          if (_isLoading)
+          slivers: [
             const SliverToBoxAdapter(
-              child: Padding(
-                padding: EdgeInsets.all(40),
-                child: Center(child: CircularProgressIndicator()),
-              ),
-            )
-          else if (_balances.isEmpty)
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.all(20),
-                child: ApiEmptyState(
-                  icon: Icons.beach_access_outlined,
-                  title: 'No leave balance data',
-                  subtitle: 'Leave stock will appear once HR configures your account.',
-                  onRetry: _load,
-                ),
-              ),
-            )
-          else
-            SliverPadding(
-              padding: const EdgeInsets.fromLTRB(20, 0, 20, 100),
-              sliver: SliverList.separated(
-                itemCount: _balances.length,
-                separatorBuilder: (_, __) => const SizedBox(height: 10),
-                itemBuilder: (context, index) {
-                  final item = _balances[index];
-                  return FadeInUp(
-                    delay: Duration(milliseconds: 60 * index),
-                    child: SectionCard(
-                      child: Row(
-                        children: [
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  item.leaveTypeName,
-                                  style: GoogleFonts.poppins(
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                                const SizedBox(height: 4),
-                                Text(
-                                  'Earned ${item.earned.toStringAsFixed(1)} · Used ${item.used.toStringAsFixed(1)}',
-                                  style: GoogleFonts.poppins(
-                                    fontSize: 11,
-                                    color: AppColors.textSecondary,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          Text(
-                            item.balance.toStringAsFixed(1),
-                            style: GoogleFonts.poppins(
-                              fontSize: 20,
-                              fontWeight: FontWeight.w700,
-                              color: AppColors.primary,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  );
-                },
+              child: GradientScreenHeader(
+                title: 'Leave',
+                subtitle: 'Balance & leave history',
               ),
             ),
-        ],
-      ),
-    );
-  }
-
-  Widget _navCard(
-    BuildContext context, {
-    required IconData icon,
-    required String label,
-    required Color color,
-    required Widget screen,
-  }) {
-    return SectionCard(
-      padding: const EdgeInsets.all(16),
-      child: InkWell(
-        onTap: () => Navigator.of(context).push(
-          MaterialPageRoute(builder: (_) => screen),
-        ),
-        borderRadius: BorderRadius.circular(12),
-        child: Row(
-          children: [
-            Icon(icon, color: color),
-            const SizedBox(width: 10),
-            Text(
-              label,
-              style: GoogleFonts.poppins(
-                fontWeight: FontWeight.w600,
-                fontSize: 13,
-              ),
-            ),
+            ..._buildBalanceSection(context),
+            ..._buildHolidaysSection(),
+            ..._buildReportSection(),
           ],
         ),
       ),
     );
+  }
+
+  List<Widget> _buildBalanceSection(BuildContext context) {
+    return [
+      SliverToBoxAdapter(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
+          child: Text(
+            'Leave Balance',
+            style: GoogleFonts.poppins(
+              fontSize: 15,
+              fontWeight: FontWeight.w600,
+              color: AppColors.textPrimary,
+            ),
+          ),
+        ),
+      ),
+      if (_isLoadingBalances)
+        const SliverToBoxAdapter(
+          child: Padding(
+            padding: EdgeInsets.all(40),
+            child: Center(child: CircularProgressIndicator()),
+          ),
+        )
+      else if (_balances.isEmpty)
+        SliverToBoxAdapter(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+            child: ApiEmptyState(
+              icon: Icons.beach_access_outlined,
+              title: 'No leave balance data',
+              subtitle:
+                  'Leave stock will appear once HR configures your account.',
+              onRetry: _load,
+            ),
+          ),
+        )
+      else if (_balances.length == 1)
+        SliverToBoxAdapter(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+            child: FadeInUp(
+              child: LeaveBalanceCard(balance: _balances.first),
+            ),
+          ),
+        )
+      else
+        SliverToBoxAdapter(
+          child: SizedBox(
+            height: 210,
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+              itemCount: _balances.length,
+              separatorBuilder: (_, _) => const SizedBox(width: 12),
+              itemBuilder: (context, index) {
+                final cardWidth = MediaQuery.sizeOf(context).width * 0.72;
+                return FadeInUp(
+                  delay: Duration(milliseconds: 60 * index),
+                  child: LeaveBalanceCard(
+                    balance: _balances[index],
+                    width: cardWidth,
+                  ),
+                );
+              },
+            ),
+          ),
+        ),
+    ];
+  }
+
+  List<Widget> _buildHolidaysSection() {
+    if (_holidays.isEmpty) return const [];
+
+    return [
+      SliverToBoxAdapter(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 12, 20, 8),
+          child: Text(
+            'Upcoming Holidays',
+            style: GoogleFonts.poppins(
+              fontSize: 15,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ),
+      ),
+      SliverPadding(
+        padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+        sliver: SliverList.separated(
+          itemCount: _holidays.length.clamp(0, 5),
+          separatorBuilder: (_, _) => const SizedBox(height: 8),
+          itemBuilder: (context, index) {
+            final h = _holidays[index];
+            return SectionCard(
+              padding: const EdgeInsets.all(14),
+              child: Row(
+                children: [
+                  Icon(Icons.event_outlined, color: AppColors.warning),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          h['holidayName']?.toString() ?? 'Holiday',
+                          style: GoogleFonts.poppins(
+                            fontWeight: FontWeight.w600,
+                            fontSize: 13,
+                          ),
+                        ),
+                        Text(
+                          '${h['startDate']} → ${h['endDate']}',
+                          style: GoogleFonts.poppins(
+                            fontSize: 11,
+                            color: AppColors.textSecondary,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        ),
+      ),
+    ];
+  }
+
+  List<Widget> _buildReportSection() {
+    return [
+      SliverToBoxAdapter(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 12, 20, 8),
+          child: Text(
+            'Leave Report',
+            style: GoogleFonts.poppins(
+              fontSize: 15,
+              fontWeight: FontWeight.w600,
+              color: AppColors.textPrimary,
+            ),
+          ),
+        ),
+      ),
+      SliverToBoxAdapter(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+          child: FilterChipRow(
+            options: _filters,
+            selected: _selectedFilter,
+            onSelected: (v) {
+              setState(() => _selectedFilter = v);
+              _loadHistoryOnly();
+            },
+          ),
+        ),
+      ),
+      if (_isLoadingHistory)
+        const SliverToBoxAdapter(
+          child: Padding(
+            padding: EdgeInsets.all(40),
+            child: Center(child: CircularProgressIndicator()),
+          ),
+        )
+      else if (_records.isEmpty)
+        SliverToBoxAdapter(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 100),
+            child: ApiEmptyState(
+              icon: Icons.history_rounded,
+              title: 'No leave records',
+              onRetry: _loadHistoryOnly,
+            ),
+          ),
+        )
+      else
+        SliverPadding(
+          padding: const EdgeInsets.fromLTRB(20, 0, 20, 100),
+          sliver: SliverList.separated(
+            itemCount: _records.length,
+            separatorBuilder: (_, _) => const SizedBox(height: 10),
+            itemBuilder: (context, index) {
+              final item = _records[index];
+              return FadeInUp(
+                delay: Duration(milliseconds: 40 * index),
+                child: SectionCard(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              item.leaveTypeName,
+                              style: GoogleFonts.poppins(
+                                fontWeight: FontWeight.w600,
+                                fontSize: 14,
+                              ),
+                            ),
+                          ),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 4,
+                            ),
+                            decoration: BoxDecoration(
+                              color: _statusColor(item.status)
+                                  .withValues(alpha: 0.12),
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            child: Text(
+                              item.status,
+                              style: GoogleFonts.poppins(
+                                fontSize: 10,
+                                fontWeight: FontWeight.w600,
+                                color: _statusColor(item.status),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        item.dateRangeLabel,
+                        style: GoogleFonts.poppins(
+                          fontSize: 12,
+                          color: AppColors.textSecondary,
+                        ),
+                      ),
+                      if (item.reason != null && item.reason!.isNotEmpty) ...[
+                        const SizedBox(height: 6),
+                        Text(
+                          item.reason!,
+                          style: GoogleFonts.poppins(
+                            fontSize: 12,
+                            color: AppColors.textPrimary,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+    ];
   }
 }
