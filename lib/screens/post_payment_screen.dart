@@ -41,12 +41,7 @@ class _PostPaymentScreenState extends State<PostPaymentScreen> {
 
   Future<void> _loadLoans() async {
     final profile = await _authService.getCurrentUserProfile();
-    final employeeId = profile?.canonicalEmployeeId;
-    if (employeeId == null) {
-      if (!mounted) return;
-      setState(() => _isLoading = false);
-      return;
-    }
+    final employeeId = profile?.canonicalEmployeeId ?? 0;
 
     final result = await _paymentService.getEmployeeLoans(employeeId);
     if (!mounted) return;
@@ -59,8 +54,8 @@ class _PostPaymentScreenState extends State<PostPaymentScreen> {
 
   Future<void> _submit() async {
     final profile = await _authService.getCurrentUserProfile();
-    final employeeId = profile?.canonicalEmployeeId;
-    if (employeeId == null || _selectedLoan == null) {
+    final employeeId = profile?.canonicalEmployeeId ?? 0;
+    if (_selectedLoan == null) {
       _showSnack('Select a loan to continue.');
       return;
     }
