@@ -49,7 +49,7 @@ Write-Host ''
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
 & $flutter build apk --release `
-  --target-platform android-arm,android-arm64 `
+  --target-platform android-arm,android-arm64,android-x64 `
   --dart-define=USE_LOCAL_TUNNEL_BACKENDS=true
 
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

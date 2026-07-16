@@ -131,10 +131,8 @@ All API calls are **direct HTTP** — no extra middleware layer:
 
 | Screen | Function | Backend |
 |--------|----------|---------|
-| Leave Hub | Balance snapshot + upcoming holidays | HRM |
-| Leave Balance | Full balance list | `leave.balance` |
-| Leave History | Past applications | `leave.history` |
-| Apply Leave | Submit new request | `leave.apply` |
+| Leave (unified) | Balance cards at top, upcoming holidays, filtered leave history/report below | `leave.balance`, `leave.history`, holidays |
+| Apply Leave | Submit new request (FAB from Leave screen) | `leave.apply` |
 
 ### 4.4 Geo Tracking
 
@@ -151,17 +149,17 @@ All API calls are **direct HTTP** — no extra middleware layer:
 
 *Figure 3: Location is captured on a schedule or manually, queued offline if needed, then posted to ZKTeco.*
 
-### 4.5 Sales Info (Placeholder)
+### 4.5 Sales Info (Demo → live)
 
-- Visible only when `feature.sales.enabled` is true **and** user is in sales employee list  
-- Shows dummy metrics: Target, Orders, Revenue, Conversion  
-- **Coming Soon** when feature flag is off  
+- Personal overview KPIs, own sale postings list, **Post sale** form  
+- Demo data by default (`USE_SALES_DEMO_DATA=true`); eligibility gate applies when live  
+- Contract for external sales backend: [SALES_AND_PAYMENTS_API_CONTRACT.md](SALES_AND_PAYMENTS_API_CONTRACT.md)  
 
-### 4.6 Payment (Placeholder)
+### 4.6 Payments hub (Demo → live)
 
-- Default: **disabled** (`feature.payment.enabled: false`)  
-- Shows polished "Coming Soon" UI with sample rows  
-- Live HRM loan APIs preserved behind flag for future activation  
+- Payslips, loans, loan payments, PF, mess deposit, compensation — matched to existing pphl_erp resources  
+- Demo data by default (`USE_PAYMENT_DEMO_DATA=true`); live uses HRM JWT APIs with no backend changes  
+- See [SALES_AND_PAYMENTS_API_CONTRACT.md](SALES_AND_PAYMENTS_API_CONTRACT.md) Part B  
 
 ### 4.7 Profile & Services
 
@@ -190,6 +188,7 @@ All API calls are **direct HTTP** — no extra middleware layer:
 | 5 | Face attendance detailed report | Done |
 | 6 | Geo 5-min + background worker | Done |
 | 7 | Sales/Payment dummy modules | Done |
+| 13 | Sales Info + Payments full demo UI + API contract | Done |
 | 8 | JWT refresh + config refresh on login/resume | Done |
 | 9 | Geo UI polish, history, ongoing notification | Done |
 | 10 | FCM scaffold (no `google-services.json` yet) | Done |
