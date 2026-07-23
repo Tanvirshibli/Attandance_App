@@ -1,6 +1,7 @@
 import '../models/sales_models.dart';
 
 /// In-memory demo sales data. Postings can be appended from [PostSaleScreen].
+/// Reporting demo is only used when [AppConfig.useSalesDemoData] is true.
 class SalesDemoData {
   SalesDemoData._();
 
@@ -37,26 +38,6 @@ class SalesDemoData {
       notes: 'Promo bundle',
       status: 'approved',
     ),
-    SalePosting(
-      id: 1004,
-      employeeId: 0,
-      saleDate: _daysAgo(14),
-      amount: 15600,
-      customerName: 'Northern Traders',
-      productName: 'Layer Feed 50kg',
-      quantity: 30,
-      status: 'approved',
-    ),
-    SalePosting(
-      id: 1005,
-      employeeId: 0,
-      saleDate: _daysAgo(21),
-      amount: 6800,
-      customerName: 'Lakeview Pet Shop',
-      productName: 'Fish Meal',
-      quantity: 8,
-      status: 'rejected',
-    ),
   ];
 
   static int _nextId = 1100;
@@ -68,58 +49,179 @@ class SalesDemoData {
         '${d.day.toString().padLeft(2, '0')}';
   }
 
-  static SalesOverview overviewForPeriod(String period) {
-    switch (period) {
-      case 'Last month':
-        return const SalesOverview(
-          period: 'Last month',
-          targetAmount: 120000,
-          achievedAmount: 108500,
-          ordersCount: 18,
-          revenue: 108500,
-          conversionRate: 62.5,
-          visitsCount: 29,
-        );
-      case 'Custom':
-        return const SalesOverview(
-          period: 'Custom',
-          targetAmount: 250000,
-          achievedAmount: 186400,
-          ordersCount: 34,
-          revenue: 186400,
-          conversionRate: 58.0,
-          visitsCount: 55,
-        );
-      case 'This month':
-      default:
-        return const SalesOverview(
-          period: 'This month',
-          targetAmount: 150000,
-          achievedAmount: 77500,
-          ordersCount: 12,
-          revenue: 77500,
-          conversionRate: 54.5,
-          visitsCount: 22,
-        );
-    }
-  }
+  static SalesPersonSalesData personSales({
+    required int employeeId,
+    required DateTime fromDate,
+    required DateTime toDate,
+  }) {
+    String fmt(DateTime d) =>
+        '${d.year.toString().padLeft(4, '0')}-'
+        '${d.month.toString().padLeft(2, '0')}-'
+        '${d.day.toString().padLeft(2, '0')}';
 
-  static List<SalePosting> postings({int? employeeId}) {
-    return _postings
-        .map(
-          (p) => SalePosting(
-            id: p.id,
-            employeeId: employeeId ?? p.employeeId,
-            saleDate: p.saleDate,
-            amount: p.amount,
-            customerName: p.customerName,
-            productName: p.productName,
-            quantity: p.quantity,
-            notes: p.notes,
-            status: p.status,
+    final feedSummary = SalesModuleSummary.fromJson({
+      'total_orders': 3,
+      'total_returns': 0,
+      'total_details': 3,
+      'total_products': 2,
+      'total_dealers': 2,
+      'total_sectors': 1,
+      'gross_qty': 70,
+      'return_qty': 0,
+      'net_qty': 70,
+      'delivered_qty': 70,
+      'pcs_qty': 0,
+      'scale_weight': 0,
+      'gross_sales': 55100,
+      'sales_return': 0,
+      'net_sales': 55100,
+      'invoice_net_total': 55100,
+    });
+
+    final empty = SalesModuleSummary.fromJson(const {});
+
+    return SalesPersonSalesData(
+      employee: SalesPersonEmployee(
+        inputId: employeeId,
+        employeeId: employeeId,
+        employeeName: 'Demo Sales Person',
+      ),
+      fromDate: fmt(fromDate),
+      toDate: fmt(toDate),
+      overall: SalesOverallSummary.fromJson({
+        'total_orders': 3,
+        'total_returns': 0,
+        'total_details': 3,
+        'gross_sales': 55100,
+        'sales_return': 0,
+        'net_sales': 55100,
+        'invoice_net_total': 55100,
+        'quantity_by_unit': [
+          {
+            'unit_id': 1,
+            'unit_name': 'kg',
+            'gross_qty': 70,
+            'return_qty': 0,
+            'net_qty': 70,
+          },
+        ],
+      }),
+      modules: [
+        SalesModuleBlock(
+          key: 'egg',
+          label: 'Egg',
+          summary: empty,
+          products: const [],
+          dealers: const [],
+          sectors: const [],
+          details: const [],
+        ),
+        SalesModuleBlock(
+          key: 'feed',
+          label: 'Feed',
+          summary: feedSummary,
+          products: [
+            SalesProductRow.fromJson({
+              'id': 1,
+              'name': 'Layer Feed 50kg',
+              'total_orders': 2,
+              'total_returns': 0,
+              'gross_qty': 50,
+              'return_qty': 0,
+              'net_qty': 50,
+              'delivered_qty': 50,
+              'pcs_qty': 0,
+              'scale_weight': 0,
+              'gross_amount': 27700,
+              'return_amount': 0,
+              'net_amount': 27700,
+              'unit_name': 'Bag',
+            }),
+            SalesProductRow.fromJson({
+              'id': 2,
+              'name': 'Broiler Starter',
+              'total_orders': 1,
+              'total_returns': 0,
+              'gross_qty': 20,
+              'return_qty': 0,
+              'net_qty': 20,
+              'delivered_qty': 20,
+              'pcs_qty': 0,
+              'scale_weight': 0,
+              'gross_amount': 27400,
+              'return_amount': 0,
+              'net_amount': 27400,
+              'unit_name': 'Bag',
+            }),
+          ],
+          dealers: [
+            SalesPartyRow.fromJson({
+              'id': 10,
+              'name': 'Green Valley Outlet',
+              'total_orders': 2,
+              'total_returns': 0,
+              'gross_qty': 50,
+              'return_qty': 0,
+              'net_qty': 50,
+              'delivered_qty': 50,
+              'pcs_qty': 0,
+              'scale_weight': 0,
+              'gross_amount': 27700,
+              'return_amount': 0,
+              'net_amount': 27700,
+            }),
+          ],
+          sectors: [
+            SalesPartyRow.fromJson({
+              'id': 1,
+              'name': 'North Zone',
+              'total_orders': 3,
+              'total_returns': 0,
+              'gross_qty': 70,
+              'return_qty': 0,
+              'net_qty': 70,
+              'delivered_qty': 70,
+              'pcs_qty': 0,
+              'scale_weight': 0,
+              'gross_amount': 55100,
+              'return_amount': 0,
+              'net_amount': 55100,
+            }),
+          ],
+          details: [
+            SalesDetailLine.fromJson({
+              'module': 'feed',
+              'order_id': 1001,
+              'reference_no': 'SO-DEMO-1',
+              'detail_id': 1,
+              'type': 'order',
+              'invoice_date': _daysAgo(2),
+              'status': 'approved',
+              'qty': 40,
+              'line_amount': 18500,
+              'dealer_name': 'Green Valley Outlet',
+              'product_name': 'Layer Feed 50kg',
+              'unit_name': 'Bag',
+            }),
+          ],
+        ),
+        for (final def in const [
+          ('fertilizer', 'Fertilizer'),
+          ('chicks', 'Chicks'),
+          ('liveBird', 'Live Bird'),
+          ('cullBird', 'Cull Bird'),
+        ])
+          SalesModuleBlock(
+            key: def.$1,
+            label: def.$2,
+            summary: empty,
+            products: const [],
+            dealers: const [],
+            sectors: const [],
+            details: const [],
           ),
-        )
-        .toList();
+      ],
+    );
   }
 
   static SalePosting addPosting(CreateSaleRequest request) {

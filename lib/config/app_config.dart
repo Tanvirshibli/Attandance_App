@@ -11,12 +11,21 @@ class AppConfig {
     defaultValue: false,
   );
 
-  /// When true (default), Sales Info uses local demo data until the external
-  /// sales backend is ready. Pass `--dart-define=USE_SALES_DEMO_DATA=false` to
-  /// call live sales endpoints.
+  /// When true, Sales Info reporting uses local demo data.
+  /// Default is false — live person-sales API. Pass
+  /// `--dart-define=USE_SALES_DEMO_DATA=true` to force demo reporting.
+  /// Post Sale create still uses the in-memory demo store until a live
+  /// create endpoint exists.
   static const bool useSalesDemoData = bool.fromEnvironment(
     'USE_SALES_DEMO_DATA',
-    defaultValue: true,
+    defaultValue: false,
+  );
+
+  /// Sales reporting backend (person-sales). Override with
+  /// `--dart-define=SALES_API_BASE_URL=...`.
+  static const String salesApiBaseUrl = String.fromEnvironment(
+    'SALES_API_BASE_URL',
+    defaultValue: 'http://43.224.116.185:8001',
   );
 
   /// When true (default), Payments hub uses local demo data shaped like HRM
