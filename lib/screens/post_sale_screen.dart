@@ -90,7 +90,7 @@ class _PostSaleScreenState extends State<PostSaleScreen> {
       return;
     }
 
-    _snack(_salesService.useDemoData
+    _snack(_salesService.useCreateDemo
         ? 'Demo sale posted successfully.'
         : 'Sale submitted successfully.');
     Navigator.of(context).pop(true);
@@ -125,16 +125,41 @@ class _PostSaleScreenState extends State<PostSaleScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        if (_salesService.useDemoData) ...[
+                        if (_salesService.useCreateDemo) ...[
                           Container(
                             padding: const EdgeInsets.all(12),
                             decoration: BoxDecoration(
                               color: AppColors.warning.withValues(alpha: 0.1),
                               borderRadius: BorderRadius.circular(12),
                             ),
-                            child: Text(
-                              'Demo mode — this sale is stored only on this device session.',
-                              style: GoogleFonts.poppins(fontSize: 12),
+                            child: Row(
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 8,
+                                    vertical: 2,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: AppColors.warning,
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: Text(
+                                    'Demo',
+                                    style: GoogleFonts.poppins(
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.w600,
+                                      color: Colors.white,
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: Text(
+                                    'Stored only on this device until a live create API is available.',
+                                    style: GoogleFonts.poppins(fontSize: 12),
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
                           const SizedBox(height: 16),

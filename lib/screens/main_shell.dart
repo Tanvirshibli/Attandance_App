@@ -55,53 +55,51 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
         index: _selectedIndex,
         children: _screens,
       ),
-      bottomNavigationBar: Container(
-        decoration: BoxDecoration(
-          color: AppColors.surface,
-          boxShadow: [
-            BoxShadow(
-              color: AppColors.shadow.withValues(alpha: 0.08),
-              blurRadius: 20,
-              offset: const Offset(0, -5),
-            ),
-          ],
-          borderRadius: const BorderRadius.only(
-            topLeft: Radius.circular(24),
-            topRight: Radius.circular(24),
+      bottomNavigationBar: SafeArea(
+        top: false,
+        child: Container(
+          margin: const EdgeInsets.fromLTRB(8, 0, 8, 10),
+          decoration: BoxDecoration(
+            color: AppColors.surface,
+            boxShadow: [
+              BoxShadow(
+                color: AppColors.shadow.withValues(alpha: 0.08),
+                blurRadius: 20,
+                offset: const Offset(0, -5),
+              ),
+            ],
+            borderRadius: BorderRadius.circular(24),
           ),
-        ),
-        child: ClipRRect(
-          borderRadius: const BorderRadius.only(
-            topLeft: Radius.circular(24),
-            topRight: Radius.circular(24),
-          ),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceAround,
-              children: [
-                _buildNavItem(0, Icons.home_outlined, Icons.home_rounded, 'Home'),
-                _buildNavItem(
-                    1,
-                    Icons.calendar_today_outlined,
-                    Icons.calendar_today_rounded,
-                    'Attendance'),
-                _buildNavItem(
-                    2,
-                    Icons.notifications_outlined,
-                    Icons.notifications_rounded,
-                    'Alerts'),
-                _buildNavItem(
-                    3,
-                    Icons.person_outline_rounded,
-                    Icons.person_rounded,
-                    'Profile'),
-                _buildNavItem(
-                    4,
-                    Icons.apps_outlined,
-                    Icons.apps_rounded,
-                    'Services'),
-              ],
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(24),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceAround,
+                children: [
+                  _buildNavItem(0, Icons.home_outlined, Icons.home_rounded, 'Home'),
+                  _buildNavItem(
+                      1,
+                      Icons.calendar_today_outlined,
+                      Icons.calendar_today_rounded,
+                      'Attendance'),
+                  _buildNavItem(
+                      2,
+                      Icons.notifications_outlined,
+                      Icons.notifications_rounded,
+                      'Alerts'),
+                  _buildNavItem(
+                      3,
+                      Icons.person_outline_rounded,
+                      Icons.person_rounded,
+                      'Profile'),
+                  _buildNavItem(
+                      4,
+                      Icons.apps_outlined,
+                      Icons.apps_rounded,
+                      'Services'),
+                ],
+              ),
             ),
           ),
         ),
