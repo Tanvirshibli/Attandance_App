@@ -68,9 +68,9 @@ class EmployeeServicesHubScreen extends StatelessWidget {
             sliver: SliverGrid(
               gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                 crossAxisCount: 2,
-                mainAxisSpacing: 12,
-                crossAxisSpacing: 12,
-                childAspectRatio: 1.05,
+                mainAxisSpacing: 10,
+                crossAxisSpacing: 10,
+                childAspectRatio: 1.0,
               ),
               delegate: SliverChildBuilderDelegate(
                 (context, index) {
@@ -113,7 +113,7 @@ class _ServiceTile extends StatelessWidget {
   Widget build(BuildContext context) {
     return Material(
       color: AppColors.surface,
-      borderRadius: BorderRadius.circular(20),
+      borderRadius: BorderRadius.circular(18),
       elevation: 0,
       shadowColor: AppColors.shadow.withValues(alpha: 0.06),
       child: InkWell(
@@ -122,54 +122,42 @@ class _ServiceTile extends StatelessWidget {
             MaterialPageRoute(builder: (_) => tile.screen),
           );
         },
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(18),
         child: Container(
-          padding: const EdgeInsets.all(18),
+          padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(20),
+            borderRadius: BorderRadius.circular(18),
             boxShadow: [
               BoxShadow(
                 color: AppColors.shadow.withValues(alpha: 0.05),
-                blurRadius: 12,
-                offset: const Offset(0, 4),
+                blurRadius: 10,
+                offset: const Offset(0, 3),
               ),
             ],
           ),
           child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               Container(
-                width: 48,
-                height: 48,
+                width: 64,
+                height: 64,
                 decoration: BoxDecoration(
                   color: tile.color.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(14),
+                  borderRadius: BorderRadius.circular(18),
                 ),
-                child: Icon(tile.icon, color: tile.color, size: 24),
+                child: Icon(tile.icon, color: tile.color, size: 34),
               ),
-              const Spacer(),
+              const SizedBox(height: 12),
               Text(
                 tile.label,
+                textAlign: TextAlign.center,
                 style: GoogleFonts.poppins(
-                  fontSize: 14,
+                  fontSize: 13,
                   fontWeight: FontWeight.w600,
                   color: AppColors.textPrimary,
-                  height: 1.3,
+                  height: 1.25,
                 ),
-              ),
-              const SizedBox(height: 4),
-              Row(
-                children: [
-                  Text(
-                    'Open',
-                    style: GoogleFonts.poppins(
-                      fontSize: 11,
-                      color: tile.color,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                  Icon(Icons.arrow_forward_rounded, size: 14, color: tile.color),
-                ],
               ),
             ],
           ),

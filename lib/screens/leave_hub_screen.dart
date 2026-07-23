@@ -160,11 +160,11 @@ class _LeaveHubScreenState extends State<LeaveHubScreen> {
     return [
       SliverToBoxAdapter(
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
+          padding: const EdgeInsets.fromLTRB(20, 12, 20, 6),
           child: Text(
             'Leave Balance',
             style: GoogleFonts.poppins(
-              fontSize: 15,
+              fontSize: 14,
               fontWeight: FontWeight.w600,
               color: AppColors.textPrimary,
             ),
@@ -174,7 +174,7 @@ class _LeaveHubScreenState extends State<LeaveHubScreen> {
       if (_isLoadingBalances)
         const SliverToBoxAdapter(
           child: Padding(
-            padding: EdgeInsets.all(40),
+            padding: EdgeInsets.symmetric(vertical: 28),
             child: Center(child: CircularProgressIndicator()),
           ),
         )
@@ -191,35 +191,18 @@ class _LeaveHubScreenState extends State<LeaveHubScreen> {
             ),
           ),
         )
-      else if (_balances.length == 1)
-        SliverToBoxAdapter(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
-            child: FadeInUp(
-              child: LeaveBalanceCard(balance: _balances.first),
-            ),
-          ),
-        )
       else
-        SliverToBoxAdapter(
-          child: SizedBox(
-            height: 210,
-            child: ListView.separated(
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
-              itemCount: _balances.length,
-              separatorBuilder: (_, _) => const SizedBox(width: 12),
-              itemBuilder: (context, index) {
-                final cardWidth = MediaQuery.sizeOf(context).width * 0.72;
-                return FadeInUp(
-                  delay: Duration(milliseconds: 60 * index),
-                  child: LeaveBalanceCard(
-                    balance: _balances[index],
-                    width: cardWidth,
-                  ),
-                );
-              },
-            ),
+        SliverPadding(
+          padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+          sliver: SliverList.separated(
+            itemCount: _balances.length,
+            separatorBuilder: (_, _) => const SizedBox(height: 8),
+            itemBuilder: (context, index) {
+              return FadeInUp(
+                delay: Duration(milliseconds: 40 * index),
+                child: LeaveBalanceCard(balance: _balances[index]),
+              );
+            },
           ),
         ),
     ];
@@ -231,29 +214,29 @@ class _LeaveHubScreenState extends State<LeaveHubScreen> {
     return [
       SliverToBoxAdapter(
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 12, 20, 8),
+          padding: const EdgeInsets.fromLTRB(20, 10, 20, 6),
           child: Text(
             'Upcoming Holidays',
             style: GoogleFonts.poppins(
-              fontSize: 15,
+              fontSize: 14,
               fontWeight: FontWeight.w600,
             ),
           ),
         ),
       ),
       SliverPadding(
-        padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+        padding: const EdgeInsets.fromLTRB(20, 0, 20, 6),
         sliver: SliverList.separated(
           itemCount: _holidays.length.clamp(0, 5),
-          separatorBuilder: (_, _) => const SizedBox(height: 8),
+          separatorBuilder: (_, _) => const SizedBox(height: 6),
           itemBuilder: (context, index) {
             final h = _holidays[index];
             return SectionCard(
-              padding: const EdgeInsets.all(14),
+              padding: const EdgeInsets.all(12),
               child: Row(
                 children: [
-                  Icon(Icons.event_outlined, color: AppColors.warning),
-                  const SizedBox(width: 12),
+                  Icon(Icons.event_outlined, color: AppColors.warning, size: 20),
+                  const SizedBox(width: 10),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -262,7 +245,7 @@ class _LeaveHubScreenState extends State<LeaveHubScreen> {
                           h['holidayName']?.toString() ?? 'Holiday',
                           style: GoogleFonts.poppins(
                             fontWeight: FontWeight.w600,
-                            fontSize: 13,
+                            fontSize: 12,
                           ),
                         ),
                         Text(
@@ -288,11 +271,11 @@ class _LeaveHubScreenState extends State<LeaveHubScreen> {
     return [
       SliverToBoxAdapter(
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 12, 20, 8),
+          padding: const EdgeInsets.fromLTRB(20, 10, 20, 6),
           child: Text(
             'Leave Report',
             style: GoogleFonts.poppins(
-              fontSize: 15,
+              fontSize: 14,
               fontWeight: FontWeight.w600,
               color: AppColors.textPrimary,
             ),
@@ -301,7 +284,7 @@ class _LeaveHubScreenState extends State<LeaveHubScreen> {
       ),
       SliverToBoxAdapter(
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+          padding: const EdgeInsets.fromLTRB(20, 0, 20, 6),
           child: FilterChipRow(
             options: _filters,
             selected: _selectedFilter,
@@ -315,7 +298,7 @@ class _LeaveHubScreenState extends State<LeaveHubScreen> {
       if (_isLoadingHistory)
         const SliverToBoxAdapter(
           child: Padding(
-            padding: EdgeInsets.all(40),
+            padding: EdgeInsets.symmetric(vertical: 28),
             child: Center(child: CircularProgressIndicator()),
           ),
         )
@@ -335,12 +318,13 @@ class _LeaveHubScreenState extends State<LeaveHubScreen> {
           padding: const EdgeInsets.fromLTRB(20, 0, 20, 100),
           sliver: SliverList.separated(
             itemCount: _records.length,
-            separatorBuilder: (_, _) => const SizedBox(height: 10),
+            separatorBuilder: (_, _) => const SizedBox(height: 8),
             itemBuilder: (context, index) {
               final item = _records[index];
               return FadeInUp(
                 delay: Duration(milliseconds: 40 * index),
                 child: SectionCard(
+                  padding: const EdgeInsets.all(14),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -351,14 +335,14 @@ class _LeaveHubScreenState extends State<LeaveHubScreen> {
                               item.leaveTypeName,
                               style: GoogleFonts.poppins(
                                 fontWeight: FontWeight.w600,
-                                fontSize: 14,
+                                fontSize: 13,
                               ),
                             ),
                           ),
                           Container(
                             padding: const EdgeInsets.symmetric(
-                              horizontal: 10,
-                              vertical: 4,
+                              horizontal: 8,
+                              vertical: 3,
                             ),
                             decoration: BoxDecoration(
                               color: _statusColor(item.status)
@@ -376,16 +360,26 @@ class _LeaveHubScreenState extends State<LeaveHubScreen> {
                           ),
                         ],
                       ),
-                      const SizedBox(height: 8),
+                      const SizedBox(height: 6),
                       Text(
                         item.dateRangeLabel,
                         style: GoogleFonts.poppins(
-                          fontSize: 12,
+                          fontSize: 11,
                           color: AppColors.textSecondary,
                         ),
                       ),
+                      if (item.duration != null) ...[
+                        const SizedBox(height: 2),
+                        Text(
+                          '${item.duration} day${item.duration == 1 ? '' : 's'}',
+                          style: GoogleFonts.poppins(
+                            fontSize: 11,
+                            color: AppColors.textSecondary,
+                          ),
+                        ),
+                      ],
                       if (item.reason != null && item.reason!.isNotEmpty) ...[
-                        const SizedBox(height: 6),
+                        const SizedBox(height: 4),
                         Text(
                           item.reason!,
                           style: GoogleFonts.poppins(
