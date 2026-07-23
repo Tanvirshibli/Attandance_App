@@ -7,7 +7,7 @@ Flutter Android app for PPHL attendance.
 - Login/auth session: JWT on `pphl_erp`
 - Face registration: JWT on `pphl_erp` → `face_registration_android`
 - Check-in/check-out + attendance history: public API on `zkteco-Automation-management-PPHL` (no JWT; `employee_id` required) with HRM JWT mobile attendance preferred when logged in
-- **Employee services (v2.2.0):** footer **Services** tab (Attendance Report, Leave, Payments hub with payslips/loans/PF/mess/compensation, Sales Info with post-sale, Geo Tracking). Sales & Payments use **demo data by default**; see [docs/SALES_AND_PAYMENTS_API_CONTRACT.md](docs/SALES_AND_PAYMENTS_API_CONTRACT.md)
+- **Employee services (v2.2.0):** footer **Services** tab (Attendance Report, Leave, Payments hub, Sales Info with live person-sales report + demo Post sale, Geo Tracking). Payments remain demo by default; see [docs/SALES_AND_PAYMENTS_API_CONTRACT.md](docs/SALES_AND_PAYMENTS_API_CONTRACT.md)
 - Home / Attendance KPIs driven from live punches + HRM summary (Alerts empty until a notifications API exists)
 - JWT refresh on 401; endpoint config refresh after login and on app resume
 - Geo: live OpenStreetMap window, 5-min foreground timer, WorkManager, ongoing notification; FCM wake is **scaffold-only** until `android/app/google-services.json` is added
@@ -76,29 +76,39 @@ In Cursor: **Tasks: Run Task** → **Start Android Emulator**, then **Run and De
 
 ### Dev APK (tunnel backends — install on phone for testing)
 
+Lightweight **split-per-ABI** APKs (R8 minify + resource shrink + Dart obfuscation):
+
 ```powershell
 cd Attandance_App
 powershell -ExecutionPolicy Bypass -File .\scripts\build-dev-tunnel-apk.ps1
 ```
 
-Equivalent manual command:
+Outputs (phone):
+
+- `build/app/outputs/flutter-apk/app-arm64-v8a-release.apk` — modern phones
+- `build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk` — 32-bit phones
+
+Emulator (x86_64 AVD):
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\build-dev-tunnel-apk.ps1 -Emulator
+```
+
+Equivalent manual phone build:
 
 ```powershell
 flutter pub get
-flutter build apk --release --target-platform android-arm,android-arm64,android-x64 --dart-define=USE_LOCAL_TUNNEL_BACKENDS=true
+flutter build apk --release --split-per-abi --target-platform android-arm,android-arm64 --obfuscate --split-debug-info=build/app/outputs/symbols --dart-define=USE_LOCAL_TUNNEL_BACKENDS=true
 ```
-
-Include `android-x64` when installing on the Android Emulator (x86_64 AVD). Phone installs only need `android-arm,android-arm64`.
 
 ### Production APK
 
 ```powershell
 flutter pub get
-flutter build apk --release --target-platform android-arm,android-arm64
+flutter build apk --release --split-per-abi --target-platform android-arm,android-arm64 --obfuscate --split-debug-info=build/app/outputs/symbols
 ```
 
-Output: `build/app/outputs/flutter-apk/app-release.apk`
-
+Install the ABI that matches the device (prefer `app-arm64-v8a-release.apk`). Do **not** ship a fat multi-ABI APK for phones.
 ## Configuration (`lib/config/app_config.dart`)
 
 | Define | Purpose |
@@ -109,7 +119,8 @@ Output: `build/app/outputs/flutter-apk/app-release.apk`
 | `API_BASE_URL` | Legacy alias for auth/ERP base |
 | `API_BASE_URLS` | Auth fallback list (comma-separated) |
 | `ATTENDANCE_API_BASE_URLS` | Attendance fallback list |
-| `USE_SALES_DEMO_DATA` | `true` (default) → Sales Info demo UI; `false` → live sales APIs |
+| `USE_SALES_DEMO_DATA` | `false` (default) → live person-sales report; `true` → demo reporting |
+| `SALES_API_BASE_URL` | Sales host (default `http://43.224.116.185:8001`) |
 | `USE_PAYMENT_DEMO_DATA` | `true` (default) → Payments demo UI; `false` → live HRM payment APIs |
 
 `backendApiBaseUrl` is an alias for the HRM/ERP base (leaves, holidays, sales, payments, etc.).
