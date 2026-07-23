@@ -158,11 +158,13 @@ class EndpointConfigService {
       );
     }
 
+    final sales = AppConfig.salesApiBaseUrl.trim().replaceAll(RegExp(r'/+$'), '');
+
     return EndpointConfig(
       version: 0,
-      bases: {'hrm': hrm, 'zkteco': zkteco},
+      bases: {'hrm': hrm, 'zkteco': zkteco, 'sales': sales},
       features: {
-        'sales.enabled': false,
+        'sales.enabled': true,
         'payment.enabled': false,
         'geo.tracking.enabled': true,
         'interval_minutes': AppConfig.geoTrackingIntervalMinutes,
@@ -180,6 +182,7 @@ class EndpointConfigService {
         'leave.balance': ep('GET', '/api/v1/new-leave-stocks', 'hrm'),
         'leave.history': ep('GET', '/api/v1/leaves', 'hrm'),
         'leave.types': ep('GET', '/api/v1/leavetypes', 'hrm'),
+        'leave.newTypes': ep('GET', '/api/v1/new-leave-types', 'hrm'),
         'leave.apply': ep('POST', '/api/v1/leaves', 'hrm'),
         'leave.holidays': ep('GET', '/api/v1/mobile/holidays', 'hrm'),
         'geo.upload': ep('POST', '/api/v1/mobile/geo-location', 'zkteco'),
@@ -196,8 +199,22 @@ class EndpointConfigService {
         'payment.mess': ep('GET', '/api/v1/mess-deposit-employee', 'hrm'),
         'payment.facility': ep('GET', '/api/v1/facility-employee', 'hrm'),
         'sales.eligibility': ep('GET', '/api/get-sales-employee-list', 'hrm'),
-        'sales.overview': ep('GET', '/api/v1/mobile/sales/overview', 'hrm'),
-        'sales.list': ep('GET', '/api/v1/mobile/sales/postings', 'hrm'),
+        'sales.personSales': EndpointDefinition(
+          method: 'GET',
+          url: '$sales/api/sales-person-sales',
+          backend: 'sales',
+        ),
+        // Legacy keys retained for remote-config compatibility (unused by UI).
+        'sales.overview': EndpointDefinition(
+          method: 'GET',
+          url: '$sales/api/sales-person-sales',
+          backend: 'sales',
+        ),
+        'sales.list': EndpointDefinition(
+          method: 'GET',
+          url: '$sales/api/sales-person-sales',
+          backend: 'sales',
+        ),
         'sales.create': ep('POST', '/api/v1/mobile/sales/postings', 'hrm'),
       },
     );

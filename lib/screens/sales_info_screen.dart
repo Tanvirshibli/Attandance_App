@@ -20,7 +20,8 @@ class SalesInfoScreen extends StatefulWidget {
   State<SalesInfoScreen> createState() => _SalesInfoScreenState();
 }
 
-class _SalesInfoScreenState extends State<SalesInfoScreen> {
+class _SalesInfoScreenState extends State<SalesInfoScreen>
+    with SingleTickerProviderStateMixin {
   final SalesService _salesService = SalesService();
   final AuthService _authService = AuthService();
 
@@ -29,12 +30,79 @@ class _SalesInfoScreenState extends State<SalesInfoScreen> {
   String? _employeeName;
   String? _error;
   String _period = 'This month';
-  SalesOverview? _overview;
-  List<SalePosting> _postings = const [];
+  DateTime? _customFrom;
+  DateTime? _customTo;
+  SalesPersonSalesData? _data;
   int? _employeeId;
+  int _moduleIndex = 0;
+
+  TabController? _tabController;
 
   final _periods = const ['This month', 'Last month', 'Custom'];
-  final _money = NumberFormat.currency(symbol: '৳', decimalDigits: 0);
+
+  @override
+  void dispose() {
+    _tabController?.dispose();
+    super.dispose();
+  }
+
+  void _ensureTabs(int count) {
+    if (_tabController != null && _tabController!.length == count) return;
+    _tabController?.dispose();
+    _tabController = TabController(length: count, vsync: this);
+    _tabController!.addListener(() {
+      if (!_tabController!.indexIsChanging) {
+        setState(() => _moduleIndex = _tabController!.index);
+      }
+    });
+  }
+
+  (DateTime, DateTime) _dateRange() {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    switch (_period) {
+      case 'Last month':
+        final firstThis = DateTime(now.year, now.month, 1);
+        final lastPrev = firstThis.subtract(const Duration(days: 1));
+        final firstPrev = DateTime(lastPrev.year, lastPrev.month, 1);
+        return (firstPrev, lastPrev);
+      case 'Custom':
+        final from = _customFrom ?? DateTime(now.year, now.month, 1);
+        final to = _customTo ?? today;
+        return (from, to);
+      case 'This month':
+      default:
+        return (DateTime(now.year, now.month, 1), today);
+    }
+  }
+
+  Future<void> _pickCustomRange() async {
+    final now = DateTime.now();
+    final from = await showDatePicker(
+      context: context,
+      initialDate: _customFrom ?? DateTime(now.year, now.month, 1),
+      firstDate: DateTime(now.year - 3),
+      lastDate: now,
+      helpText: 'From date',
+    );
+    if (from == null || !mounted) return;
+
+    final to = await showDatePicker(
+      context: context,
+      initialDate: _customTo ?? now,
+      firstDate: from,
+      lastDate: now,
+      helpText: 'To date',
+    );
+    if (to == null || !mounted) return;
+
+    setState(() {
+      _customFrom = from;
+      _customTo = to;
+      _period = 'Custom';
+    });
+    await _loadSales();
+  }
 
   @override
   void initState() {
@@ -74,47 +142,79 @@ class _SalesInfoScreenState extends State<SalesInfoScreen> {
       return;
     }
 
-    final overview = await _salesService.getOverview(
-      employeeId: employeeId,
-      period: _period,
-    );
-    final postings = await _salesService.getMyPostings(employeeId: employeeId);
-
-    if (!mounted) return;
     setState(() {
       _isEligible = true;
       _employeeId = employeeId;
       _employeeName = eligibility.data?.employeeName ?? profile?.name;
-      _overview = overview.data;
-      _postings = postings.data ?? const [];
-      _error = overview.success
-          ? (postings.success ? null : postings.message)
-          : overview.message;
+    });
+
+    await _loadSales();
+  }
+
+  Future<void> _loadSales() async {
+    if (_employeeId == null) return;
+
+    setState(() {
+      _isLoading = true;
+      _error = null;
+    });
+
+    final range = _dateRange();
+    final result = await _salesService.getSalesPersonSales(
+      employeeId: _employeeId!,
+      fromDate: range.$1,
+      toDate: range.$2,
+    );
+
+    if (!mounted) return;
+
+    if (!result.success || result.data == null) {
+      setState(() {
+        _data = null;
+        _error = result.message ?? 'Could not load sales.';
+        _isLoading = false;
+      });
+      return;
+    }
+
+    final data = result.data!;
+    _ensureTabs(data.modules.length);
+    setState(() {
+      _data = data;
+      _employeeName = data.employee.employeeName?.isNotEmpty == true
+          ? data.employee.employeeName
+          : _employeeName;
+      _error = null;
       _isLoading = false;
+      if (_moduleIndex >= data.modules.length) {
+        _moduleIndex = 0;
+        _tabController?.index = 0;
+      }
     });
   }
 
   Future<void> _onPeriodChanged(String period) async {
+    if (period == 'Custom') {
+      await _pickCustomRange();
+      return;
+    }
     setState(() => _period = period);
-    if (_employeeId == null) return;
-    setState(() => _isLoading = true);
-    final overview = await _salesService.getOverview(
-      employeeId: _employeeId!,
-      period: period,
-    );
-    if (!mounted) return;
-    setState(() {
-      _overview = overview.data;
-      _isLoading = false;
-    });
+    await _loadSales();
   }
 
   Future<void> _openPostSale() async {
-    final created = await Navigator.of(context).push<bool>(
+    final saved = await Navigator.of(context).push<bool>(
       MaterialPageRoute(builder: (_) => const PostSaleScreen()),
     );
-    if (created == true) {
-      await _load();
+    if (saved == true && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Demo sale saved on this device.',
+            style: GoogleFonts.poppins(),
+          ),
+        ),
+      );
     }
   }
 
@@ -122,367 +222,497 @@ class _SalesInfoScreenState extends State<SalesInfoScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.background,
-      floatingActionButton: _isEligible && !_isLoading
-          ? FadeInUp(
-              child: FloatingActionButton.extended(
-                onPressed: _openPostSale,
-                backgroundColor: AppColors.primary,
-                icon: const Icon(Icons.add_rounded, color: Colors.white),
-                label: Text(
-                  'Post sale',
-                  style: GoogleFonts.poppins(
-                    fontWeight: FontWeight.w600,
-                    color: Colors.white,
+      floatingActionButton: _isEligible
+          ? FloatingActionButton.extended(
+              onPressed: _openPostSale,
+              backgroundColor: AppColors.primary,
+              foregroundColor: Colors.white,
+              icon: const Icon(Icons.add),
+              label: Text(
+                'Post sale',
+                style: GoogleFonts.poppins(fontWeight: FontWeight.w600),
+              ),
+            )
+          : null,
+      body: CustomScrollView(
+        physics: const BouncingScrollPhysics(),
+        slivers: [
+          SliverToBoxAdapter(
+            child: GradientScreenHeader(
+              title: 'Sales Info',
+              subtitle: _employeeName ?? 'Your sales performance',
+            ),
+          ),
+          if (_isLoading)
+            const SliverFillRemaining(
+              child: Center(child: CircularProgressIndicator()),
+            )
+          else if (_error != null)
+            SliverFillRemaining(
+              child: Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(20),
+                  child: ApiEmptyState(
+                    icon: Icons.error_outline,
+                    title: 'Could not load sales',
+                    subtitle: _error!,
+                    onRetry: _load,
                   ),
                 ),
               ),
             )
-          : null,
-      body: RefreshIndicator(
-        onRefresh: _load,
-        child: CustomScrollView(
-          physics: const AlwaysScrollableScrollPhysics(
-            parent: BouncingScrollPhysics(),
-          ),
-          slivers: [
-            SliverToBoxAdapter(
-              child: GradientScreenHeader(
-                title: 'Sales Info',
-                subtitle: _employeeName ?? 'Your personal sales dashboard',
+          else if (!_isEligible)
+            SliverFillRemaining(
+              child: Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(20),
+                  child: ApiEmptyState(
+                    icon: Icons.trending_up_outlined,
+                    title: 'Sales not available',
+                    subtitle:
+                        'Your employee profile is not on the sales team list. Contact HR if this is unexpected.',
+                  ),
+                ),
+              ),
+            )
+          else if (_data == null)
+            SliverFillRemaining(
+              child: Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(20),
+                  child: ApiEmptyState(
+                    icon: Icons.inbox_outlined,
+                    title: 'No sales data',
+                    subtitle: 'No sales found for the selected period.',
+                    onRetry: _loadSales,
+                  ),
+                ),
+              ),
+            )
+          else
+            SliverPadding(
+              padding: const EdgeInsets.fromLTRB(20, 8, 20, 100),
+              sliver: SliverList(
+                delegate: SliverChildListDelegate([
+                  FadeInUp(
+                    child: FilterChipRow(
+                      options: _periods,
+                      selected: _period,
+                      onSelected: _onPeriodChanged,
+                    ),
+                  ),
+                  if (_period == 'Custom' &&
+                      _customFrom != null &&
+                      _customTo != null) ...[
+                    const SizedBox(height: 8),
+                    Text(
+                      '${DateFormat('dd MMM yyyy').format(_customFrom!)}'
+                      ' – ${DateFormat('dd MMM yyyy').format(_customTo!)}',
+                      style: GoogleFonts.poppins(
+                        fontSize: 12,
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: 16),
+                  FadeInUp(
+                    delay: const Duration(milliseconds: 60),
+                    child: _OverallStrip(overall: _data!.overall),
+                  ),
+                  const SizedBox(height: 16),
+                  FadeInUp(
+                    delay: const Duration(milliseconds: 100),
+                    child: _ModuleTabs(
+                      controller: _tabController!,
+                      modules: _data!.modules,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  FadeInUp(
+                    delay: const Duration(milliseconds: 140),
+                    child: _ModulePanel(
+                      module: _data!.modules[_moduleIndex],
+                    ),
+                  ),
+                ]),
               ),
             ),
-            if (_salesService.useDemoData && _isEligible)
-              SliverToBoxAdapter(child: _demoBanner()),
-            if (_isLoading)
-              const SliverToBoxAdapter(
-                child: Padding(
-                  padding: EdgeInsets.all(48),
-                  child: Center(child: CircularProgressIndicator()),
-                ),
-              )
-            else if (_error != null && !_isEligible)
-              SliverToBoxAdapter(
-                child: Padding(
-                  padding: const EdgeInsets.all(20),
-                  child: ApiEmptyState(
-                    icon: Icons.wifi_off_rounded,
-                    title: 'Could not load',
-                    subtitle: _error,
-                    onRetry: _load,
-                  ),
-                ),
-              )
-            else if (!_isEligible)
-              SliverToBoxAdapter(
-                child: Padding(
-                  padding: const EdgeInsets.all(20),
-                  child: ApiEmptyState(
-                    icon: Icons.storefront_outlined,
-                    title: 'Not applicable for your role',
-                    subtitle:
-                        'Sales dashboard is available for sales & marketing team members.',
-                  ),
-                ),
-              )
-            else ...[
-              SliverToBoxAdapter(
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
-                  child: FilterChipRow(
-                    options: _periods,
-                    selected: _period,
-                    onSelected: _onPeriodChanged,
-                  ),
-                ),
+        ],
+      ),
+    );
+  }
+}
+
+class _OverallStrip extends StatelessWidget {
+  const _OverallStrip({required this.overall});
+
+  final SalesOverallSummary overall;
+
+  @override
+  Widget build(BuildContext context) {
+    return SectionCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Overall',
+            style: GoogleFonts.poppins(
+              fontSize: 15,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 10,
+            runSpacing: 10,
+            children: [
+              _KpiChip(
+                label: 'Orders',
+                value: '${overall.totalOrders}',
               ),
-              if (_overview != null) ...[
-                SliverToBoxAdapter(child: _progressCard(_overview!)),
-                SliverPadding(
-                  padding: const EdgeInsets.fromLTRB(20, 4, 20, 8),
-                  sliver: SliverGrid(
-                    gridDelegate:
-                        const SliverGridDelegateWithFixedCrossAxisCount(
-                      crossAxisCount: 2,
-                      crossAxisSpacing: 12,
-                      mainAxisSpacing: 12,
-                      childAspectRatio: 1.25,
-                    ),
-                    delegate: SliverChildListDelegate([
-                      _kpiCard(
-                        'Target',
-                        _money.format(_overview!.targetAmount),
-                        Icons.flag_outlined,
-                        AppColors.primary,
-                        0,
-                      ),
-                      _kpiCard(
-                        'Achieved',
-                        _money.format(_overview!.achievedAmount),
-                        Icons.trending_up_rounded,
-                        AppColors.success,
-                        80,
-                      ),
-                      _kpiCard(
-                        'Orders',
-                        '${_overview!.ordersCount}',
-                        Icons.shopping_bag_outlined,
-                        AppColors.warning,
-                        160,
-                      ),
-                      _kpiCard(
-                        'Conversion',
-                        '${_overview!.conversionRate.toStringAsFixed(1)}%',
-                        Icons.percent_rounded,
-                        AppColors.info,
-                        240,
-                      ),
-                    ]),
-                  ),
-                ),
-              ],
-              SliverToBoxAdapter(
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 12, 20, 8),
-                  child: Row(
-                    children: [
-                      Text(
-                        'My sales',
-                        style: GoogleFonts.poppins(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w700,
-                          color: AppColors.textPrimary,
-                        ),
-                      ),
-                      const Spacer(),
-                      Text(
-                        '${_postings.length} posts',
-                        style: GoogleFonts.poppins(
-                          fontSize: 12,
-                          color: AppColors.textSecondary,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
+              _KpiChip(
+                label: 'Returns',
+                value: '${overall.totalReturns}',
               ),
-              if (_postings.isEmpty)
-                SliverToBoxAdapter(
-                  child: Padding(
-                    padding: const EdgeInsets.all(20),
-                    child: ApiEmptyState(
-                      icon: Icons.receipt_long_outlined,
-                      title: 'No sales yet',
-                      subtitle: 'Post your first sale to see it here.',
-                    ),
-                  ),
-                )
+              _KpiChip(
+                label: 'Net sales',
+                value: moneyBdt(overall.netSales),
+                emphasize: true,
+              ),
+              _KpiChip(
+                label: 'Gross sales',
+                value: moneyBdt(overall.grossSales),
+              ),
+              if (overall.quantityByUnit.isNotEmpty)
+                for (final q in overall.quantityByUnit)
+                  _KpiChip(
+                    label: q.unitName?.trim().isNotEmpty == true
+                        ? 'Net qty (${q.unitName})'
+                        : 'Net qty',
+                    value: qtyFmt(q.netQty),
+                  )
               else
-                SliverPadding(
-                  padding: const EdgeInsets.fromLTRB(20, 0, 20, 100),
-                  sliver: SliverList(
-                    delegate: SliverChildBuilderDelegate(
-                      (context, index) {
-                        final item = _postings[index];
-                        return FadeInUp(
-                          delay: Duration(milliseconds: 40 * index),
-                          child: Padding(
-                            padding: const EdgeInsets.only(bottom: 10),
-                            child: _saleTile(item),
-                          ),
-                        );
-                      },
-                      childCount: _postings.length,
-                    ),
-                  ),
+                _KpiChip(
+                  label: 'Net qty',
+                  value: qtyFmt(overall.netQty),
                 ),
             ],
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
+}
 
-  Widget _demoBanner() {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-        decoration: BoxDecoration(
-          color: AppColors.warning.withValues(alpha: 0.12),
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: AppColors.warning.withValues(alpha: 0.35)),
+class _KpiChip extends StatelessWidget {
+  const _KpiChip({
+    required this.label,
+    required this.value,
+    this.emphasize = false,
+  });
+
+  final String label;
+  final String value;
+  final bool emphasize;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      constraints: const BoxConstraints(minWidth: 96),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: emphasize
+            ? AppColors.primary.withValues(alpha: 0.08)
+            : AppColors.background,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: GoogleFonts.poppins(
+              fontSize: 11,
+              color: AppColors.textSecondary,
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            value,
+            style: GoogleFonts.poppins(
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+              color: emphasize ? AppColors.primary : AppColors.textPrimary,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ModuleTabs extends StatelessWidget {
+  const _ModuleTabs({
+    required this.controller,
+    required this.modules,
+  });
+
+  final TabController controller;
+  final List<SalesModuleBlock> modules;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: AppColors.surface,
+      borderRadius: BorderRadius.circular(14),
+      child: TabBar(
+        controller: controller,
+        isScrollable: true,
+        tabAlignment: TabAlignment.start,
+        labelColor: Colors.white,
+        unselectedLabelColor: AppColors.textSecondary,
+        indicator: BoxDecoration(
+          color: AppColors.primary,
+          borderRadius: BorderRadius.circular(10),
         ),
-        child: Row(
-          children: [
-            Icon(Icons.science_outlined, size: 18, color: AppColors.warning),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Text(
-                'Demo data — switch to live when the sales API is ready',
-                style: GoogleFonts.poppins(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w500,
-                  color: AppColors.textPrimary,
-                ),
+        indicatorSize: TabBarIndicatorSize.tab,
+        labelPadding: const EdgeInsets.symmetric(horizontal: 4),
+        padding: const EdgeInsets.all(6),
+        dividerColor: Colors.transparent,
+        labelStyle: GoogleFonts.poppins(
+          fontSize: 12,
+          fontWeight: FontWeight.w600,
+        ),
+        unselectedLabelStyle: GoogleFonts.poppins(fontSize: 12),
+        tabs: [
+          for (final m in modules)
+            Tab(
+              height: 36,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 10),
+                child: Text(m.label),
               ),
             ),
-          ],
-        ),
+        ],
       ),
     );
   }
+}
 
-  Widget _progressCard(SalesOverview overview) {
-    final pct = (overview.progressRatio * 100).clamp(0, 999);
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
-      child: FadeInUp(
-        child: SectionCard(
+class _ModulePanel extends StatelessWidget {
+  const _ModulePanel({required this.module});
+
+  final SalesModuleBlock module;
+
+  @override
+  Widget build(BuildContext context) {
+    if (module.isEmpty) {
+      return SectionCard(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 24),
           child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Row(
-                children: [
-                  Text(
-                    'Target progress',
-                    style: GoogleFonts.poppins(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  const Spacer(),
-                  Text(
-                    '${pct.toStringAsFixed(0)}%',
-                    style: GoogleFonts.poppins(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w700,
-                      color: AppColors.primary,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              ClipRRect(
-                borderRadius: BorderRadius.circular(8),
-                child: LinearProgressIndicator(
-                  value: overview.progressRatio.clamp(0.0, 1.0),
-                  minHeight: 10,
-                  backgroundColor: AppColors.primary.withValues(alpha: 0.12),
-                  color: AppColors.primary,
-                ),
+              Icon(
+                Icons.inventory_2_outlined,
+                size: 36,
+                color: AppColors.textSecondary.withValues(alpha: 0.6),
               ),
               const SizedBox(height: 10),
               Text(
-                '${_money.format(overview.achievedAmount)} of ${_money.format(overview.targetAmount)}',
+                'No ${module.label.toLowerCase()} sales',
+                style: GoogleFonts.poppins(
+                  fontWeight: FontWeight.w600,
+                  fontSize: 14,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'Nothing recorded for this module in the selected period.',
+                textAlign: TextAlign.center,
                 style: GoogleFonts.poppins(
                   fontSize: 12,
                   color: AppColors.textSecondary,
                 ),
               ),
-              if (overview.visitsCount != null) ...[
-                const SizedBox(height: 6),
-                Text(
-                  '${overview.visitsCount} field visits · ${_money.format(overview.revenue)} revenue',
-                  style: GoogleFonts.poppins(
-                    fontSize: 11,
-                    color: AppColors.textHint,
-                  ),
-                ),
-              ],
             ],
           ),
         ),
-      ),
+      );
+    }
+
+    final s = module.summary;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        SectionCard(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                '${module.label} summary',
+                style: GoogleFonts.poppins(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 12),
+              Wrap(
+                spacing: 10,
+                runSpacing: 10,
+                children: [
+                  _KpiChip(label: 'Orders', value: '${s.totalOrders}'),
+                  _KpiChip(label: 'Returns', value: '${s.totalReturns}'),
+                  _KpiChip(
+                    label: 'Net sales',
+                    value: moneyBdt(s.netSales),
+                    emphasize: true,
+                  ),
+                  _KpiChip(label: 'Net qty', value: qtyFmt(s.netQty)),
+                  _KpiChip(
+                    label: 'Gross sales',
+                    value: moneyBdt(s.grossSales),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 12),
+        _ExpandableListSection(
+          title: 'Products',
+          count: module.products.length,
+          children: [
+            for (final p in module.products)
+              _NamedAmountRow(
+                name: p.name,
+                amount: p.netAmount,
+                qty: p.netQty,
+                unit: p.unitName,
+              ),
+          ],
+        ),
+        const SizedBox(height: 10),
+        _ExpandableListSection(
+          title: 'Dealers',
+          count: module.dealers.length,
+          children: [
+            for (final d in module.dealers)
+              _NamedAmountRow(
+                name: d.name,
+                amount: d.netAmount,
+                qty: d.netQty,
+              ),
+          ],
+        ),
+        const SizedBox(height: 10),
+        _ExpandableListSection(
+          title: 'Sectors',
+          count: module.sectors.length,
+          children: [
+            for (final s in module.sectors)
+              _NamedAmountRow(
+                name: s.name,
+                amount: s.netAmount,
+                qty: s.netQty,
+              ),
+          ],
+        ),
+        const SizedBox(height: 10),
+        _ExpandableListSection(
+          title: 'Line details',
+          count: module.details.length,
+          initiallyExpanded: module.details.length <= 8,
+          children: [
+            for (final line in module.details) _DetailTile(line: line),
+          ],
+        ),
+      ],
     );
   }
+}
 
-  Widget _kpiCard(
-    String title,
-    String value,
-    IconData icon,
-    Color color,
-    int delayMs,
-  ) {
-    return FadeInUp(
-      delay: Duration(milliseconds: delayMs),
-      child: SectionCard(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Container(
-              width: 36,
-              height: 36,
-              decoration: BoxDecoration(
-                color: color.withValues(alpha: 0.12),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Icon(icon, color: color, size: 20),
+class _ExpandableListSection extends StatelessWidget {
+  const _ExpandableListSection({
+    required this.title,
+    required this.count,
+    required this.children,
+    this.initiallyExpanded = false,
+  });
+
+  final String title;
+  final int count;
+  final List<Widget> children;
+  final bool initiallyExpanded;
+
+  @override
+  Widget build(BuildContext context) {
+    return SectionCard(
+      padding: EdgeInsets.zero,
+      child: Theme(
+        data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+        child: ExpansionTile(
+          initiallyExpanded: initiallyExpanded && count > 0,
+          title: Text(
+            '$title ($count)',
+            style: GoogleFonts.poppins(
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
             ),
-            const Spacer(),
-            Text(
-              value,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: GoogleFonts.poppins(
-                fontSize: 18,
-                fontWeight: FontWeight.w700,
-                color: AppColors.textPrimary,
-              ),
-            ),
-            Text(
-              title,
-              style: GoogleFonts.poppins(
-                fontSize: 12,
-                color: AppColors.textSecondary,
-              ),
-            ),
-          ],
+          ),
+          childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+          children: count == 0
+              ? [
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: Text(
+                      'No items',
+                      style: GoogleFonts.poppins(
+                        fontSize: 12,
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
+                  ),
+                ]
+              : children,
         ),
       ),
     );
   }
+}
 
-  Widget _saleTile(SalePosting item) {
-    final statusColor = switch (item.status.toLowerCase()) {
-      'approved' => AppColors.success,
-      'rejected' => AppColors.error,
-      _ => AppColors.warning,
-    };
+class _NamedAmountRow extends StatelessWidget {
+  const _NamedAmountRow({
+    required this.name,
+    required this.amount,
+    required this.qty,
+    this.unit,
+  });
 
-    return SectionCard(
-      padding: const EdgeInsets.all(16),
+  final String name;
+  final double amount;
+  final double qty;
+  final String? unit;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            width: 48,
-            height: 48,
-            decoration: BoxDecoration(
-              color: AppColors.primary.withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(14),
-            ),
-            child: const Icon(Icons.storefront_rounded, color: AppColors.primary),
-          ),
-          const SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  item.customerName,
+                  name,
                   style: GoogleFonts.poppins(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w500,
                   ),
                 ),
-                const SizedBox(height: 2),
                 Text(
-                  [
-                    item.formattedDate,
-                    if (item.productName != null) item.productName!,
-                  ].join(' · '),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
+                  'Qty ${qtyFmt(qty)}${unit != null && unit!.isNotEmpty ? ' $unit' : ''}',
                   style: GoogleFonts.poppins(
                     fontSize: 11,
                     color: AppColors.textSecondary,
@@ -491,31 +721,101 @@ class _SalesInfoScreenState extends State<SalesInfoScreen> {
               ],
             ),
           ),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.end,
+          Text(
+            moneyBdt(amount),
+            style: GoogleFonts.poppins(
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _DetailTile extends StatelessWidget {
+  const _DetailTile({required this.line});
+
+  final SalesDetailLine line;
+
+  @override
+  Widget build(BuildContext context) {
+    final isReturn = line.type.toLowerCase().contains('return');
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppColors.background,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
             children: [
-              Text(
-                item.formattedAmount,
-                style: GoogleFonts.poppins(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w700,
-                  color: AppColors.textPrimary,
+              Expanded(
+                child: Text(
+                  line.referenceNo.isEmpty ? '#${line.orderId}' : line.referenceNo,
+                  style: GoogleFonts.poppins(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
               ),
-              const SizedBox(height: 4),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                 decoration: BoxDecoration(
-                  color: statusColor.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(10),
+                  color: (isReturn ? AppColors.error : AppColors.success)
+                      .withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(8),
                 ),
                 child: Text(
-                  item.status,
+                  line.type,
                   style: GoogleFonts.poppins(
                     fontSize: 10,
                     fontWeight: FontWeight.w600,
-                    color: statusColor,
+                    color: isReturn ? AppColors.error : AppColors.success,
                   ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text(
+            '${line.formattedDate} · ${line.status}',
+            style: GoogleFonts.poppins(
+              fontSize: 11,
+              color: AppColors.textSecondary,
+            ),
+          ),
+          if (line.dealerName != null && line.dealerName!.isNotEmpty)
+            Text(
+              line.dealerName!,
+              style: GoogleFonts.poppins(fontSize: 12),
+            ),
+          if (line.productName != null && line.productName!.isNotEmpty)
+            Text(
+              line.productName!,
+              style: GoogleFonts.poppins(
+                fontSize: 12,
+                color: AppColors.textSecondary,
+              ),
+            ),
+          const SizedBox(height: 6),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                'Qty ${qtyFmt(line.qty)}${line.unitName != null ? ' ${line.unitName}' : ''}',
+                style: GoogleFonts.poppins(fontSize: 12),
+              ),
+              Text(
+                moneyBdt(line.lineAmount),
+                style: GoogleFonts.poppins(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
                 ),
               ),
             ],
