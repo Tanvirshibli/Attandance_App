@@ -1,200 +1,178 @@
 # Sales & Payments API Contract (Android Attandance_App)
 
-**Last updated:** July 16, 2026  
+**Last updated:** July 23, 2026  
 **Audience:** External sales backend team · pphl_erp (HRM) · ZKTeco Mobile App API admins  
 **App:** `Attandance_App` (Flutter)  
-**Status:** App UI ships with **demo data** by default. Flip to live with dart-defines + endpoint config.
+**Status:** **Sales Info reporting is live** against the person-sales API (no auth). **Post Sale** remains device demo until a create API exists. Payments still demo by default.
 
 ---
 
 ## Demo → live switch (app)
 
 
-| Module   | Compile-time flag                           | Default       | Live requirement                                      |
-| -------- | ------------------------------------------- | ------------- | ----------------------------------------------------- |
-| Sales    | `--dart-define=USE_SALES_DEMO_DATA=false`   | `true` (demo) | External sales APIs + eligibility list                |
-| Payments | `--dart-define=USE_PAYMENT_DEMO_DATA=false` | `true` (demo) | Existing pphl_erp JWT APIs + ZKTeco `payment.enabled` |
+| Module   | Compile-time flag                           | Default        | Live requirement                                      |
+| -------- | ------------------------------------------- | -------------- | ----------------------------------------------------- |
+| Sales reporting | `--dart-define=USE_SALES_DEMO_DATA=true` | `false` (live) | Person-sales GET + HRM eligibility list               |
+| Sales create (Post sale) | — (always demo for now) | demo store | Future create endpoint                                |
+| Payments | `--dart-define=USE_PAYMENT_DEMO_DATA=false` | `true` (demo)  | Existing pphl_erp JWT APIs + ZKTeco `payment.enabled` |
 
+
+Sales reporting base URL (override): `--dart-define=SALES_API_BASE_URL=http://host:port`  
+Default: `http://43.224.116.185:8001`
 
 ZKTeco dashboard (**Settings → Mobile App API**) can override endpoint URLs and feature flags without an app rebuild:
 
-- `feature.sales.enabled`
+- `feature.sales.enabled` (fallback default `true`)
 - `feature.payment.enabled`
 - Endpoint keys listed below
 
 **Canonical employee id:** always numeric `employees.id` from HRM `GET /api/v1/get-my-info` (`user.employeeId` / app `canonicalEmployeeId`). **Do not** use display `emp_id` strings.
 
-**Auth header (all authenticated calls):**
+**Auth header (HRM / Payments only):**
 
 ```http
 Authorization: Bearer <hrm_jwt>
 Accept: application/json
 ```
 
+Person-sales reporting uses **no Authorization header**.
+
 ---
 
 
 
-## Part A — Sales (external sales project — **new APIs to implement**)
+## Part A — Sales (live person-sales + demo Post Sale)
 
-HRM already exposes eligibility only:
+HRM eligibility gate (JWT):
 
-- `GET /api/get-sales-employee-list` → `{ "data": [ { "employeeId", "employeeName", ... } ] }`
+- `GET /api/get-sales-employee-list` → `{ "data": [ { "employeeId", "employeeName", ... } ] }`  
+  Employee must appear in this list to open Sales Info when reporting is live.
 
-The Android app expects the **sales product backend** (or a BFF) to provide the following. Suggested paths (configurable via ZKTeco app-config keys `sales.overview`, `sales.list`, `sales.create`):
+### A.1 Salesperson sales report (live)
 
-Base suggestion: same host the app already trusts, or a dedicated sales base registered in Mobile App API.
-
-### A.1 Personal overview
-
-`GET /api/v1/mobile/sales/overview?employeeId={id}&period={this_month|last_month|custom}`
+`GET {SALES_API_BASE_URL}/api/sales-person-sales/{employeeId}?from_date=YYYY-MM-DD&to_date=YYYY-MM-DD`
 
 **Rules**
 
-- Return KPIs for **that employee only** (no company-wide totals).
-- Period values: `this_month`, `last_month`, `custom` (custom may later accept `from`/`to`; for v1 returning last 90 days is fine).
+- **No auth** — open GET with path `employeeId` = logged-in `canonicalEmployeeId`.
+- Query: `from_date`, `to_date` (`YYYY-MM-DD`). App presets: This month / Last month / Custom.
+- App config key: `sales.personSales` → base path without trailing id (app appends `/{employeeId}`).
 
-**Success response**
+**Success response (shape)**
 
 ```json
 {
-  "message": "Success",
+  "success": true,
+  "message": "OK",
   "data": {
-    "period": "this_month",
-    "targetAmount": 150000,
-    "achievedAmount": 77500,
-    "ordersCount": 12,
-    "revenue": 77500,
-    "conversionRate": 54.5,
-    "visitsCount": 22
+    "employee": {
+      "input_id": 27,
+      "matched_by": "employeeId",
+      "id": 20,
+      "employee_id": 27,
+      "employee_name": "Example Name"
+    },
+    "filters": {
+      "from_date": "2026-01-01",
+      "to_date": "2026-07-31",
+      "status_rules": {
+        "egg": "approved",
+        "feed": "approved",
+        "fertilizer": "approved",
+        "chicks": "approved",
+        "liveBird": "delivered",
+        "cullBird": "delivered"
+      }
+    },
+    "overall": {
+      "total_orders": 10,
+      "total_returns": 1,
+      "total_details": 40,
+      "gross_sales": 500000,
+      "sales_return": 10000,
+      "net_sales": 490000,
+      "invoice_net_total": 490000,
+      "quantity_by_unit": [
+        {
+          "unit_id": 1,
+          "unit_name": "kg",
+          "gross_qty": 450,
+          "return_qty": 0,
+          "net_qty": 450
+        },
+        {
+          "unit_id": null,
+          "unit_name": "pcs",
+          "gross_qty": 54480,
+          "return_qty": 0,
+          "net_qty": 54480
+        }
+      ]
+    },
+    "egg": {
+      "data": [],
+      "summary": {},
+      "products": [],
+      "dealers": [],
+      "sectors": [],
+      "integrity": {}
+    },
+    "feed": {
+      "data": [],
+      "summary": {},
+      "products": [],
+      "dealers": [],
+      "sectors": [],
+      "integrity": {}
+    },
+    "fertilizer": { "data": [], "summary": {}, "products": [], "dealers": [], "sectors": [], "integrity": {} },
+    "chicks": { "data": [], "summary": {}, "products": [], "dealers": [], "sectors": [], "integrity": {} },
+    "liveBird": { "data": [], "summary": {}, "products": [], "dealers": [], "sectors": [], "integrity": {} },
+    "cullBird": { "data": [], "summary": {}, "products": [], "dealers": [], "sectors": [], "integrity": {} }
   }
 }
 ```
 
+App parsers also accept legacy camelCase employee keys and module `details[]` (alias of `data[]`).
 
-| Field            | Type    | Notes                                     |
-| ---------------- | ------- | ----------------------------------------- |
-| `period`         | string  | Echo of requested period or display label |
-| `targetAmount`   | number  | Personal monthly target                   |
-| `achievedAmount` | number  | Personal achieved toward target           |
-| `ordersCount`    | integer | Count of own sale postings / orders       |
-| `revenue`        | number  | Sum of own sale amounts in period         |
-| `conversionRate` | number  | Percent 0–100                             |
-| `visitsCount`    | integer | null                                      |
+**Module blocks** (`egg`, `feed`, `fertilizer`, `chicks`, `liveBird`, `cullBird`):
 
+| Section | Fields used by app |
+| ------- | ------------------ |
+| `summary` | `total_orders`, `total_returns`, `net_sales`, `gross_sales`, `net_qty`, … |
+| `products[]` | `name`, `net_amount`, `net_qty`, `unit_name`, optional `package_size` |
+| `dealers[]` / `sectors[]` | `name`, `net_amount`, `net_qty` |
+| `data[]` (line details; legacy `details[]` also accepted) | `reference_no`, `invoice_date`, `type`, `status`, `dealer_name`, `product_name`, `qty`, `line_amount`, `unit_name` |
+| `overall.quantity_by_unit[]` | Per-unit net qty chips in the Overall strip |
+| `integrity` / `status_rules` | Ignored by UI for now |
 
+Android UI: overall KPI strip (orders, returns, sales, qty-by-unit) → module tabs → summary + expandable Products / Dealers / Sectors / Line details.
 
+### A.2 Create sale (Post Sale) — still demo
 
-### A.2 Own sale postings list
+There is **no live create endpoint** yet. The app keeps **Post sale** UI and stores submissions in an in-memory demo list for the session.
 
-`GET /api/v1/mobile/sales/postings?employeeId={id}&from=YYYY-MM-DD&to=YYYY-MM-DD`
+Future target (when available):
 
-**Rules**
+`POST /api/v1/mobile/sales/postings` with body `{ employeeId, saleDate, amount, customerName, productName?, quantity?, notes? }`.
 
-- **Must filter server-side** to `employeeId` only. Never return other employees’ sales.
-- `from` / `to` optional; default current month.
-
-**Success response**
-
-```json
-{
-  "message": "Success",
-  "data": [
-    {
-      "id": 1001,
-      "employeeId": 45,
-      "saleDate": "2026-07-14",
-      "amount": 18500,
-      "customerName": "Green Valley Outlet",
-      "productName": "Layer Feed 50kg",
-      "quantity": 40,
-      "notes": "Monthly restock",
-      "status": "approved"
-    }
-  ]
-}
-```
-
-
-| Field          | Type                | Required                          |
-| -------------- | ------------------- | --------------------------------- |
-| `id`           | integer             | yes                               |
-| `employeeId`   | integer             | yes                               |
-| `saleDate`     | string `YYYY-MM-DD` | yes                               |
-| `amount`       | number              | yes                               |
-| `customerName` | string              | yes (alias `outletName` accepted) |
-| `productName`  | string              | no                                |
-| `quantity`     | number              | no                                |
-| `notes`        | string              | no                                |
-| `status`       | string              | yes — `submitted`                 |
-
-
-
-
-### A.3 Create sale (salesperson posts own sale)
-
-`POST /api/v1/mobile/sales/postings`
-
-**Request body**
+### A.3 Errors
 
 ```json
-{
-  "employeeId": 45,
-  "saleDate": "2026-07-16",
-  "amount": 12500,
-  "customerName": "Sunrise Agro Store",
-  "productName": "Broiler Starter",
-  "quantity": 10,
-  "notes": "Optional note"
-}
+{ "success": false, "message": "Human readable error" }
 ```
 
-**Rules**
-
-- Persist against authenticated employee; reject if body `employeeId` ≠ JWT employee (recommended).
-- New rows should start as `submitted` (or `approved` if your workflow auto-approves).
-
-**Success response**
-
-```json
-{
-  "message": "Sale submitted successfully",
-  "data": {
-    "id": 1101,
-    "employeeId": 45,
-    "saleDate": "2026-07-16",
-    "amount": 12500,
-    "customerName": "Sunrise Agro Store",
-    "productName": "Broiler Starter",
-    "quantity": 10,
-    "notes": "Optional note",
-    "status": "submitted"
-  }
-}
-```
+### A.4 App config keys
 
 
+| Key                 | Method | Path / notes |
+| ------------------- | ------ | ------------ |
+| `sales.eligibility` | GET    | HRM `/api/get-sales-employee-list` |
+| `sales.personSales` | GET    | `{salesBase}/api/sales-person-sales` (app appends `/{id}`) |
+| `sales.overview` / `sales.list` | GET | Legacy aliases → same person-sales base (unused by UI) |
+| `sales.create`      | POST   | Reserved; Post Sale still demo |
 
-### A.4 Errors
-
-```json
-{ "message": "Human readable error" }
-```
-
-HTTP: `400` validation, `401` auth, `403` not a sales user / wrong employee, `404` not found, `500` server.
-
-### A.5 App config keys (ZKTeco Mobile App API)
-
-
-| Key                 | Method | Suggested path                                        |
-| ------------------- | ------ | ----------------------------------------------------- |
-| `sales.eligibility` | GET    | `/api/get-sales-employee-list` (HRM — already exists) |
-| `sales.overview`    | GET    | `/api/v1/mobile/sales/overview`                       |
-| `sales.list`        | GET    | `/api/v1/mobile/sales/postings`                       |
-| `sales.create`      | POST   | `/api/v1/mobile/sales/postings`                       |
-
-
-Enable `feature.sales.enabled` when live.
+Enable `feature.sales.enabled` (default true in app fallback).
 
 ---
 
@@ -346,7 +324,9 @@ Enable `feature.payment.enabled` when going live (optional gate; demo mode ignor
 - [ ] Implement overview / list / create with employee-only scoping  
 - [ ] Align JSON field names with Part A  
 - [ ] Accept HRM JWT (or document alternate auth for app wiring)  
-- [ ] Notify Android to set `USE_SALES_DEMO_DATA=false` and register endpoints in ZKTeco dashboard  
+- [x] Sales Info live person-sales GET wired (`USE_SALES_DEMO_DATA` default `false`)
+- [ ] Implement live Post Sale create API; then remove demo create store
+- [ ] Optionally register `sales.personSales` in ZKTeco dashboard if overriding default host  
 
 
 

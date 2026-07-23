@@ -57,25 +57,31 @@ The HRM frontend tunnel is **not** used by the mobile app; it is for browser/Vit
 
 ## Build dev APK for phone testing
 
-From `Attandance_App`:
+From `Attandance_App` — produces **split-per-ABI** APKs (arm + arm64):
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\build-dev-tunnel-apk.ps1
+```
+
+Emulator x86_64:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\build-dev-tunnel-apk.ps1 -Emulator
 ```
 
 Or manually:
 
 ```powershell
 flutter pub get
-flutter build apk --release --target-platform android-arm,android-arm64 --dart-define=USE_LOCAL_TUNNEL_BACKENDS=true
+flutter build apk --release --split-per-abi --target-platform android-arm,android-arm64 --obfuscate --split-debug-info=build/app/outputs/symbols --dart-define=USE_LOCAL_TUNNEL_BACKENDS=true
 ```
 
-Output: `build/app/outputs/flutter-apk/app-release.apk`
+Outputs: `build/app/outputs/flutter-apk/app-arm64-v8a-release.apk`, `app-armeabi-v7a-release.apk`
 
 ## Production APK (no tunnel)
 
 ```powershell
-flutter build apk --release --target-platform android-arm,android-arm64
+flutter build apk --release --split-per-abi --target-platform android-arm,android-arm64 --obfuscate --split-debug-info=build/app/outputs/symbols
 ```
 
 Only change URLs for production by **omitting** `USE_LOCAL_TUNNEL_BACKENDS` (defaults in `app_config.dart`).

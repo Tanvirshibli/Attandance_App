@@ -1,8 +1,8 @@
 # Mobile Employee Features (v2.2.0)
 
-Last updated: July 16, 2026
+Last updated: July 22, 2026
 
-This document describes the employee self-service modules in **Attandance_App**. HRM/ZKTeco APIs are wired where available. **Sales Info** and **Payments** ship with polished demo UIs by default; flip to live APIs with dart-defines (see [SALES_AND_PAYMENTS_API_CONTRACT.md](SALES_AND_PAYMENTS_API_CONTRACT.md)).
+This document describes the employee self-service modules in **Attandance_App**. HRM/ZKTeco APIs are wired where available. **Sales Info reporting is live** (person-sales API). **Payments** and **Post Sale** still use demo by default (see [SALES_AND_PAYMENTS_API_CONTRACT.md](SALES_AND_PAYMENTS_API_CONTRACT.md)).
 
 ---
 
@@ -21,7 +21,7 @@ This document describes the employee self-service modules in **Attandance_App**.
 - Attendance Report
 - Leave (single page: balance cards + history report + apply)
 - Payments (payslips, loans, PF, mess, compensation, post payment — demo by default)
-- Sales Info (personal KPIs, own postings, post sale — demo by default)
+- Sales Info (live overall + module breakdown; Post sale still demo)
 - Geo Tracking
 
 ---
@@ -33,7 +33,7 @@ This document describes the employee self-service modules in **Attandance_App**.
 | Attendance report (list) | ZKTeco `GET /api/v1/mobile/attendance-requests?employee_id=` (primary) + HRM JWT merge | **Wired** |
 | Attendance summary | HRM `GET /api/v1/single-employee-attendance-details` | **Wired** (Home KPIs count `data.rows[].attendanceType`) |
 | Home today status | Merged ZKTeco + HRM list (one row per day) | **Wired** |
-| Leave balance | HRM `GET /api/v1/new-leave-stocks?employeeId=` | **Wired** |
+| Leave balance | HRM `GET /api/v1/new-leave-stocks?employeeId=` (+ enrich via `leavetypes` **id→lName** / code when `leaveName` empty; stocks often store legacy type ids) | **Wired** |
 | Leave history | HRM `GET /api/v1/leaves?employeeId=` | **Wired** |
 | Apply leave | HRM `GET /api/v1/leavetypes`, `POST /api/v1/leaves` | **Wired** |
 | Payslips | HRM `GET /api/v1/payroll?employeeId=` · `GET /api/v1/payroll/{id}` | **Demo default** / live when `USE_PAYMENT_DEMO_DATA=false` |
@@ -43,8 +43,9 @@ This document describes the employee self-service modules in **Attandance_App**.
 | Provident fund | HRM `GET /api/v1/providentfunds-employee` · `/providentfunds` | **Demo default** / live ready |
 | Mess deposit | HRM `GET /api/v1/mess-deposit-employee` | **Demo default** / live ready |
 | Compensation | HRM `GET /api/v1/facility-employee` | **Demo default** / live ready |
-| Sales eligibility | HRM `GET /api/get-sales-employee-list` | **Wired** (gate when not demo) |
-| Sales overview / list / create | External sales API (see contract doc) | **Demo default** / pending live backend |
+| Sales eligibility | HRM `GET /api/get-sales-employee-list` | **Wired** |
+| Sales person report | Sales `GET /api/sales-person-sales/{employeeId}?from_date=&to_date=` (no auth) | **Live** (default) |
+| Post sale | In-app demo store | **Demo** until create API exists |
 | Geo location upload | ZKTeco `POST /api/v1/mobile/geo-location` | **Wired** |
 | App endpoint config | ZKTeco `GET /api/v1/mobile/app-config` | **Wired** |
 | Holidays | HRM `GET /api/v1/mobile/holidays` | **Wired** |
@@ -55,12 +56,16 @@ This document describes the employee self-service modules in **Attandance_App**.
 
 Handoff for backend teams: **[SALES_AND_PAYMENTS_API_CONTRACT.md](SALES_AND_PAYMENTS_API_CONTRACT.md)**.
 
-### Sales Info (v2.2)
+### Sales Info (live reporting)
 
-- Personal KPI overview (target, achieved, orders, revenue, conversion) with period chips
-- **My sales** list (own postings only)
-- **Post sale** form (customer, amount, date, product, quantity, notes)
-- Demo banner while `USE_SALES_DEMO_DATA=true` (default)
+- Header uses API `employee.employeeName` (fallback profile name)
+- Date presets: This month / Last month / Custom → `from_date` / `to_date`
+- Overall KPIs: orders, returns, net/gross sales, net qty
+- Module tabs: Egg | Feed | Fertilizer | Chicks | Live Bird | Cull Bird
+- Per module: summary, Products / Dealers / Sectors, line details
+- **Post sale** FAB kept; submissions are demo-only (`Demo` chip on form)
+- Force reporting demo: `--dart-define=USE_SALES_DEMO_DATA=true`
+- Override sales host: `--dart-define=SALES_API_BASE_URL=...`
 
 ### Payments hub (v2.2)
 
@@ -74,7 +79,7 @@ Handoff for backend teams: **[SALES_AND_PAYMENTS_API_CONTRACT.md](SALES_AND_PAYM
 - First launch: **Server Bootstrap** — enter ZKTeco base URL only
 - Admin maps APIs in ZKTeco: **Settings → Mobile App API**
 - Feature flags: `sales.enabled`, `payment.enabled`, `geo.tracking.enabled`
-- Demo dart-defines for Sales/Payments until backends are ready
+- Sales reporting defaults live; Payments remain demo until dart-define flip
 
 ---
 
@@ -87,13 +92,13 @@ powershell -ExecutionPolicy Bypass -File .\scripts\build-dev-tunnel-apk.ps1
 Live payments:
 
 ```powershell
-flutter build apk --release --dart-define=USE_LOCAL_TUNNEL_BACKENDS=true --dart-define=USE_PAYMENT_DEMO_DATA=false
+flutter build apk --release --dart-define=USE_LOCAL_TUNNEL_BACKENDS=true --dart-define=USE_PAYMENT_DEMO_DATA=false --split-per-abi --target-platform android-arm,android-arm64 --obfuscate --split-debug-info=build/app/outputs/symbols
 ```
 
-Live sales (when external API ready):
+Force sales reporting demo:
 
 ```powershell
-flutter build apk --release --dart-define=USE_SALES_DEMO_DATA=false
+flutter build apk --release --split-per-abi --target-platform android-arm,android-arm64 --obfuscate --split-debug-info=build/app/outputs/symbols --dart-define=USE_SALES_DEMO_DATA=true
 ```
 
-Version: **2.2.0**
+Version: **2.2.1**

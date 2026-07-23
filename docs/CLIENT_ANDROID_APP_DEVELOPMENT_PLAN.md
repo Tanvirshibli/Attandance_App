@@ -50,7 +50,7 @@ The app is built on an **existing Flutter codebase** (not a rewrite). New work a
 | Face recognition | Google ML Kit + TensorFlow Lite (MobileFaceNet) |
 | Camera | `camera`, `image_picker` |
 | Location | `geolocator`, `geocoding`, `permission_handler` |
-| UI | `google_fonts`, `fl_chart`, `lottie`, `shimmer`, `animate_do` |
+| UI | `google_fonts`, `fl_chart`, `shimmer`, `animate_do` |
 | Device ID | `android_id` |
 
 ### New additions
@@ -149,11 +149,12 @@ All API calls are **direct HTTP** — no extra middleware layer:
 
 *Figure 3: Location is captured on a schedule or manually, queued offline if needed, then posted to ZKTeco.*
 
-### 4.5 Sales Info (Demo → live)
+### 4.5 Sales Info (Live reporting + demo Post Sale)
 
-- Personal overview KPIs, own sale postings list, **Post sale** form  
-- Demo data by default (`USE_SALES_DEMO_DATA=true`); eligibility gate applies when live  
-- Contract for external sales backend: [SALES_AND_PAYMENTS_API_CONTRACT.md](SALES_AND_PAYMENTS_API_CONTRACT.md)  
+- Live `GET /api/sales-person-sales/{employeeId}` (no auth) with overall + module tabs (egg/feed/fertilizer/chicks/liveBird/cullBird)  
+- Date presets map to `from_date` / `to_date`; HRM eligibility list gates access  
+- **Post sale** form remains demo until a create API exists (`USE_SALES_DEMO_DATA` default `false` for reporting only)  
+- Contract: [SALES_AND_PAYMENTS_API_CONTRACT.md](SALES_AND_PAYMENTS_API_CONTRACT.md)  
 
 ### 4.6 Payments hub (Demo → live)
 
@@ -189,13 +190,14 @@ All API calls are **direct HTTP** — no extra middleware layer:
 | 6 | Geo 5-min + background worker | Done |
 | 7 | Sales/Payment dummy modules | Done |
 | 13 | Sales Info + Payments full demo UI + API contract | Done |
+| 14 | Live Sales Info person-sales API + UI redesign + PPHL launcher icon | Done |
 | 8 | JWT refresh + config refresh on login/resume | Done |
 | 9 | Geo UI polish, history, ongoing notification | Done |
 | 10 | FCM scaffold (no `google-services.json` yet) | Done |
 | 11 | Replace Home/Attendance/Alerts dummy KPIs | Done (Home: rows-based summary + today-only clock + open-shift weekly hours) |
 | 12 | Geo Tracking live map UI redesign (`flutter_map` / OSM) | Done |
 
-**Still external / blocked:** enable Firebase with `android/app/google-services.json`; Sales/Payment product backends + feature flags.
+**Still external / blocked:** enable Firebase with `android/app/google-services.json`; Payments live flip + Post Sale create API; feature flags as needed.
 
 ---
 

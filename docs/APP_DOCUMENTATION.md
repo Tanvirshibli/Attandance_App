@@ -55,10 +55,10 @@
 | **Organization** | PPHL (Peoples Poultry & Hatchery Ltd.) |
 | **Platform** | Android (Flutter cross-platform, only Android targeted) |
 | **Purpose** | Employee attendance tracking with on-device face recognition and GPS verification |
-| **Version** | 2.2.0+5 |
+| **Version** | 2.2.1+6 |
 | **Dart SDK** | ^3.11.0 |
 | **Flutter Channel** | Stable (3.41.2) |
-| **APK Size** | ~105.6 MB (latest release build) |
+| **APK Size** | Split-per-ABI + R8: arm64 **44.1 MB**, armeabi-v7a **36.7 MB**, x86_64 **48.5 MB** (was ~110 MB fat) |
 
 ### What the App Does
 
@@ -91,7 +91,7 @@
 | **Permissions** | `permission_handler: ^12.0.1` — camera, location |
 | **Device Identity** | `android_id: ^0.4.0` — stable Android device identifier for backend registry dedupe |
 | **Local Storage** | `shared_preferences: ^2.5.4` — face embeddings, registration metadata |
-| **UI/Animation** | `animate_do`, `google_fonts` (Poppins), `fl_chart`, `shimmer`, `percent_indicator`, `lottie`, `flutter_staggered_animations`, `cached_network_image` |
+| **UI/Animation** | `animate_do`, `google_fonts` (Poppins), `fl_chart`, `shimmer`, `percent_indicator`, `cached_network_image` |
 | **Minimum Android SDK** | API 26 (Android 8.0) — required by `tflite_flutter` |
 | **Target SDK** | Flutter default (latest) |
 | **Build System** | Gradle (Kotlin DSL), Flutter Gradle Plugin |
@@ -707,8 +707,6 @@ android:label="PPHL Attendance"
 | `animate_do` | ^4.2.0 | Entry animations (FadeIn, FadeInUp, FadeInDown) |
 | `cached_network_image` | ^3.4.1 | Logo image caching |
 | `percent_indicator` | ^4.2.5 | Circular attendance percentage |
-| `lottie` | ^3.3.2 | Lottie animations (available but not currently used in UI) |
-| `flutter_staggered_animations` | ^1.1.1 | Staggered list animations (available but not currently used) |
 | `image_picker` | ^1.2.1 | Camera access (legacy, available for fallback) |
 | `camera` | ^0.11.1 | Live camera preview for face scanning & registration |
 | `geolocator` | ^14.0.2 | GPS coordinates |
@@ -749,15 +747,20 @@ assets:
 ### Build Command
 
 ```powershell
-cd C:\Users\ciphe\OneDrive\Documents\GitHub\employee_attendance
-Remove-Item -Recurse -Force build -ErrorAction SilentlyContinue
-& "C:\flutter\bin\flutter.bat" build apk --release --target-platform android-arm,android-arm64
+cd C:\Users\ciphe\Documents\GitHub\Attandance_App
+powershell -ExecutionPolicy Bypass -File .\scripts\build-dev-tunnel-apk.ps1
+# Production (no tunnel defines):
+# flutter build apk --release --split-per-abi --target-platform android-arm,android-arm64 --obfuscate --split-debug-info=build/app/outputs/symbols
 ```
+
+Release builds enable **R8 minify + shrinkResources** (`android/app/build.gradle.kts`) and ProGuard keep rules for Flutter / ML Kit / TFLite (`android/app/proguard-rules.pro`).
 
 ### Build Output
 
 ```
-build\app\outputs\flutter-apk\app-release.apk  (~105.6 MB, latest release build)
+build\app\outputs\flutter-apk\app-arm64-v8a-release.apk   (~44.1 MB, modern phones)
+build\app\outputs\flutter-apk\app-armeabi-v7a-release.apk (~36.7 MB, 32-bit phones)
+# Emulator: .\scripts\build-dev-tunnel-apk.ps1 -Emulator → app-x86_64-release.apk (~48.5 MB)
 ```
 
 ### Environment
@@ -768,14 +771,14 @@ build\app\outputs\flutter-apk\app-release.apk  (~105.6 MB, latest release build)
 | Android SDK | `C:\Users\ciphe\AppData\Local\Android\Sdk` (36.1.0) |
 | Java | JDK 17 (via Android Studio) |
 | OS | Windows 11 (25H2) |
-| Project | `C:\Users\ciphe\OneDrive\Documents\GitHub\employee_attendance` |
+| Project | `C:\Users\ciphe\Documents\GitHub\Attandance_App` |
 
 ### Known Build Notes
 
 - OneDrive sync can cause file locking during builds — clean `build/` folder first.
 - If CMake/NDK configure fails in OneDrive path (for example `:app:configureCMakeRelease[arm64-v8a]`), build in a non-OneDrive path such as `C:\temp\employee_attendance_build`, then copy the APK back.
-- If release fails on `:app:stripReleaseDebugSymbols` with missing `...\out\lib\x86`, build with explicit ABIs: `--target-platform android-arm,android-arm64`.
-- APK size depends on ABI selection (the current full release build is ≈105.6 MB; ABI-targeted builds are smaller).
+- Prefer `--split-per-abi` so each device installs only one ABI’s native libs (ML Kit + TFLite dominate size).
+- Symbols for obfuscated Dart: `build/app/outputs/symbols` (keep for crash deobfuscation).
 - The build uses debug signing keys — a release keystore is needed for production.
 
 ---
@@ -796,7 +799,7 @@ build\app\outputs\flutter-apk\app-release.apk  (~105.6 MB, latest release build)
 | **Liveness** | Passive (smile + sharpness) — no active 3D depth or IR checks |
 | **Notifications** | Static dummy data, no push notification integration |
 | **Settings** | Toggle switches in Profile are non-functional |
-| **APK size** | Large due to ML Kit + TFLite + camera native libs (ABI-targeted build reduces size) |
+| **APK size** | Split-per-ABI + R8: ~37–48 MB per ABI (was ~110 MB fat; ML Kit + TFLite dominate) |
 | **iOS** | Not tested or configured (Android only) |
 
 ### Suggested Future Enhancements
