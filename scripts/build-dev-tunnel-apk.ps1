@@ -1,5 +1,10 @@
-# Build release APK for device testing against Cloudflare tunnel backends on this PC.
+# Build lightweight release APKs (split-per-ABI) against Cloudflare tunnel backends.
+# Default: phone ABIs (armeabi-v7a + arm64-v8a). Pass -Emulator for x86_64 AVD.
 #Requires -Version 5.1
+param(
+    [switch]$Emulator
+)
+
 $ErrorActionPreference = 'Stop'
 
 $projectRoot = Split-Path -Parent $PSScriptRoot
@@ -40,26 +45,54 @@ if (Test-Path -LiteralPath $localProps) {
     }
 }
 
-Write-Host 'Building Attandance_App release APK (tunnel dev backends)...' -ForegroundColor Cyan
+$symbolsDir = Join-Path $projectRoot 'build\app\outputs\symbols'
+New-Item -ItemType Directory -Force -Path $symbolsDir | Out-Null
+
+if ($Emulator) {
+    $platforms = 'android-x64'
+    $expected = @('app-x86_64-release.apk')
+    Write-Host 'Building Attandance_App release APK (tunnel, emulator x86_64)...' -ForegroundColor Cyan
+} else {
+    $platforms = 'android-arm,android-arm64'
+    $expected = @('app-armeabi-v7a-release.apk', 'app-arm64-v8a-release.apk')
+    Write-Host 'Building Attandance_App release APKs (tunnel, split-per-ABI phone)...' -ForegroundColor Cyan
+}
+
 Write-Host '  AUTH/ERP:  https://hrm.peoplesitsolution.online'
 Write-Host '  ZKTeco:    https://zktecolocal.peoplesitsolution.online'
+Write-Host "  Platforms: $platforms"
 Write-Host ''
 
 & $flutter pub get
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
 & $flutter build apk --release `
-  --target-platform android-arm,android-arm64,android-x64 `
+  --split-per-abi `
+  --target-platform $platforms `
+  --obfuscate `
+  --split-debug-info=$symbolsDir `
   --dart-define=USE_LOCAL_TUNNEL_BACKENDS=true
 
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-$apk = Join-Path $projectRoot 'build\app\outputs\flutter-apk\app-release.apk'
-if (Test-Path -LiteralPath $apk) {
-  $sizeMb = [math]::Round((Get-Item -LiteralPath $apk).Length / 1MB, 1)
-  Write-Host ''
-  Write-Host "APK ready: $apk ($sizeMb MB)" -ForegroundColor Green
-} else {
-  Write-Host 'Build finished but APK not found at expected path.' -ForegroundColor Yellow
-  exit 1
+$apkDir = Join-Path $projectRoot 'build\app\outputs\flutter-apk'
+Write-Host ''
+$found = $false
+foreach ($name in $expected) {
+    $apk = Join-Path $apkDir $name
+    if (Test-Path -LiteralPath $apk) {
+        $sizeMb = [math]::Round((Get-Item -LiteralPath $apk).Length / 1MB, 1)
+        Write-Host "APK ready: $apk ($sizeMb MB)" -ForegroundColor Green
+        $found = $true
+    } else {
+        Write-Host "Expected APK missing: $apk" -ForegroundColor Yellow
+    }
 }
+
+if (-not $found) {
+    Write-Host 'Build finished but no expected split APKs were found.' -ForegroundColor Yellow
+    exit 1
+}
+
+Write-Host ''
+Write-Host 'Install tip: modern phones -> app-arm64-v8a-release.apk; 32-bit -> app-armeabi-v7a-release.apk; AVD -> use -Emulator.' -ForegroundColor DarkGray
