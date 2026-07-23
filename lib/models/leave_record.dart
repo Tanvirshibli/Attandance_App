@@ -32,7 +32,12 @@ class LeaveRecord {
     final leaveType = json['leave_type'] ?? json['leaveType'];
     String typeName = 'Leave';
     if (leaveType is Map<String, dynamic>) {
-      typeName = (leaveType['name'] ?? 'Leave').toString();
+      typeName = (leaveType['lName'] ??
+              leaveType['leaveName'] ??
+              leaveType['leave_name'] ??
+              leaveType['name'] ??
+              'Leave')
+          .toString();
     }
 
     return LeaveRecord(
