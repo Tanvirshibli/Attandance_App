@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:http/http.dart' as http;
+import 'package:intl/intl.dart';
 
 import '../config/app_config.dart';
 import '../data/sales_demo_data.dart';
@@ -8,7 +9,6 @@ import '../models/api_result.dart';
 import '../models/sales_models.dart';
 import 'auth_service.dart';
 import 'endpoint_config_service.dart';
-import 'hrm_api_client.dart';
 
 export '../models/sales_models.dart' show SalesProfile;
 
@@ -16,19 +16,19 @@ class SalesService {
   SalesService({
     AuthService? authService,
     EndpointConfigService? configService,
-    HrmApiClient? apiClient,
   })  : _authService = authService ?? AuthService(),
-        _configService = configService ?? EndpointConfigService.instance,
-        _apiClient = apiClient ?? HrmApiClient();
+        _configService = configService ?? EndpointConfigService.instance;
 
   final AuthService _authService;
   final EndpointConfigService _configService;
-  final HrmApiClient _apiClient;
 
   bool get useDemoData => AppConfig.useSalesDemoData;
 
+  /// Post Sale has no live create API yet — always demo.
+  bool get useCreateDemo => true;
+
   Future<bool> isSalesEnabled() =>
-      _configService.isFeatureEnabled('sales.enabled', defaultValue: false);
+      _configService.isFeatureEnabled('sales.enabled', defaultValue: true);
 
   Future<ApiResult<SalesProfile>> checkEligibility(int? employeeId) async {
     if (useDemoData) {
@@ -63,7 +63,7 @@ class SalesService {
             headers: {
               'Accept': 'application/json',
               'Authorization': 'Bearer $token',
-              'User-Agent': 'PPHLAttendance/2.1 (Android; Flutter)',
+              'User-Agent': 'PPHLAttendance/2.2 (Android; Flutter)',
             },
           )
           .timeout(const Duration(seconds: 15));
@@ -102,117 +102,79 @@ class SalesService {
     }
   }
 
-  Future<ApiResult<SalesOverview>> getOverview({
+  Future<ApiResult<SalesPersonSalesData>> getSalesPersonSales({
     required int employeeId,
-    required String period,
+    required DateTime fromDate,
+    required DateTime toDate,
   }) async {
     if (useDemoData) {
       await Future<void>.delayed(const Duration(milliseconds: 280));
-      return ApiResult.ok(SalesDemoData.overviewForPeriod(period));
+      return ApiResult.ok(
+        SalesDemoData.personSales(
+          employeeId: employeeId,
+          fromDate: fromDate,
+          toDate: toDate,
+        ),
+      );
     }
 
-    final periodKey = _periodQuery(period);
-    final result = await _apiClient.getByKey(
-      'sales.overview',
-      fallbackPath: '/api/v1/mobile/sales/overview',
+    final base = (await _configService.resolveUrl('sales.personSales')) ??
+        '${AppConfig.salesApiBaseUrl.trim().replaceAll(RegExp(r'/+$'), '')}/api/sales-person-sales';
+
+    final fmt = DateFormat('yyyy-MM-dd');
+    final uri = Uri.parse('$base/$employeeId').replace(
       queryParameters: {
-        'employeeId': '$employeeId',
-        'period': periodKey,
+        'from_date': fmt.format(fromDate),
+        'to_date': fmt.format(toDate),
       },
     );
 
-    if (!result.success) {
-      return ApiResult.fail(result.message ?? 'Could not load sales overview.');
+    try {
+      final response = await http
+          .get(
+            uri,
+            headers: {
+              'Accept': 'application/json',
+              'User-Agent': 'PPHLAttendance/2.2 (Android; Flutter)',
+            },
+          )
+          .timeout(const Duration(seconds: 30));
+
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        return ApiResult.fail(
+          'Could not load sales (${response.statusCode}).',
+        );
+      }
+
+      final decoded = jsonDecode(response.body);
+      if (decoded is! Map<String, dynamic>) {
+        return ApiResult.fail('Invalid sales response.');
+      }
+
+      if (decoded['success'] == false) {
+        return ApiResult.fail(
+          decoded['message']?.toString() ?? 'Could not load sales.',
+        );
+      }
+
+      final data = decoded['data'];
+      if (data is! Map<String, dynamic>) {
+        return ApiResult.fail('Invalid sales payload.');
+      }
+
+      return ApiResult.ok(SalesPersonSalesData.fromJson(data));
+    } catch (error) {
+      return ApiResult.fail('Network error: $error');
     }
-
-    final raw = result.data?['data'];
-    if (raw is Map<String, dynamic>) {
-      return ApiResult.ok(SalesOverview.fromJson(raw));
-    }
-    return ApiResult.fail('Invalid sales overview response.');
-  }
-
-  Future<ApiResult<List<SalePosting>>> getMyPostings({
-    required int employeeId,
-    String? from,
-    String? to,
-  }) async {
-    if (useDemoData) {
-      await Future<void>.delayed(const Duration(milliseconds: 200));
-      return ApiResult.ok(SalesDemoData.postings(employeeId: employeeId));
-    }
-
-    final params = <String, String>{'employeeId': '$employeeId'};
-    if (from != null && from.isNotEmpty) params['from'] = from;
-    if (to != null && to.isNotEmpty) params['to'] = to;
-
-    final result = await _apiClient.getByKey(
-      'sales.list',
-      fallbackPath: '/api/v1/mobile/sales/postings',
-      queryParameters: params,
-    );
-
-    if (!result.success) {
-      return ApiResult.fail(result.message ?? 'Could not load sales postings.');
-    }
-
-    final items = _extractList(result.data);
-    return ApiResult.ok(items.map(SalePosting.fromJson).toList());
   }
 
   Future<ApiResult<SalePosting>> createSale(CreateSaleRequest request) async {
-    if (useDemoData) {
+    // Live create API not available yet — always use in-memory demo store.
+    if (useCreateDemo) {
       await Future<void>.delayed(const Duration(milliseconds: 400));
       return ApiResult.ok(SalesDemoData.addPosting(request));
     }
 
-    final result = await _apiClient.postByKey(
-      'sales.create',
-      fallbackPath: '/api/v1/mobile/sales/postings',
-      body: request.toJson(),
-    );
-
-    if (!result.success) {
-      return ApiResult.fail(result.message ?? 'Could not submit sale.');
-    }
-
-    final raw = result.data?['data'];
-    if (raw is Map<String, dynamic>) {
-      return ApiResult.ok(SalePosting.fromJson(raw));
-    }
-
-    return ApiResult.ok(
-      SalePosting(
-        id: 0,
-        employeeId: request.employeeId,
-        saleDate: request.saleDate,
-        amount: request.amount,
-        customerName: request.customerName,
-        productName: request.productName,
-        quantity: request.quantity,
-        notes: request.notes,
-      ),
-    );
-  }
-
-  String _periodQuery(String period) {
-    switch (period) {
-      case 'Last month':
-        return 'last_month';
-      case 'Custom':
-        return 'custom';
-      case 'This month':
-      default:
-        return 'this_month';
-    }
-  }
-
-  List<Map<String, dynamic>> _extractList(Map<String, dynamic>? data) {
-    if (data == null) return [];
-    final value = data['data'];
-    if (value is List) {
-      return value.whereType<Map<String, dynamic>>().toList();
-    }
-    return [];
+    return ApiResult.fail('Sale create is not available.');
   }
 }

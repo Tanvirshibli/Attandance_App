@@ -23,9 +23,92 @@ class LeaveService {
     }
 
     final items = _extractList(result.data, keys: ['data', 'records']);
-    return ApiResult.ok(
-      items.map(LeaveBalance.fromJson).toList(),
+    var balances = items.map(LeaveBalance.fromJson).toList();
+    balances = await _enrichBalanceTypeNames(balances);
+    return ApiResult.ok(balances);
+  }
+
+  /// Fills missing leave type names from new-leave-types (by id), then
+  /// legacy leavetypes (by id → lName, then code → lName).
+  /// Stocks often store legacy leave_types.id as newLeaveTypeId.
+  Future<List<LeaveBalance>> _enrichBalanceTypeNames(
+    List<LeaveBalance> balances,
+  ) async {
+    if (balances.isEmpty) return balances;
+    if (!balances.any((b) => b.hasGenericTypeName)) return balances;
+
+    final byNewId = <int, ({String? name, String? code})>{};
+    final newTypesResult = await _apiClient.getByKey(
+      'leave.newTypes',
+      fallbackPath: '/api/v1/new-leave-types',
+      queryParameters: {'limit': '200'},
     );
+    if (newTypesResult.success) {
+      for (final row in _extractList(newTypesResult.data, keys: ['data'])) {
+        final id = _parseInt(row['id']);
+        if (id == null) continue;
+        byNewId[id] = (
+          name: _nonEmpty(
+            row['leaveName'] ??
+                row['leave_name'] ??
+                row['name'] ??
+                row['lName'],
+          ),
+          code: _nonEmpty(row['code']),
+        );
+      }
+    }
+
+    balances = balances.map((b) {
+      if (!b.hasGenericTypeName || b.leaveTypeId == null) return b;
+      final hit = byNewId[b.leaveTypeId];
+      if (hit == null) return b;
+      final name = hit.name ?? hit.code;
+      return b.copyWith(
+        leaveTypeName: name ?? b.leaveTypeName,
+        code: b.code ?? hit.code,
+      );
+    }).toList();
+
+    if (!balances.any((b) => b.hasGenericTypeName)) return balances;
+
+    final byLegacyId = <int, String>{};
+    final byCode = <String, String>{};
+    final legacyResult = await getLeaveTypes();
+    if (legacyResult.success && legacyResult.data != null) {
+      for (final t in legacyResult.data!) {
+        final name = t.name.trim();
+        if (name.isEmpty) continue;
+        if (t.id > 0) {
+          byLegacyId[t.id] = name;
+        }
+        final code = t.code?.trim().toLowerCase();
+        if (code != null && code.isNotEmpty) {
+          byCode[code] = name;
+        }
+      }
+    }
+
+    return balances.map((b) {
+      if (!b.hasGenericTypeName) return b;
+
+      if (b.leaveTypeId != null && byLegacyId.containsKey(b.leaveTypeId)) {
+        return b.copyWith(leaveTypeName: byLegacyId[b.leaveTypeId]);
+      }
+
+      final codeKey = b.code?.trim().toLowerCase();
+      if (codeKey != null &&
+          codeKey.isNotEmpty &&
+          byCode.containsKey(codeKey)) {
+        return b.copyWith(leaveTypeName: byCode[codeKey]);
+      }
+
+      if (b.leaveTypeId != null) {
+        return b.copyWith(leaveTypeName: 'Leave type #${b.leaveTypeId}');
+      }
+      // Avoid labeling with stock row id when type id is unknown.
+      return b;
+    }).toList();
   }
 
   Future<ApiResult<List<LeaveRecord>>> getLeaveHistory({
@@ -138,11 +221,23 @@ class LeaveService {
       }
     }
 
-    // Paginated resource collection at root
     if (data['data'] is List) {
       return (data['data'] as List).whereType<Map<String, dynamic>>().toList();
     }
 
     return [];
+  }
+
+  static int? _parseInt(Object? v) {
+    if (v == null) return null;
+    if (v is int) return v;
+    if (v is num) return v.toInt();
+    return int.tryParse(v.toString().trim());
+  }
+
+  static String? _nonEmpty(Object? v) {
+    if (v == null) return null;
+    final s = v.toString().trim();
+    return s.isEmpty ? null : s;
   }
 }
