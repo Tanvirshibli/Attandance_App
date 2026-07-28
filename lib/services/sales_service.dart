@@ -7,6 +7,8 @@ import '../config/app_config.dart';
 import '../data/sales_demo_data.dart';
 import '../models/api_result.dart';
 import '../models/sales_models.dart';
+import '../models/sales_post_models.dart';
+import '../utils/multipart_form.dart';
 import 'auth_service.dart';
 import 'endpoint_config_service.dart';
 
@@ -24,8 +26,15 @@ class SalesService {
 
   bool get useDemoData => AppConfig.useSalesDemoData;
 
-  /// Post Sale has no live create API yet — always demo.
-  bool get useCreateDemo => true;
+  bool get useCreateDemo => useDemoData;
+
+  Future<String> _salesApiBase() async {
+    final fromConfig = await _configService.resolveUrl('sales.personSales');
+    if (fromConfig != null && fromConfig.isNotEmpty) {
+      return fromConfig.replaceAll(RegExp(r'/+$'), '');
+    }
+    return AppConfig.salesApiBaseUrl.trim().replaceAll(RegExp(r'/+$'), '');
+  }
 
   Future<bool> isSalesEnabled() =>
       _configService.isFeatureEnabled('sales.enabled', defaultValue: true);
@@ -144,9 +153,7 @@ class SalesService {
       );
     }
 
-    final base = (await _configService.resolveUrl('sales.personSales')) ??
-        '${AppConfig.salesApiBaseUrl.trim().replaceAll(RegExp(r'/+$'), '')}/api/sales-person-sales';
-
+    final base = await _salesApiBase();
     final fmt = DateFormat('yyyy-MM-dd');
     final uri = Uri.parse('$base/$employeeId').replace(
       queryParameters: {
@@ -194,13 +201,97 @@ class SalesService {
     }
   }
 
+  Future<ApiResult<SalesPersonOrderCreated>> createSalesPersonOrder(
+    CreateSalesPersonOrderRequest request,
+  ) async {
+    if (useCreateDemo) {
+      await Future<void>.delayed(const Duration(milliseconds: 400));
+      return ApiResult.ok(
+        SalesPersonOrderCreated(
+          module: request.module,
+          id: 0,
+          referenceNo: 'DEMO-${DateTime.now().millisecondsSinceEpoch}',
+          status: 'demo',
+          salesPerson: request.salesPersonId,
+          totalAmount: request.totalAmount,
+          message: 'Demo order (enable live sales reporting to post).',
+        ),
+      );
+    }
+
+    if (!await isSalesEnabled()) {
+      return ApiResult.fail('Sales module is disabled.');
+    }
+
+    final url = await _configService.resolveUrl('sales.create');
+    final uri = Uri.parse(
+      url ??
+          '${AppConfig.salesApiBaseUrl.trim().replaceAll(RegExp(r'/+$'), '')}/api/sales-person-sales',
+    );
+
+    try {
+      final response = await postFormData(
+        uri: uri,
+        fields: request.toFormFields(),
+      );
+
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        return ApiResult.fail(
+          _messageFromBody(response.body) ??
+              'Could not submit sale (${response.statusCode}).',
+        );
+      }
+
+      final decoded = jsonDecode(response.body);
+      if (decoded is! Map<String, dynamic>) {
+        return ApiResult.fail('Invalid sale response.');
+      }
+
+      if (decoded['success'] == false) {
+        return ApiResult.fail(
+          decoded['message']?.toString() ?? 'Could not submit sale.',
+        );
+      }
+
+      final data = decoded['data'];
+      if (data is! Map<String, dynamic>) {
+        return ApiResult.fail('Invalid sale payload.');
+      }
+
+      final created = SalesPersonOrderCreated.fromJson(data);
+      return ApiResult.ok(
+        SalesPersonOrderCreated(
+          module: created.module,
+          id: created.id,
+          referenceNo: created.referenceNo,
+          status: created.status,
+          salesPerson: created.salesPerson,
+          totalAmount: created.totalAmount,
+          message: decoded['message']?.toString(),
+        ),
+      );
+    } catch (error) {
+      return ApiResult.fail('Network error: $error');
+    }
+  }
+
+  /// Legacy demo Post Sale — kept for compatibility.
   Future<ApiResult<SalePosting>> createSale(CreateSaleRequest request) async {
-    // Live create API not available yet — always use in-memory demo store.
     if (useCreateDemo) {
       await Future<void>.delayed(const Duration(milliseconds: 400));
       return ApiResult.ok(SalesDemoData.addPosting(request));
     }
 
-    return ApiResult.fail('Sale create is not available.');
+    return ApiResult.fail('Use createSalesPersonOrder for live posting.');
+  }
+
+  String? _messageFromBody(String body) {
+    try {
+      final decoded = jsonDecode(body);
+      if (decoded is Map && decoded['message'] != null) {
+        return decoded['message'].toString();
+      }
+    } catch (_) {}
+    return null;
   }
 }

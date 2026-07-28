@@ -7,7 +7,9 @@ import '../config/app_config.dart';
 import '../data/payments_demo_data.dart';
 import '../models/api_result.dart';
 import '../models/auth_wise_payment_models.dart';
+import '../models/auth_wise_payment_post_models.dart';
 import '../models/payment_models.dart';
+import '../utils/multipart_form.dart';
 import 'endpoint_config_service.dart';
 import 'hrm_api_client.dart';
 
@@ -164,6 +166,63 @@ class PaymentService {
       return ApiResult.ok(EmployeeLoan.fromJson(raw));
     }
     return ApiResult.fail('Invalid loan response.');
+  }
+
+  Future<ApiResult<AuthWisePaymentCreated>> postAuthWisePayment(
+    CreateAuthWisePaymentRequest request,
+  ) async {
+    if (!await isPaymentEnabled()) {
+      return ApiResult.fail('feature_disabled');
+    }
+
+    if (request.employeeId <= 0) {
+      return ApiResult.fail('Missing employee profile.');
+    }
+
+    final url = await _configService.resolveUrl('payment.authWisePost') ??
+        (await _configService.resolveUrl('payment.authWise')) ??
+        '${AppConfig.salesApiBaseUrl.trim().replaceAll(RegExp(r'/+$'), '')}/api/auth-wise-payments';
+
+    final uri = Uri.parse(url.replaceAll(RegExp(r'/+$'), ''));
+
+    try {
+      final response = await postFormData(
+        uri: uri,
+        fields: request.toFormFields(),
+      );
+
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        return ApiResult.fail(
+          _messageFromBody(response.body) ??
+              'Could not submit payment (${response.statusCode}).',
+        );
+      }
+
+      final decoded = jsonDecode(response.body);
+      if (decoded is! Map<String, dynamic>) {
+        return ApiResult.fail('Invalid payment response.');
+      }
+
+      if (decoded['success'] == false) {
+        return ApiResult.fail(
+          decoded['message']?.toString() ?? 'Could not submit payment.',
+        );
+      }
+
+      return ApiResult.ok(AuthWisePaymentCreated.fromResponse(decoded));
+    } catch (error) {
+      return ApiResult.fail('Network error: $error');
+    }
+  }
+
+  String? _messageFromBody(String body) {
+    try {
+      final decoded = jsonDecode(body);
+      if (decoded is Map && decoded['message'] != null) {
+        return decoded['message'].toString();
+      }
+    } catch (_) {}
+    return null;
   }
 
   Future<ApiResult<String>> postLoanPayment({
