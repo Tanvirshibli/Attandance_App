@@ -8,6 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../config/app_config.dart';
 import '../models/auth_user_profile.dart';
 import 'endpoint_config_service.dart';
+import 'fcm_wake_handler.dart';
 
 class AuthResult {
   const AuthResult({
@@ -76,6 +77,11 @@ class AuthService {
             email: email,
             rememberMe: rememberMe,
           );
+
+          // Register FCM token after session exists (no-op without Firebase config).
+          try {
+            await FcmWakeHandler.syncTokenWithBackend();
+          } catch (_) {}
 
           return AuthResult(
             success: true,

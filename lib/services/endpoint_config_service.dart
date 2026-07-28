@@ -159,13 +159,21 @@ class EndpointConfigService {
     }
 
     final sales = AppConfig.salesApiBaseUrl.trim().replaceAll(RegExp(r'/+$'), '');
+    final transport =
+        AppConfig.transportApiBaseUrl.trim().replaceAll(RegExp(r'/+$'), '');
 
     return EndpointConfig(
       version: 0,
-      bases: {'hrm': hrm, 'zkteco': zkteco, 'sales': sales},
+      bases: {
+        'hrm': hrm,
+        'zkteco': zkteco,
+        'sales': sales,
+        'transport': transport,
+      },
       features: {
         'sales.enabled': true,
-        'payment.enabled': false,
+        'payment.enabled': true,
+        'vehicle.enabled': true,
         'geo.tracking.enabled': true,
         'interval_minutes': AppConfig.geoTrackingIntervalMinutes,
       },
@@ -198,6 +206,11 @@ class EndpointConfigService {
         'payment.pf.history': ep('GET', '/api/v1/providentfunds', 'hrm'),
         'payment.mess': ep('GET', '/api/v1/mess-deposit-employee', 'hrm'),
         'payment.facility': ep('GET', '/api/v1/facility-employee', 'hrm'),
+        'payment.authWise': EndpointDefinition(
+          method: 'GET',
+          url: '$sales/api/auth-wise-payments',
+          backend: 'sales',
+        ),
         'sales.eligibility': ep('GET', '/api/get-sales-employee-list', 'hrm'),
         'sales.personSales': EndpointDefinition(
           method: 'GET',
@@ -216,6 +229,16 @@ class EndpointConfigService {
           backend: 'sales',
         ),
         'sales.create': ep('POST', '/api/v1/mobile/sales/postings', 'hrm'),
+        'vehicle.list': EndpointDefinition(
+          method: 'GET',
+          url: '$transport/api/get-vehicle-active-list',
+          backend: 'transport',
+        ),
+        'vehicle.maintenance': EndpointDefinition(
+          method: 'GET',
+          url: '$transport/api/get-vehicle-m-history',
+          backend: 'transport',
+        ),
       },
     );
   }
