@@ -5,6 +5,11 @@ plugins {
     id("dev.flutter.flutter-gradle-plugin")
 }
 
+// Apply only when Firebase client config is present (user-supplied; gitignored).
+if (file("google-services.json").exists()) {
+    apply(plugin = "com.google.gms.google-services")
+}
+
 android {
     namespace = "com.pphl.employee_attendance"
     compileSdk = flutter.compileSdkVersion

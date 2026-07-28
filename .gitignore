@@ -43,3 +43,8 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Firebase secrets (provide locally — see android/app/google-services.json.example)
+/android/app/google-services.json
+**/firebase-service-account*.json
+**/firebase_credentials.json

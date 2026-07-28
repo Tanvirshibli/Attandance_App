@@ -10,7 +10,7 @@ Flutter Android app for PPHL attendance.
 - **Employee services (v2.2.0):** footer **Services** tab (Attendance Report, Leave, Payments hub, Sales Info with live person-sales report + demo Post sale, Geo Tracking). Payments remain demo by default; see [docs/SALES_AND_PAYMENTS_API_CONTRACT.md](docs/SALES_AND_PAYMENTS_API_CONTRACT.md)
 - Home / Attendance KPIs driven from live punches + HRM summary (Alerts empty until a notifications API exists)
 - JWT refresh on 401; endpoint config refresh after login and on app resume
-- Geo: live OpenStreetMap window, 5-min foreground timer, WorkManager, ongoing notification; FCM wake is **scaffold-only** until `android/app/google-services.json` is added
+- Geo: live OpenStreetMap window, 5-min foreground timer, WorkManager, ongoing notification; FCM wake registers tokens and handles `geo_wake` data pushes when `android/app/google-services.json` is present (see `.example`)
 - Persistent per-install device identity sent with attendance and face-registration requests
 
 See [docs/MOBILE_EMPLOYEE_FEATURES.md](docs/MOBILE_EMPLOYEE_FEATURES.md) for API wiring status per feature. Backend handoff for Sales/Payments: [docs/SALES_AND_PAYMENTS_API_CONTRACT.md](docs/SALES_AND_PAYMENTS_API_CONTRACT.md). Emulator workflow: [docs/EMULATOR_TESTING.md](docs/EMULATOR_TESTING.md).
