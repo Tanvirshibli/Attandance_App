@@ -11,6 +11,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../config/app_config.dart';
 import '../models/geo_ping.dart';
 import 'auth_service.dart';
+import 'device_identity_service.dart';
 import 'endpoint_config_service.dart';
 import 'fcm_wake_handler.dart';
 import 'geo_background_worker.dart';
@@ -64,12 +65,14 @@ class GeoTrackingService {
       final intervalMinutes = await _configService.geoIntervalMinutes();
       await GeoNotificationService.instance
           .showTrackingActive(intervalMinutes: intervalMinutes);
+      await FcmWakeHandler.syncTokenWithBackend();
       await captureAndQueue(source: 'manual');
     } else {
       _foregroundTimer?.cancel();
       _foregroundTimer = null;
       await GeoBackgroundWorker.cancelPeriodicTask();
       await GeoNotificationService.instance.cancelTrackingNotification();
+      await FcmWakeHandler.syncTokenWithBackend();
     }
   }
 
@@ -221,6 +224,7 @@ class GeoTrackingService {
         longitude: position.longitude,
         capturedAt: DateTime.now(),
         address: address,
+        accuracyM: position.accuracy,
       );
 
       await prefs.setString(_lastPingKey, jsonEncode(ping.toJson()));
@@ -245,6 +249,25 @@ class GeoTrackingService {
         AppConfig.geoLocationUploadUrl;
 
     try {
+      String? deviceId;
+      try {
+        final meta = await DeviceIdentityService().getDeviceMetadata();
+        deviceId = meta['deviceIdentifier'];
+      } catch (_) {}
+
+      final body = <String, dynamic>{
+        'employee_id': employeeId,
+        'lat': ping.latitude,
+        'lng': ping.longitude,
+        'address': ping.address,
+        'accuracy_m': ping.accuracyM,
+        'captured_at': ping.capturedAt.toIso8601String(),
+        'source': source,
+      };
+      if (deviceId != null && deviceId.isNotEmpty) {
+        body['device_id'] = deviceId;
+      }
+
       final response = await http
           .post(
             Uri.parse(uploadUrl),
@@ -253,15 +276,7 @@ class GeoTrackingService {
               'Content-Type': 'application/json',
               'User-Agent': 'PPHLAttendance/2.1 (Android; Flutter)',
             },
-            body: jsonEncode({
-              'employee_id': employeeId,
-              'lat': ping.latitude,
-              'lng': ping.longitude,
-              'address': ping.address,
-              'accuracy_m': ping.accuracyM,
-              'captured_at': ping.capturedAt.toIso8601String(),
-              'source': source,
-            }),
+            body: jsonEncode(body),
           )
           .timeout(const Duration(seconds: 15));
 
