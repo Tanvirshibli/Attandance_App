@@ -8,6 +8,7 @@ import 'geo_tracking_screen.dart';
 import 'leave_hub_screen.dart';
 import 'payment_hub_screen.dart';
 import 'sales_info_screen.dart';
+import 'vehicle_list_screen.dart';
 import '../widgets/gradient_screen_header.dart';
 
 class EmployeeServicesHubScreen extends StatelessWidget {
@@ -42,6 +43,12 @@ class EmployeeServicesHubScreen extends StatelessWidget {
         label: 'Sales Info',
         color: AppColors.warning,
         screen: const SalesInfoScreen(),
+      ),
+      _ServiceTileData(
+        icon: Icons.directions_car_outlined,
+        label: 'Vehicles',
+        color: AppColors.accent,
+        screen: const VehicleListScreen(),
       ),
       _ServiceTileData(
         icon: Icons.my_location_outlined,
