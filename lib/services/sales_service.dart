@@ -41,11 +41,21 @@ class SalesService {
     }
 
     if (!await isSalesEnabled()) {
-      return ApiResult.ok(const SalesProfile(isEligible: false));
+      return ApiResult.ok(
+        const SalesProfile(
+          isEligible: false,
+          unavailableReason: SalesProfile.featureDisabled,
+        ),
+      );
     }
 
     if (employeeId == null || employeeId <= 0) {
-      return ApiResult.ok(const SalesProfile(isEligible: false));
+      return ApiResult.ok(
+        const SalesProfile(
+          isEligible: false,
+          unavailableReason: SalesProfile.notOnList,
+        ),
+      );
     }
 
     final token = await _authService.getToken();
@@ -74,29 +84,45 @@ class SalesService {
 
       final decoded = jsonDecode(response.body);
       if (decoded is! Map<String, dynamic>) {
-        return ApiResult.ok(const SalesProfile(isEligible: false));
+        return ApiResult.ok(
+          const SalesProfile(
+            isEligible: false,
+            unavailableReason: SalesProfile.notOnList,
+          ),
+        );
       }
 
       final data = decoded['data'];
       if (data is! List) {
-        return ApiResult.ok(const SalesProfile(isEligible: false));
+        return ApiResult.ok(
+          const SalesProfile(
+            isEligible: false,
+            unavailableReason: SalesProfile.notOnList,
+          ),
+        );
       }
 
       for (final item in data) {
-        if (item is! Map<String, dynamic>) continue;
-        final id = item['employeeId'];
+        if (item is! Map) continue;
+        final map = Map<String, dynamic>.from(item);
+        final id = map['employeeId'];
         final parsedId = id is int ? id : int.tryParse(id?.toString() ?? '');
         if (parsedId == employeeId) {
           return ApiResult.ok(
             SalesProfile(
               isEligible: true,
-              employeeName: item['employeeName']?.toString(),
+              employeeName: map['employeeName']?.toString(),
             ),
           );
         }
       }
 
-      return ApiResult.ok(const SalesProfile(isEligible: false));
+      return ApiResult.ok(
+        const SalesProfile(
+          isEligible: false,
+          unavailableReason: SalesProfile.notOnList,
+        ),
+      );
     } catch (error) {
       return ApiResult.fail('Network error: $error');
     }

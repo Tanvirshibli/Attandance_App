@@ -1,6 +1,12 @@
+import 'dart:convert';
+
+import 'package:http/http.dart' as http;
+import 'package:intl/intl.dart';
+
 import '../config/app_config.dart';
 import '../data/payments_demo_data.dart';
 import '../models/api_result.dart';
+import '../models/auth_wise_payment_models.dart';
 import '../models/payment_models.dart';
 import 'endpoint_config_service.dart';
 import 'hrm_api_client.dart';
@@ -18,7 +24,71 @@ class PaymentService {
   bool get useDemoData => AppConfig.usePaymentDemoData;
 
   Future<bool> isPaymentEnabled() =>
-      _configService.isFeatureEnabled('payment.enabled', defaultValue: false);
+      _configService.isFeatureEnabled('payment.enabled', defaultValue: true);
+
+  /// Live dealer payment-receive report (no JWT). Gated by [isPaymentEnabled].
+  Future<ApiResult<AuthWisePaymentsData>> getAuthWisePayments({
+    required int employeeId,
+    required DateTime fromDate,
+    required DateTime toDate,
+  }) async {
+    if (!await isPaymentEnabled()) {
+      return ApiResult.fail('feature_disabled');
+    }
+
+    if (employeeId <= 0) {
+      return ApiResult.fail('Missing employee profile.');
+    }
+
+    final base = (await _configService.resolveUrl('payment.authWise')) ??
+        '${AppConfig.salesApiBaseUrl.trim().replaceAll(RegExp(r'/+$'), '')}/api/auth-wise-payments';
+
+    final fmt = DateFormat('yyyy-MM-dd');
+    final uri = Uri.parse('$base/$employeeId').replace(
+      queryParameters: {
+        'from_date': fmt.format(fromDate),
+        'to_date': fmt.format(toDate),
+      },
+    );
+
+    try {
+      final response = await http
+          .get(
+            uri,
+            headers: {
+              'Accept': 'application/json',
+              'User-Agent': 'PPHLAttendance/2.2 (Android; Flutter)',
+            },
+          )
+          .timeout(const Duration(seconds: 30));
+
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        return ApiResult.fail(
+          'Could not load payments (${response.statusCode}).',
+        );
+      }
+
+      final decoded = jsonDecode(response.body);
+      if (decoded is! Map<String, dynamic>) {
+        return ApiResult.fail('Invalid payments response.');
+      }
+
+      if (decoded['success'] == false) {
+        return ApiResult.fail(
+          decoded['message']?.toString() ?? 'Could not load payments.',
+        );
+      }
+
+      final data = decoded['data'];
+      if (data is! Map<String, dynamic>) {
+        return ApiResult.fail('Invalid payments payload.');
+      }
+
+      return ApiResult.ok(AuthWisePaymentsData.fromJson(data));
+    } catch (error) {
+      return ApiResult.fail('Network error: $error');
+    }
+  }
 
   Future<ApiResult<PaymentsHubSummary>> getHubSummary(int employeeId) async {
     if (useDemoData) {
