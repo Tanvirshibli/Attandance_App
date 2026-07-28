@@ -96,10 +96,32 @@ Handoff for backend teams: **[SALES_AND_PAYMENTS_API_CONTRACT.md](SALES_AND_PAYM
 ## Build
 
 ```powershell
+# Build number only (+N); keep marketing version
 powershell -ExecutionPolicy Bypass -File .\scripts\build-dev-tunnel-apk.ps1
+
+# Minor marketing bump: 2.2.1 -> 2.2.2 (+N also increments)
+powershell -ExecutionPolicy Bypass -File .\scripts\build-dev-tunnel-apk.ps1 -UpdateLevel Minor
+
+# Medium: 2.2.1 -> 2.3.1
+powershell -ExecutionPolicy Bypass -File .\scripts\build-dev-tunnel-apk.ps1 -UpdateLevel Medium
+
+# Major: 2.2.1 -> 3.2.1
+powershell -ExecutionPolicy Bypass -File .\scripts\build-dev-tunnel-apk.ps1 -UpdateLevel Major
+
+# Emulator x86_64
+powershell -ExecutionPolicy Bypass -File .\scripts\build-dev-tunnel-apk.ps1 -Emulator -UpdateLevel Build
 ```
 
-`build-dev-tunnel-apk.ps1` auto-increments the Flutter build number in `pubspec.yaml` (`version: X.Y.Z+N` → `N+1`) on every run. Marketing version `X.Y.Z` is unchanged. Profile → About shows live `v{version}+{buildNumber}` via `package_info_plus`.
+`build-dev-tunnel-apk.ps1` always increments the Flutter build number (`+N`). Optional `-UpdateLevel`:
+
+| Level | Marketing change | Example |
+|-------|------------------|---------|
+| `Build` (default) | unchanged | `2.2.1+8` → `2.2.1+9` |
+| `Minor` | bump patch `Z` | `2.2.1` → `2.2.2` |
+| `Medium` | bump middle `Y` (keep `Z`) | `2.2.1` → `2.3.1` |
+| `Major` | bump major `X` (keep `Y.Z`) | `2.2.1` → `3.2.1` |
+
+Profile → About shows live `v{version}+{buildNumber}` via `package_info_plus` (logical `+N`; split-per-ABI APKs encode Android `versionCode` as `abi*1000+N`).
 
 Live payments:
 
@@ -113,4 +135,4 @@ Force sales reporting demo:
 flutter build apk --release --split-per-abi --target-platform android-arm,android-arm64 --obfuscate --split-debug-info=build/app/outputs/symbols --dart-define=USE_SALES_DEMO_DATA=true
 ```
 
-Version: **2.2.1** (build number auto-bumped by tunnel script)
+Version: **2.2.x** (marketing + build bumped via tunnel script `-UpdateLevel`)

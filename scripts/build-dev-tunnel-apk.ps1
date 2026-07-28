@@ -1,8 +1,15 @@
 # Build lightweight release APKs (split-per-ABI) against Cloudflare tunnel backends.
 # Default: phone ABIs (armeabi-v7a + arm64-v8a). Pass -Emulator for x86_64 AVD.
+# Always increments build number (+N). Optional -UpdateLevel bumps marketing version:
+#   Build  (default) — keep X.Y.Z, only +N
+#   Minor  — X.Y.Z -> X.Y.(Z+1)   e.g. 2.2.1 -> 2.2.2
+#   Medium — X.Y.Z -> X.(Y+1).Z   e.g. 2.2.1 -> 2.3.1
+#   Major  — X.Y.Z -> (X+1).Y.Z   e.g. 2.2.1 -> 3.2.1
 #Requires -Version 5.1
 param(
-    [switch]$Emulator
+    [switch]$Emulator,
+    [ValidateSet('Build', 'Minor', 'Medium', 'Major')]
+    [string]$UpdateLevel = 'Build'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -31,21 +38,39 @@ function Get-FlutterExe {
     throw 'Flutter SDK not found. Install to C:\flutter or add flutter to PATH.'
 }
 
-function Update-PubspecBuildNumber {
+function Update-PubspecVersion {
+    param(
+        [Parameter(Mandatory = $true)]
+        [ValidateSet('Build', 'Minor', 'Medium', 'Major')]
+        [string]$Level
+    )
+
     $pubspecPath = Join-Path $projectRoot 'pubspec.yaml'
     if (-not (Test-Path -LiteralPath $pubspecPath)) {
         throw "pubspec.yaml not found: $pubspecPath"
     }
 
     $content = Get-Content -LiteralPath $pubspecPath -Raw
-    if ($content -notmatch '(?m)^version:\s*([0-9]+\.[0-9]+\.[0-9]+)\+(\d+)\s*$') {
+    if ($content -notmatch '(?m)^version:\s*([0-9]+)\.([0-9]+)\.([0-9]+)\+(\d+)\s*$') {
         throw 'Could not parse version: X.Y.Z+N from pubspec.yaml'
     }
 
-    $versionName = $Matches[1]
-    $oldBuild = [int]$Matches[2]
+    $major = [int]$Matches[1]
+    $medium = [int]$Matches[2]
+    $minor = [int]$Matches[3]
+    $oldBuild = [int]$Matches[4]
+    $oldName = "$major.$medium.$minor"
+
+    switch ($Level) {
+        'Minor'  { $minor++ }
+        'Medium' { $medium++ }
+        'Major'  { $major++ }
+        'Build'  { }
+    }
+
+    $newName = "$major.$medium.$minor"
     $newBuild = $oldBuild + 1
-    $newLine = "version: $versionName+$newBuild"
+    $newLine = "version: $newName+$newBuild"
     $updated = [regex]::Replace(
         $content,
         '(?m)^version:\s*[0-9]+\.[0-9]+\.[0-9]+\+\d+\s*$',
@@ -53,8 +78,14 @@ function Update-PubspecBuildNumber {
         1
     )
     Set-Content -LiteralPath $pubspecPath -Value $updated -NoNewline
-    Write-Host "Build number: $oldBuild -> $newBuild (version $versionName+$newBuild)" -ForegroundColor Green
-    return "$versionName+$newBuild"
+
+    if ($oldName -ne $newName) {
+        Write-Host "Marketing version ($Level): $oldName -> $newName" -ForegroundColor Green
+    } else {
+        Write-Host "Marketing version: $newName (unchanged; UpdateLevel=Build)" -ForegroundColor DarkGray
+    }
+    Write-Host "Build number: $oldBuild -> $newBuild (version $newName+$newBuild)" -ForegroundColor Green
+    return "$newName+$newBuild"
 }
 
 $flutter = Get-FlutterExe
@@ -71,7 +102,7 @@ if (Test-Path -LiteralPath $localProps) {
     }
 }
 
-$appVersion = Update-PubspecBuildNumber
+$appVersion = Update-PubspecVersion -Level $UpdateLevel
 
 $symbolsDir = Join-Path $projectRoot 'build\app\outputs\symbols'
 New-Item -ItemType Directory -Force -Path $symbolsDir | Out-Null
@@ -87,6 +118,7 @@ if ($Emulator) {
 }
 
 Write-Host "  App version: $appVersion"
+Write-Host "  UpdateLevel: $UpdateLevel"
 Write-Host '  AUTH/ERP:  https://hrm.peoplesitsolution.online'
 Write-Host '  ZKTeco:    https://zktecolocal.peoplesitsolution.online'
 Write-Host "  Platforms: $platforms"

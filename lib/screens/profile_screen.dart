@@ -38,8 +38,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
     try {
       final info = await PackageInfo.fromPlatform();
       if (!mounted) return;
+      // Split-per-ABI APKs encode versionCode as abiIndex*1000 + buildNumber.
+      final rawBuild = int.tryParse(info.buildNumber) ?? 0;
+      final buildNumber =
+          rawBuild >= 1000 ? (rawBuild % 1000).toString() : info.buildNumber;
       setState(() {
-        _appVersionLabel = 'v${info.version}+${info.buildNumber}';
+        _appVersionLabel = 'v${info.version}+$buildNumber';
       });
     } catch (_) {
       if (!mounted) return;

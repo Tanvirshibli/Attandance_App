@@ -55,7 +55,7 @@
 | **Organization** | PPHL (Peoples Poultry & Hatchery Ltd.) |
 | **Platform** | Android (Flutter cross-platform, only Android targeted) |
 | **Purpose** | Employee attendance tracking with on-device face recognition and GPS verification |
-| **Version** | 2.2.1+6 |
+| **Version** | `X.Y.Z+N` via `build-dev-tunnel-apk.ps1` (`-UpdateLevel Build|Minor|Medium|Major`) |
 | **Dart SDK** | ^3.11.0 |
 | **Flutter Channel** | Stable (3.41.2) |
 | **APK Size** | Split-per-ABI + R8: arm64 **44.1 MB**, armeabi-v7a **36.7 MB**, x86_64 **48.5 MB** (was ~110 MB fat) |
@@ -750,11 +750,15 @@ assets:
 ```powershell
 cd C:\Users\ciphe\Documents\GitHub\Attandance_App
 powershell -ExecutionPolicy Bypass -File .\scripts\build-dev-tunnel-apk.ps1
+# Marketing bump examples:
+#   -UpdateLevel Minor   # 2.2.1 -> 2.2.2 (+N always increments)
+#   -UpdateLevel Medium  # 2.2.1 -> 2.3.1
+#   -UpdateLevel Major   # 2.2.1 -> 3.2.1
 # Production (no tunnel defines):
 # flutter build apk --release --split-per-abi --target-platform android-arm,android-arm64 --obfuscate --split-debug-info=build/app/outputs/symbols
 ```
 
-Release builds enable **R8 minify + shrinkResources** (`android/app/build.gradle.kts`) and ProGuard keep rules for Flutter / ML Kit / TFLite (`android/app/proguard-rules.pro`).
+Release builds enable **R8 minify + shrinkResources** (`android/app/build.gradle.kts`) and ProGuard keep rules for Flutter / ML Kit / TFLite (`android/app/proguard-rules.pro`). Every tunnel script run increments `+N`; optional `-UpdateLevel` bumps marketing version.
 
 ### Build Output
 
@@ -936,7 +940,7 @@ The current stack uses **ML Kit for detection** and **MobileFaceNet for identity
 - App label "PPHL Attendance", permissions for camera + location + internet, single-top launch mode.
 
 ### `pubspec.yaml`
-- Package name `employee_attendance`, version `2.2.1+N` (build `N` auto-incremented by `scripts/build-dev-tunnel-apk.ps1`), Dart SDK ^3.11.0, includes `package_info_plus`, MobileFaceNet asset.
+- Package name `employee_attendance`, version `X.Y.Z+N` (`scripts/build-dev-tunnel-apk.ps1` always bumps `N`; optional `-UpdateLevel Minor|Medium|Major` bumps marketing per `Z` / `Y` / `X`), Dart SDK ^3.11.0, includes `package_info_plus`, MobileFaceNet asset.
 
 ### `assets/models/mobilefacenet.tflite` (~5.2 MB)
 - Pre-trained MobileFaceNet TensorFlow Lite model. Input: 1×112×112×3 float32 (pixel values normalized to [-1,1]). Output: 1×192 float32 embedding.

@@ -81,6 +81,9 @@ Lightweight **split-per-ABI** APKs (R8 minify + resource shrink + Dart obfuscati
 ```powershell
 cd Attandance_App
 powershell -ExecutionPolicy Bypass -File .\scripts\build-dev-tunnel-apk.ps1
+# Optional marketing bump: -UpdateLevel Minor|Medium|Major
+#   Minor  2.2.1 -> 2.2.2 | Medium 2.2.1 -> 2.3.1 | Major 2.2.1 -> 3.2.1
+# Default -UpdateLevel Build keeps X.Y.Z and only increments +N
 ```
 
 Each run bumps `pubspec.yaml` build number (`+N`). Profile → About shows `v{version}+{buildNumber}`.

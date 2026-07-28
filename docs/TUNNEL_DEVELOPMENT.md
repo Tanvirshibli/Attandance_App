@@ -61,6 +61,7 @@ From `Attandance_App` — produces **split-per-ABI** APKs (arm + arm64):
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\build-dev-tunnel-apk.ps1
+# Optional: -UpdateLevel Minor|Medium|Major (always bumps +N; default Build keeps X.Y.Z)
 ```
 
 Emulator x86_64:
