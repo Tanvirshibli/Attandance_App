@@ -4,7 +4,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 
 import '../config/theme.dart';
-import '../models/sales_models.dart';
+import '../models/sales_post_models.dart';
 import '../services/auth_service.dart';
 import '../services/sales_service.dart';
 import '../widgets/gradient_screen_header.dart';
@@ -22,77 +22,191 @@ class _PostSaleScreenState extends State<PostSaleScreen> {
   final AuthService _authService = AuthService();
   final _formKey = GlobalKey<FormState>();
 
-  final _customerController = TextEditingController();
-  final _amountController = TextEditingController();
-  final _productController = TextEditingController();
-  final _quantityController = TextEditingController();
-  final _notesController = TextEditingController();
+  static const _modules = [
+    ('feed', 'Feed'),
+    ('egg', 'Egg'),
+    ('fertilizer', 'Fertilizer'),
+    ('chicks', 'Chicks'),
+    ('liveBird', 'Live Bird'),
+    ('cullBird', 'Cull Bird'),
+  ];
 
-  DateTime _saleDate = DateTime.now();
+  static const _saleTypes = ['Cash', 'Credit'];
+
+  String _module = 'feed';
+  String _saleType = 'Cash';
+  DateTime _invoiceDate = DateTime.now();
+  DateTime _dueDate = DateTime.now();
+
+  final _dealerId = TextEditingController();
+  final _salesPointId = TextEditingController();
+  final _companyId = TextEditingController();
+  final _totalAmount = TextEditingController();
+
+  final _productId = TextEditingController();
+  final _tradePrice = TextEditingController();
+  final _salePrice = TextEditingController();
+  final _qty = TextEditingController();
+  final _unitId = TextEditingController(text: '1');
+  final _unitBatchNo = TextEditingController();
+
   bool _isSubmitting = false;
+  int? _salesPersonId;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadProfile();
+    _salePrice.addListener(_syncTotalFromLine);
+    _qty.addListener(_syncTotalFromLine);
+  }
+
+  Future<void> _loadProfile() async {
+    final profile = await _authService.getCurrentUserProfile();
+    if (!mounted) return;
+    setState(() {
+      _salesPersonId = profile?.canonicalEmployeeId;
+    });
+  }
+
+  void _syncTotalFromLine() {
+    final q = double.tryParse(_qty.text.trim());
+    final p = double.tryParse(_salePrice.text.trim());
+    if (q != null && p != null && q > 0 && p > 0) {
+      final total = q * p;
+      _totalAmount.text = total == total.roundToDouble()
+          ? total.round().toString()
+          : total.toStringAsFixed(2);
+    }
+  }
 
   @override
   void dispose() {
-    _customerController.dispose();
-    _amountController.dispose();
-    _productController.dispose();
-    _quantityController.dispose();
-    _notesController.dispose();
+    _dealerId.dispose();
+    _salesPointId.dispose();
+    _companyId.dispose();
+    _totalAmount.dispose();
+    _productId.dispose();
+    _tradePrice.dispose();
+    _salePrice.dispose();
+    _qty.dispose();
+    _unitId.dispose();
+    _unitBatchNo.dispose();
     super.dispose();
   }
 
-  Future<void> _pickDate() async {
+  Future<void> _pickDate({required bool due}) async {
+    final initial = due ? _dueDate : _invoiceDate;
     final picked = await showDatePicker(
       context: context,
-      initialDate: _saleDate,
+      initialDate: initial,
       firstDate: DateTime.now().subtract(const Duration(days: 90)),
-      lastDate: DateTime.now(),
+      lastDate: DateTime.now().add(const Duration(days: 365)),
     );
-    if (picked != null) {
-      setState(() => _saleDate = picked);
+    if (picked == null) return;
+    setState(() {
+      if (due) {
+        _dueDate = picked;
+      } else {
+        _invoiceDate = picked;
+      }
+    });
+  }
+
+  int? _parseInt(String? v, String label) {
+    final n = int.tryParse(v?.trim() ?? '');
+    if (n == null || n <= 0) {
+      _snack('Enter a valid $label.');
+      return null;
     }
+    return n;
+  }
+
+  double? _parseDouble(String? v, String label) {
+    final n = double.tryParse(v?.trim() ?? '');
+    if (n == null || n <= 0) {
+      _snack('Enter a valid $label.');
+      return null;
+    }
+    return n;
   }
 
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
 
-    final profile = await _authService.getCurrentUserProfile();
-    final employeeId = profile?.canonicalEmployeeId;
-    if (employeeId == null) {
+    final salesPersonId = _salesPersonId;
+    if (salesPersonId == null || salesPersonId <= 0) {
       _snack('Please login again.');
+      return;
+    }
+
+    final dealerId = _parseInt(_dealerId.text, 'dealer ID');
+    final salesPointId = _parseInt(_salesPointId.text, 'sales point ID');
+    final companyId = _parseInt(_companyId.text, 'company ID');
+    final productId = _parseInt(_productId.text, 'product ID');
+    final unitId = _parseInt(_unitId.text, 'unit ID');
+    final tradePrice = _parseDouble(_tradePrice.text, 'trade price');
+    final salePrice = _parseDouble(_salePrice.text, 'sale price');
+    final qty = _parseDouble(_qty.text, 'quantity');
+    final totalAmount = _parseDouble(_totalAmount.text, 'total amount');
+
+    if (dealerId == null ||
+        salesPointId == null ||
+        companyId == null ||
+        productId == null ||
+        unitId == null ||
+        tradePrice == null ||
+        salePrice == null ||
+        qty == null ||
+        totalAmount == null) {
       return;
     }
 
     setState(() => _isSubmitting = true);
 
-    final request = CreateSaleRequest(
-      employeeId: employeeId,
-      saleDate: DateFormat('yyyy-MM-dd').format(_saleDate),
-      amount: double.parse(_amountController.text.trim()),
-      customerName: _customerController.text.trim(),
-      productName: _productController.text.trim().isEmpty
-          ? null
-          : _productController.text.trim(),
-      quantity: _quantityController.text.trim().isEmpty
-          ? null
-          : double.tryParse(_quantityController.text.trim()),
-      notes: _notesController.text.trim().isEmpty
-          ? null
-          : _notesController.text.trim(),
+    final fmt = DateFormat('yyyy-MM-dd');
+    final request = CreateSalesPersonOrderRequest(
+      module: _module,
+      salesPersonId: salesPersonId,
+      dealerId: dealerId,
+      salesPointId: salesPointId,
+      companyId: companyId,
+      totalAmount: totalAmount,
+      invoiceDate: fmt.format(_invoiceDate),
+      dueDate: fmt.format(_dueDate),
+      saleType: _saleType,
+      lines: [
+        SalesOrderLineInput(
+          productId: productId,
+          tradePrice: tradePrice,
+          salePrice: salePrice,
+          qty: qty,
+          unitId: unitId,
+          unitBatchNo: _unitBatchNo.text.trim().isEmpty
+              ? null
+              : _unitBatchNo.text.trim(),
+        ),
+      ],
     );
 
-    final result = await _salesService.createSale(request);
+    final result = await _salesService.createSalesPersonOrder(request);
     if (!mounted) return;
     setState(() => _isSubmitting = false);
 
-    if (!result.success) {
+    if (!result.success || result.data == null) {
       _snack(result.message ?? 'Could not submit sale.');
       return;
     }
 
-    _snack(_salesService.useCreateDemo
-        ? 'Demo sale posted successfully.'
-        : 'Sale submitted successfully.');
+    final created = result.data!;
+    final ref = created.referenceNo.isNotEmpty
+        ? created.referenceNo
+        : '#${created.id}';
+    _snack(
+      created.message?.isNotEmpty == true
+          ? '${created.message} Ref: $ref'
+          : 'Sale submitted. Ref: $ref',
+    );
     Navigator.of(context).pop(true);
   }
 
@@ -104,15 +218,19 @@ class _PostSaleScreenState extends State<PostSaleScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final demo = _salesService.useCreateDemo;
+
     return Scaffold(
       backgroundColor: AppColors.background,
       body: CustomScrollView(
         physics: const BouncingScrollPhysics(),
         slivers: [
-          const SliverToBoxAdapter(
+          SliverToBoxAdapter(
             child: GradientScreenHeader(
               title: 'Post sale',
-              subtitle: 'Record a new customer sale',
+              subtitle: demo
+                  ? 'Demo mode — enable live sales to post to server'
+                  : 'Submit order to sales.peoplesitsolution.online',
             ),
           ),
           SliverPadding(
@@ -125,106 +243,150 @@ class _PostSaleScreenState extends State<PostSaleScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        if (_salesService.useCreateDemo) ...[
-                          Container(
-                            padding: const EdgeInsets.all(12),
-                            decoration: BoxDecoration(
-                              color: AppColors.warning.withValues(alpha: 0.1),
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: Row(
-                              children: [
-                                Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 8,
-                                    vertical: 2,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: AppColors.warning,
-                                    borderRadius: BorderRadius.circular(8),
-                                  ),
-                                  child: Text(
-                                    'Demo',
-                                    style: GoogleFonts.poppins(
-                                      fontSize: 10,
-                                      fontWeight: FontWeight.w600,
-                                      color: Colors.white,
-                                    ),
-                                  ),
-                                ),
-                                const SizedBox(width: 10),
-                                Expanded(
-                                  child: Text(
-                                    'Stored only on this device until a live create API is available.',
-                                    style: GoogleFonts.poppins(fontSize: 12),
-                                  ),
-                                ),
-                              ],
+                        if (_salesPersonId != null)
+                          Text(
+                            'Sales person ID: $_salesPersonId',
+                            style: GoogleFonts.poppins(
+                              fontSize: 12,
+                              color: AppColors.textSecondary,
                             ),
                           ),
-                          const SizedBox(height: 16),
-                        ],
-                        _field(
-                          controller: _customerController,
-                          label: 'Customer / outlet',
-                          icon: Icons.store_outlined,
-                          validator: (v) =>
-                              (v == null || v.trim().isEmpty)
-                                  ? 'Required'
-                                  : null,
+                        const SizedBox(height: 12),
+                        _dropdown(
+                          label: 'Module',
+                          value: _module,
+                          items: _modules
+                              .map((m) => DropdownMenuItem(
+                                    value: m.$1,
+                                    child: Text(m.$2),
+                                  ))
+                              .toList(),
+                          onChanged: (v) =>
+                              setState(() => _module = v ?? _module),
                         ),
-                        const SizedBox(height: 14),
-                        _field(
-                          controller: _amountController,
-                          label: 'Amount (৳)',
-                          icon: Icons.payments_outlined,
-                          keyboardType: const TextInputType.numberWithOptions(
-                            decimal: true,
+                        const SizedBox(height: 12),
+                        _dropdown(
+                          label: 'Sale type',
+                          value: _saleType,
+                          items: _saleTypes
+                              .map((t) => DropdownMenuItem(
+                                    value: t,
+                                    child: Text(t),
+                                  ))
+                              .toList(),
+                          onChanged: (v) =>
+                              setState(() => _saleType = v ?? _saleType),
+                        ),
+                        const SizedBox(height: 12),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: _idField(
+                                _companyId,
+                                'Company ID',
+                                Icons.business_outlined,
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: _idField(
+                                _dealerId,
+                                'Dealer ID',
+                                Icons.store_outlined,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        _idField(
+                          _salesPointId,
+                          'Sales point ID',
+                          Icons.place_outlined,
+                        ),
+                        const SizedBox(height: 12),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: _dateTile(
+                                'Invoice date',
+                                _invoiceDate,
+                                () => _pickDate(due: false),
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: _dateTile(
+                                'Due date',
+                                _dueDate,
+                                () => _pickDate(due: true),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 20),
+                        Text(
+                          'Line item',
+                          style: GoogleFonts.poppins(
+                            fontWeight: FontWeight.w600,
+                            fontSize: 14,
                           ),
+                        ),
+                        const SizedBox(height: 10),
+                        _idField(
+                          _productId,
+                          'Product ID',
+                          Icons.inventory_2_outlined,
+                        ),
+                        const SizedBox(height: 12),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: _moneyField(
+                                _tradePrice,
+                                'Trade price',
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: _moneyField(
+                                _salePrice,
+                                'Sale price',
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: _moneyField(_qty, 'Quantity'),
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: _idField(
+                                _unitId,
+                                'Unit ID',
+                                Icons.straighten_outlined,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        _field(
+                          _unitBatchNo,
+                          'Unit batch no (optional)',
+                          Icons.tag_outlined,
+                          required: false,
+                        ),
+                        const SizedBox(height: 12),
+                        _moneyField(
+                          _totalAmount,
+                          'Total amount (৳)',
                           validator: (v) {
                             final n = double.tryParse(v?.trim() ?? '');
-                            if (n == null || n <= 0) {
-                              return 'Enter a valid amount';
-                            }
+                            if (n == null || n <= 0) return 'Required';
                             return null;
                           },
-                        ),
-                        const SizedBox(height: 14),
-                        InkWell(
-                          onTap: _pickDate,
-                          borderRadius: BorderRadius.circular(12),
-                          child: InputDecorator(
-                            decoration: _decoration(
-                              'Sale date',
-                              Icons.calendar_today_outlined,
-                            ),
-                            child: Text(
-                              DateFormat('dd MMM yyyy').format(_saleDate),
-                              style: GoogleFonts.poppins(fontSize: 14),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(height: 14),
-                        _field(
-                          controller: _productController,
-                          label: 'Product (optional)',
-                          icon: Icons.inventory_2_outlined,
-                        ),
-                        const SizedBox(height: 14),
-                        _field(
-                          controller: _quantityController,
-                          label: 'Quantity (optional)',
-                          icon: Icons.numbers_rounded,
-                          keyboardType: const TextInputType.numberWithOptions(
-                            decimal: true,
-                          ),
-                        ),
-                        const SizedBox(height: 14),
-                        _field(
-                          controller: _notesController,
-                          label: 'Notes (optional)',
-                          icon: Icons.notes_outlined,
-                          maxLines: 3,
                         ),
                         const SizedBox(height: 24),
                         SizedBox(
@@ -248,7 +410,7 @@ class _PostSaleScreenState extends State<PostSaleScreen> {
                                     ),
                                   )
                                 : Text(
-                                    'Submit sale',
+                                    'Submit order',
                                     style: GoogleFonts.poppins(
                                       fontWeight: FontWeight.w600,
                                       fontSize: 15,
@@ -268,6 +430,34 @@ class _PostSaleScreenState extends State<PostSaleScreen> {
     );
   }
 
+  Widget _dropdown({
+    required String label,
+    required String value,
+    required List<DropdownMenuItem<String>> items,
+    required ValueChanged<String?> onChanged,
+  }) {
+    return DropdownButtonFormField<String>(
+      value: value,
+      decoration: _decoration(label, Icons.category_outlined),
+      items: items,
+      onChanged: onChanged,
+    );
+  }
+
+  Widget _dateTile(String label, DateTime date, VoidCallback onTap) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: InputDecorator(
+        decoration: _decoration(label, Icons.calendar_today_outlined),
+        child: Text(
+          DateFormat('dd MMM yyyy').format(date),
+          style: GoogleFonts.poppins(fontSize: 14),
+        ),
+      ),
+    );
+  }
+
   InputDecoration _decoration(String label, IconData icon) {
     return InputDecoration(
       labelText: label,
@@ -282,21 +472,57 @@ class _PostSaleScreenState extends State<PostSaleScreen> {
     );
   }
 
-  Widget _field({
-    required TextEditingController controller,
-    required String label,
-    required IconData icon,
-    TextInputType? keyboardType,
-    String? Function(String?)? validator,
-    int maxLines = 1,
+  Widget _field(
+    TextEditingController controller,
+    String label,
+    IconData icon, {
+    bool required = true,
   }) {
     return TextFormField(
       controller: controller,
-      keyboardType: keyboardType,
-      maxLines: maxLines,
-      validator: validator,
+      keyboardType: TextInputType.text,
+      validator: required
+          ? (v) => (v == null || v.trim().isEmpty) ? 'Required' : null
+          : null,
       style: GoogleFonts.poppins(fontSize: 14),
       decoration: _decoration(label, icon),
+    );
+  }
+
+  Widget _idField(
+    TextEditingController controller,
+    String label,
+    IconData icon,
+  ) {
+    return TextFormField(
+      controller: controller,
+      keyboardType: TextInputType.number,
+      validator: (v) {
+        final n = int.tryParse(v?.trim() ?? '');
+        if (n == null || n <= 0) return 'Required';
+        return null;
+      },
+      style: GoogleFonts.poppins(fontSize: 14),
+      decoration: _decoration(label, icon),
+    );
+  }
+
+  Widget _moneyField(
+    TextEditingController controller,
+    String label, {
+    String? Function(String?)? validator,
+  }) {
+    return TextFormField(
+      controller: controller,
+      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+      validator: validator ??
+          (v) {
+            final n = double.tryParse(v?.trim() ?? '');
+            if (n == null || n <= 0) return 'Required';
+            return null;
+          },
+      style: GoogleFonts.poppins(fontSize: 14),
+      decoration: _decoration(label, Icons.payments_outlined),
     );
   }
 }
