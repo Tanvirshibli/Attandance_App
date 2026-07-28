@@ -211,6 +211,11 @@ class EndpointConfigService {
           url: '$sales/api/auth-wise-payments',
           backend: 'sales',
         ),
+        'payment.authWisePost': EndpointDefinition(
+          method: 'POST',
+          url: '$sales/api/auth-wise-payments',
+          backend: 'sales',
+        ),
         'sales.eligibility': ep('GET', '/api/get-sales-employee-list', 'hrm'),
         'sales.personSales': EndpointDefinition(
           method: 'GET',
@@ -228,7 +233,11 @@ class EndpointConfigService {
           url: '$sales/api/sales-person-sales',
           backend: 'sales',
         ),
-        'sales.create': ep('POST', '/api/v1/mobile/sales/postings', 'hrm'),
+        'sales.create': EndpointDefinition(
+          method: 'POST',
+          url: '$sales/api/sales-person-sales',
+          backend: 'sales',
+        ),
         'vehicle.list': EndpointDefinition(
           method: 'GET',
           url: '$transport/api/get-vehicle-active-list',

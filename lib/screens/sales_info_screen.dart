@@ -213,11 +213,14 @@ class _SalesInfoScreenState extends State<SalesInfoScreen>
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            'Demo sale saved on this device.',
+            _salesService.useCreateDemo
+                ? 'Demo order saved (live sales disabled).'
+                : 'Sale submitted successfully.',
             style: GoogleFonts.poppins(),
           ),
         ),
       );
+      await _loadSales();
     }
   }
 
