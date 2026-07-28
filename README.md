@@ -125,7 +125,7 @@ Install the ABI that matches the device (prefer `app-arm64-v8a-release.apk`). Do
 | `API_BASE_URLS` | Auth fallback list (comma-separated) |
 | `ATTENDANCE_API_BASE_URLS` | Attendance fallback list |
 | `USE_SALES_DEMO_DATA` | `false` (default) → live person-sales report; `true` → demo reporting |
-| `SALES_API_BASE_URL` | Sales host (default `http://43.224.116.185:8001`) |
+| `SALES_API_BASE_URL` | Sales host (default `https://sales.peoplesitsolution.online`) |
 | `USE_PAYMENT_DEMO_DATA` | `true` (default) → Payments demo UI; `false` → live HRM payment APIs |
 
 `backendApiBaseUrl` is an alias for the HRM/ERP base (leaves, holidays, sales, payments, etc.).

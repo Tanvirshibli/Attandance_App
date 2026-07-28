@@ -3,7 +3,7 @@
 **Last updated:** July 23, 2026  
 **Audience:** External sales backend team · pphl_erp (HRM) · ZKTeco Mobile App API admins  
 **App:** `Attandance_App` (Flutter)  
-**Status:** **Sales Info reporting is live** against the person-sales API (no auth). **Post Sale** remains device demo until a create API exists. Payments still demo by default.
+**Status:** **Sales Info reporting and Post Sale create are live** against `https://sales.peoplesitsolution.online` when `USE_SALES_DEMO_DATA=false` (default). **Auth-wise payment POST** is live when `payment.enabled` is on. HRM loan/payslip screens still demo by default (`USE_PAYMENT_DEMO_DATA=true`).
 
 ---
 
@@ -13,12 +13,12 @@
 | Module   | Compile-time flag                           | Default        | Live requirement                                      |
 | -------- | ------------------------------------------- | -------------- | ----------------------------------------------------- |
 | Sales reporting | `--dart-define=USE_SALES_DEMO_DATA=true` | `false` (live) | Person-sales GET + HRM eligibility list               |
-| Sales create (Post sale) | — (always demo for now) | demo store | Future create endpoint                                |
+| Sales create (Post sale) | `--dart-define=USE_SALES_DEMO_DATA=true` | `false` (live) | `POST /api/sales-person-sales` (form-data) |
 | Payments | `--dart-define=USE_PAYMENT_DEMO_DATA=false` | `true` (demo)  | Existing pphl_erp JWT APIs + ZKTeco `payment.enabled` |
 
 
 Sales reporting base URL (override): `--dart-define=SALES_API_BASE_URL=http://host:port`  
-Default: `http://43.224.116.185:8001`
+Default: `https://sales.peoplesitsolution.online`
 
 ZKTeco dashboard (**Settings → Mobile App API**) can override endpoint URLs and feature flags without an app rebuild:
 
@@ -148,13 +148,49 @@ App parsers also accept legacy camelCase employee keys and module `details[]` (a
 
 Android UI: overall KPI strip (orders, returns, sales, qty-by-unit) → module tabs → summary + expandable Products / Dealers / Sectors / Line details.
 
-### A.2 Create sale (Post Sale) — still demo
+### A.2 Create sale (Post Sale) — live
 
-There is **no live create endpoint** yet. The app keeps **Post sale** UI and stores submissions in an in-memory demo list for the session.
+`POST {SALES_API_BASE_URL}/api/sales-person-sales`
 
-Future target (when available):
+**Content-Type:** `multipart/form-data` (same field names as Postman form-data).
 
-`POST /api/v1/mobile/sales/postings` with body `{ employeeId, saleDate, amount, customerName, productName?, quantity?, notes? }`.
+| Field | Example |
+| ----- | ------- |
+| `module` | `feed` |
+| `salesPersonId` | `27` |
+| `dealerId` | `235` |
+| `salesPointId` | `28` |
+| `companyId` | `2` |
+| `totalAmount` | `5900` |
+| `invoiceDate` / `dueDate` | `YYYY-MM-DD` |
+| `saleType` | `Cash` |
+| `details[0][productId]` | `45` |
+| `details[0][tradePrice]` | `2850` |
+| `details[0][salePrice]` | `2950` |
+| `details[0][qty]` | `100` |
+| `details[0][unitId]` | `1` |
+| `details[0][unitBatchNo]` | optional |
+
+**Success:**
+
+```json
+{
+  "success": true,
+  "message": "Sales person order created successfully.",
+  "data": {
+    "module": "feed",
+    "id": 4057,
+    "reference_no": "CFO26074057",
+    "status": "pending",
+    "salesPerson": 27,
+    "totalAmount": 5900
+  }
+}
+```
+
+App config key: `sales.create` (POST, full URL or path).
+
+When `USE_SALES_DEMO_DATA=true`, Post Sale stays on-device demo only.
 
 ### A.3 Errors
 
@@ -170,7 +206,7 @@ Future target (when available):
 | `sales.eligibility` | GET    | HRM `/api/get-sales-employee-list` |
 | `sales.personSales` | GET    | `{salesBase}/api/sales-person-sales` (app appends `/{id}`) |
 | `sales.overview` / `sales.list` | GET | Legacy aliases → same person-sales base (unused by UI) |
-| `sales.create`      | POST   | Reserved; Post Sale still demo |
+| `sales.create`      | POST   | `{salesBase}/api/sales-person-sales` (form-data) |
 
 Enable `feature.sales.enabled` (default true in app fallback).
 
@@ -320,7 +356,7 @@ Enable `feature.payment.enabled` for the live auth-wise Payments report (HRM pay
 **Rules**
 
 - **No auth** — open GET; path id = logged-in `canonicalEmployeeId`.
-- Same host default as Sales: `http://43.224.116.185:8001`.
+- Same host default as Sales: `https://sales.peoplesitsolution.online`.
 - App config key: `payment.authWise` (base path without trailing id).
 - Feature gate: ZKTeco `feature.payment.enabled` / app `payment.enabled` (**must be on**).
 
@@ -355,6 +391,32 @@ Enable `feature.payment.enabled` for the live auth-wise Payments report (HRM pay
 Modules: `egg`, `feed`, `fertilizer`, `chicks`, `liveBird`, `cullBird`, `unclassified`.
 
 HRM payslip/loan/PF screens remain under **HR benefits** on the same Payments page and still default to demo (`USE_PAYMENT_DEMO_DATA`).
+
+### C.1 Create auth-wise payment (Post receive)
+
+`POST {SALES_API_BASE_URL}/api/auth-wise-payments`
+
+**Content-Type:** `multipart/form-data`.
+
+| Field | Example |
+| ----- | ------- |
+| `employeeId` | `27` |
+| `payments[0][companyId]` | `3` |
+| `payments[0][recType]` | `1` |
+| `payments[0][receiverId]` | `235` (dealer) |
+| `payments[0][amount]` | `1000` |
+| `payments[0][recDate]` | `YYYY-MM-DD` |
+| `payments[0][paymentType]` | `67` |
+| `payments[0][paymentMode]` | `2` |
+| `payments[0][paymentFor]` | `2` |
+| `payments[0][invoiceType]` | `2` |
+| `payments[0][note]` | optional |
+| `payments[0][trxId]` | optional |
+| `payments[0][ref]` | optional |
+
+App config key: `payment.authWisePost` (POST; falls back to `payment.authWise` URL).
+
+**Success:** `success`, `message`, `data.createdPaymentCount`, `data.payments[].voucherNo`.
 
 ---
 

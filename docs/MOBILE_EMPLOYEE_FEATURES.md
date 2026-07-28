@@ -45,11 +45,12 @@ This document describes the employee self-service modules in **Attandance_App**.
 | Mess deposit | HRM `GET /api/v1/mess-deposit-employee` | **Demo default** / live ready |
 | Compensation | HRM `GET /api/v1/facility-employee` | **Demo default** / live ready |
 | Sales eligibility | HRM `GET /api/get-sales-employee-list` | **Wired** |
-| Sales person report | Sales `GET /api/sales-person-sales/{employeeId}?from_date=&to_date=` (no auth) | **Live** (default host `http://43.224.116.185:8001`; requires ZKTeco `sales.enabled=true`) |
+| Sales person report | Sales `GET /api/sales-person-sales/{employeeId}?from_date=&to_date=` (no auth) | **Live** (default host `https://sales.peoplesitsolution.online`; requires ZKTeco `sales.enabled=true`) |
 | Auth-wise payments | Sales host `GET /api/auth-wise-payments/{employeeId}?from_date=&to_date=` (no auth) | **Live** (requires ZKTeco `payment.enabled=true`) |
 | Vehicles list | Transport `GET /api/get-vehicle-active-list` (no auth) | **Live** (requires ZKTeco `vehicle.enabled=true`) |
 | Vehicle maintenance | Transport `GET /api/get-vehicle-m-history/{id}` (no auth) | **Live** |
-| Post sale | In-app demo store | **Demo** until create API exists |
+| Post sale | Sales `POST /api/sales-person-sales` (form-data) | **Live** when `USE_SALES_DEMO_DATA=false` |
+| Auth-wise payment post | Sales `POST /api/auth-wise-payments` (form-data) | **Live** when `payment.enabled=true` |
 | Geo location upload | ZKTeco `POST /api/v1/mobile/geo-location` | **Wired** |
 | App endpoint config | ZKTeco `GET /api/v1/mobile/app-config` | **Wired** |
 | Holidays | HRM `GET /api/v1/mobile/holidays` | **Wired** |
