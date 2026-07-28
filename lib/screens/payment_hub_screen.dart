@@ -17,6 +17,7 @@ import 'loan_list_screen.dart';
 import 'mess_deposit_screen.dart';
 import 'payment_report_screen.dart';
 import 'payslip_list_screen.dart';
+import 'post_auth_wise_payment_screen.dart';
 import 'post_payment_screen.dart';
 import 'provident_fund_screen.dart';
 
@@ -270,6 +271,43 @@ class _PaymentHubScreenState extends State<PaymentHubScreen>
                           options: _periods,
                           selected: _period,
                           onSelected: _onPeriodChanged,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      FadeInUp(
+                        delay: const Duration(milliseconds: 40),
+                        child: SizedBox(
+                          width: double.infinity,
+                          child: OutlinedButton.icon(
+                            onPressed: () async {
+                              final saved = await Navigator.of(context).push<bool>(
+                                MaterialPageRoute(
+                                  builder: (_) =>
+                                      const PostAuthWisePaymentScreen(),
+                                ),
+                              );
+                              if (saved == true && mounted) {
+                                await _loadPayments();
+                              }
+                            },
+                            icon: const Icon(Icons.add_card_outlined),
+                            label: Text(
+                              'Receive dealer payment',
+                              style: GoogleFonts.poppins(
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            style: OutlinedButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(vertical: 14),
+                              side: BorderSide(
+                                color: AppColors.success.withValues(alpha: 0.6),
+                              ),
+                              foregroundColor: AppColors.success,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(14),
+                              ),
+                            ),
+                          ),
                         ),
                       ),
                       if (_period == 'Custom' &&
