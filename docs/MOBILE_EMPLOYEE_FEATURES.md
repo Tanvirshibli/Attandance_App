@@ -10,7 +10,7 @@ This document describes the employee self-service modules in **Attandance_App**.
 
 | Entry point | Destination |
 |-------------|-------------|
-| Footer **Services** tab | `EmployeeServicesHubScreen` (Attendance Report, Leave, Payments, Sales Info, Geo Tracking) |
+| Footer **Services** tab | `EmployeeServicesHubScreen` (Attendance Report, Leave, Payments, Sales Info, Vehicles, Geo Tracking) |
 | Profile → Quick Actions → Leave Request | `LeaveHubScreen` |
 | Profile → Quick Actions → View Reports | `AttendanceReportScreen` |
 | Profile → Settings → Location Services | `GeoTrackingScreen` |
@@ -22,6 +22,7 @@ This document describes the employee self-service modules in **Attandance_App**.
 - Leave (single page: balance cards + history report + apply)
 - Payments (payslips, loans, PF, mess, compensation, post payment — demo by default)
 - Sales Info (live overall + module breakdown; Post sale still demo)
+- Vehicles (active fleet list + maintenance history)
 - Geo Tracking
 
 ---
@@ -44,15 +45,18 @@ This document describes the employee self-service modules in **Attandance_App**.
 | Mess deposit | HRM `GET /api/v1/mess-deposit-employee` | **Demo default** / live ready |
 | Compensation | HRM `GET /api/v1/facility-employee` | **Demo default** / live ready |
 | Sales eligibility | HRM `GET /api/get-sales-employee-list` | **Wired** |
-| Sales person report | Sales `GET /api/sales-person-sales/{employeeId}?from_date=&to_date=` (no auth) | **Live** (default) |
+| Sales person report | Sales `GET /api/sales-person-sales/{employeeId}?from_date=&to_date=` (no auth) | **Live** (default host `http://43.224.116.185:8001`; requires ZKTeco `sales.enabled=true`) |
+| Auth-wise payments | Sales host `GET /api/auth-wise-payments/{employeeId}?from_date=&to_date=` (no auth) | **Live** (requires ZKTeco `payment.enabled=true`) |
+| Vehicles list | Transport `GET /api/get-vehicle-active-list` (no auth) | **Live** (requires ZKTeco `vehicle.enabled=true`) |
+| Vehicle maintenance | Transport `GET /api/get-vehicle-m-history/{id}` (no auth) | **Live** |
 | Post sale | In-app demo store | **Demo** until create API exists |
 | Geo location upload | ZKTeco `POST /api/v1/mobile/geo-location` | **Wired** |
 | App endpoint config | ZKTeco `GET /api/v1/mobile/app-config` | **Wired** |
 | Holidays | HRM `GET /api/v1/mobile/holidays` | **Wired** |
 | JWT refresh | HRM `POST /api/v1/refresh` | **Wired** |
 | Geo history | ZKTeco `GET /api/v1/mobile/geo-location` | **Wired** |
-| FCM token register | ZKTeco `POST /api/v1/mobile/fcm-token` | **Scaffold** |
-| FCM wake for geo | Firebase Cloud Messaging | **Scaffold** |
+| FCM token register | ZKTeco `POST /api/v1/mobile/fcm-token` | **Wired** (`google-services.json` present for Android) |
+| FCM wake for geo | Firebase Cloud Messaging + ZKTeco `zkteco:geo-fcm-wake` | **Wired** (local stack: `GEO_FCM_WAKE_ENABLED` + service account in container storage) |
 
 Handoff for backend teams: **[SALES_AND_PAYMENTS_API_CONTRACT.md](SALES_AND_PAYMENTS_API_CONTRACT.md)**.
 
@@ -67,18 +71,24 @@ Handoff for backend teams: **[SALES_AND_PAYMENTS_API_CONTRACT.md](SALES_AND_PAYM
 - Force reporting demo: `--dart-define=USE_SALES_DEMO_DATA=true`
 - Override sales host: `--dart-define=SALES_API_BASE_URL=...`
 
-### Payments hub (v2.2)
+### Vehicles (live)
 
-- Summary strip: latest net pay, open loan remaining, PF closing balance
-- Sections: Payslips (list + detail), My loans, Loan payments, Post payment, Provident fund, Mess deposit, Compensation
-- Demo data mirrors HRM `PayrollResource` / `LoanResource` / `LoanPaymentResource` field names
-- Live switch: `USE_PAYMENT_DEMO_DATA=false` + existing JWT `/api/v1` routes (no HRM code changes)
+- Services tile → active vehicle list (`numberPlate` / `tVehicleNo`, purchase date)
+- Tap vehicle → maintenance history (job title, status, costs, workshop, expandable parts)
+- Host: `https://transport.peoplesitsolution.online` (override `--dart-define=TRANSPORT_API_BASE_URL=...`)
+- Requires ZKTeco `vehicle.enabled=true`
+
+### Payments hub (v2.3)
+
+- **Primary:** live auth-wise payment-receive report (same host as Sales) — date chips, overall KPIs, module tabs (Egg…Other)
+- **Secondary HR benefits:** Payslips, My loans, Loan payments, Post payment, Provident fund, Mess deposit, Compensation (still demo by default via `USE_PAYMENT_DEMO_DATA`)
+- Requires ZKTeco `payment.enabled=true` and endpoint `payment.authWise`
 
 ### Endpoint configuration
 
 - First launch: **Server Bootstrap** — enter ZKTeco base URL only
 - Admin maps APIs in ZKTeco: **Settings → Mobile App API**
-- Feature flags: `sales.enabled`, `payment.enabled`, `geo.tracking.enabled`
+- Feature flags: `sales.enabled`, `payment.enabled`, `vehicle.enabled`, `geo.tracking.enabled`
 - Sales reporting defaults live; Payments remain demo until dart-define flip
 
 ---

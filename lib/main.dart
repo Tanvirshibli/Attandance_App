@@ -7,6 +7,7 @@ import 'screens/server_bootstrap_screen.dart';
 import 'services/auth_service.dart';
 import 'services/endpoint_config_service.dart';
 import 'services/face_recognition_service.dart';
+import 'services/fcm_wake_handler.dart';
 import 'services/geo_tracking_service.dart';
 
 void main() async {
@@ -70,6 +71,9 @@ class _AppBootstrapState extends State<AppBootstrap> {
 
     final profile = await _authService.getCurrentUserProfile();
     _faceRecognitionService.hydrateRegistration(profile?.faceRegistration);
+    try {
+      await FcmWakeHandler.syncTokenWithBackend();
+    } catch (_) {}
     return _BootstrapState.authenticated;
   }
 

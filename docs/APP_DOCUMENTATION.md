@@ -15,7 +15,7 @@
 
 > March 8, 2026 ZKTeco workflow update: backend ZKTeco attendance now also ingests ADMS `querydata` transaction history when live `rtlog` uploads are missing. Machine punches aggregate per day so the first punch becomes check-in and the last punch becomes check-out.
 
-> July 9, 2026 reliability + geo map update: JWT refresh + 401 retry, endpoint config refresh on login/resume, geo history + ongoing notification + live OpenStreetMap (`flutter_map`), FCM scaffold (needs `google-services.json`), Home/Attendance KPIs from live summary (Alerts empty until notifications API). See `docs/MOBILE_EMPLOYEE_FEATURES.md`.
+> July 9, 2026 reliability + geo map update: JWT refresh + 401 retry, endpoint config refresh on login/resume, geo history + ongoing notification + live OpenStreetMap (`flutter_map`), FCM geo wake (needs `google-services.json`), Home/Attendance KPIs from live summary (Alerts empty until notifications API). See `docs/MOBILE_EMPLOYEE_FEATURES.md`.
 >
 > July 9, 2026 Home dashboard data fix: today-only clocked-in (no non-today fallback), flexible punch datetime parsing, summary KPIs from single-employee `data.rows` attendance types, weekly hours include open shifts, sequenced profile→attendance load, JWT empty list → ZKTeco fallback.
 >
@@ -878,7 +878,7 @@ The current stack uses **ML Kit for detection** and **MobileFaceNet for identity
 
 ### Auth / geo reliability
 - `AuthService.refreshToken()` + `HrmApiClient` 401 retry.
-- Geo ongoing notification via `GeoNotificationService`; FCM wake remains scaffolded in `FcmWakeHandler` until Firebase is configured.
+- Geo ongoing notification via `GeoNotificationService`; FCM wake is active in `FcmWakeHandler` when Firebase is configured (`google-services.json`).
 - `GeoTrackingScreen` uses `LiveLocationMap` (OpenStreetMap / `flutter_map`) for a live GPS view with history pins.
 
 ### `lib/screens/home_screen.dart` (545 lines)

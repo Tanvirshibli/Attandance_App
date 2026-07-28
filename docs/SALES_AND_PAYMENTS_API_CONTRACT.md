@@ -22,9 +22,9 @@ Default: `http://43.224.116.185:8001`
 
 ZKTeco dashboard (**Settings → Mobile App API**) can override endpoint URLs and feature flags without an app rebuild:
 
-- `feature.sales.enabled` (fallback default `true`)
-- `feature.payment.enabled`
-- Endpoint keys listed below
+- `feature.sales.enabled` (**must be on** for Sales Info; when off the app shows a disabled-module empty state and does not call person-sales)
+- `feature.payment.enabled` (**must be on** for auth-wise Payments report)
+- Endpoint keys listed below (including `sales.personSales`, `payment.authWise`)
 
 **Canonical employee id:** always numeric `employees.id` from HRM `GET /api/v1/get-my-info` (`user.employeeId` / app `canonicalEmployeeId`). **Do not** use display `emp_id` strings.
 
@@ -302,7 +302,7 @@ Fields: `basics`, `houses`, `medicals`, `foods`, `sGross`, `mobileBill`, `mess`,
 | `payment.facility`       | GET    | `/api/v1/facility-employee`          |
 
 
-Enable `feature.payment.enabled` when going live (optional gate; demo mode ignores it).
+Enable `feature.payment.enabled` for the live auth-wise Payments report (HRM payslip/loan demo still uses `USE_PAYMENT_DEMO_DATA`).
 
 ### B.9 Important HRM quirks (no backend change required)
 
@@ -313,7 +313,50 @@ Enable `feature.payment.enabled` when going live (optional gate; demo mode ignor
 
 ---
 
+## Part C — Auth-wise payment receive (live on Payments page)
 
+`GET {SALES_API_BASE_URL}/api/auth-wise-payments/{employeeId}?from_date=YYYY-MM-DD&to_date=YYYY-MM-DD`
+
+**Rules**
+
+- **No auth** — open GET; path id = logged-in `canonicalEmployeeId`.
+- Same host default as Sales: `http://43.224.116.185:8001`.
+- App config key: `payment.authWise` (base path without trailing id).
+- Feature gate: ZKTeco `feature.payment.enabled` / app `payment.enabled` (**must be on**).
+
+**Success shape (summary)**
+
+```json
+{
+  "success": true,
+  "message": "...",
+  "data": {
+    "employee": { "id": 14, "employeeId": 19, "employeeName": "..." },
+    "filters": { "from_date": "2026-07-01", "to_date": "2026-07-27" },
+    "overall": {
+      "total_payments": 1,
+      "total_amount": 2500,
+      "total_dealers": 1,
+      "total_companies": 1,
+      "module_totals": { "chicks": { "total_payments": 1, "total_amount": 2500 } }
+    },
+    "egg": { "data": [], "summary": {}, "dealers": [], "companies": [], "payment_methods": [] },
+    "chicks": {
+      "data": [{ "id": 27917, "voucher_no": "...", "amount": 2500, "dealer_name": "...", "module": "chicks" }],
+      "summary": { "total_payments": 1, "total_amount": 2500 },
+      "dealers": [],
+      "companies": [],
+      "payment_methods": []
+    }
+  }
+}
+```
+
+Modules: `egg`, `feed`, `fertilizer`, `chicks`, `liveBird`, `cullBird`, `unclassified`.
+
+HRM payslip/loan/PF screens remain under **HR benefits** on the same Payments page and still default to demo (`USE_PAYMENT_DEMO_DATA`).
+
+---
 
 ## Checklist for dependency teams
 

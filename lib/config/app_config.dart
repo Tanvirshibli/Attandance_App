@@ -28,6 +28,13 @@ class AppConfig {
     defaultValue: 'http://43.224.116.185:8001',
   );
 
+  /// Transport / fleet fleet API. Override with
+  /// `--dart-define=TRANSPORT_API_BASE_URL=...`.
+  static const String transportApiBaseUrl = String.fromEnvironment(
+    'TRANSPORT_API_BASE_URL',
+    defaultValue: 'https://transport.peoplesitsolution.online',
+  );
+
   /// When true (default), Payments hub uses local demo data shaped like HRM
   /// resources. Pass `--dart-define=USE_PAYMENT_DEMO_DATA=false` with
   /// `payment.enabled` to hit live pphl_erp payment APIs.
@@ -199,9 +206,9 @@ class AppConfig {
   static String get salesEmployeeListUrl =>
       '$backendApiBaseUrl/api/get-sales-employee-list';
 
-  /// Reserved for future backend geo upload — not implemented yet.
+  /// ZKTeco geo upload fallback when endpoint config resolve fails.
   static String get geoLocationUploadUrl =>
-      '$backendApiBaseUrl/api/v1/mobile/geo-location';
+      '$attendanceApiBaseUrl/api/v1/mobile/geo-location';
 
   static const int geoTrackingIntervalMinutes = 5;
 }

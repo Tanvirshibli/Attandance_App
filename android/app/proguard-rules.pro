@@ -32,6 +32,15 @@
 -keep class com.google.android.gms.location.** { *; }
 -dontwarn com.google.android.gms.**
 
+# Firebase / FCM
+-keep class com.google.firebase.** { *; }
+-keep class com.google.android.gms.** { *; }
+-dontwarn com.google.firebase.**
+-keepattributes Signature
+-keepattributes *Annotation*
+-keepattributes EnclosingMethod
+-keepattributes InnerClasses
+
 # WorkManager
 -keep class androidx.work.** { *; }
 
