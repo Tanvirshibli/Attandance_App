@@ -27,6 +27,7 @@ class _SalesInfoScreenState extends State<SalesInfoScreen>
 
   bool _isLoading = true;
   bool _isEligible = false;
+  String? _unavailableReason;
   String? _employeeName;
   String? _error;
   String _period = 'This month';
@@ -136,6 +137,7 @@ class _SalesInfoScreenState extends State<SalesInfoScreen>
     if (!eligible) {
       setState(() {
         _isEligible = false;
+        _unavailableReason = eligibility.data?.unavailableReason;
         _employeeName = eligibility.data?.employeeName ?? profile?.name;
         _isLoading = false;
       });
@@ -144,6 +146,7 @@ class _SalesInfoScreenState extends State<SalesInfoScreen>
 
     setState(() {
       _isEligible = true;
+      _unavailableReason = null;
       _employeeId = employeeId;
       _employeeName = eligibility.data?.employeeName ?? profile?.name;
     });
@@ -268,9 +271,12 @@ class _SalesInfoScreenState extends State<SalesInfoScreen>
                   padding: const EdgeInsets.all(20),
                   child: ApiEmptyState(
                     icon: Icons.trending_up_outlined,
-                    title: 'Sales not available',
-                    subtitle:
-                        'Your employee profile is not on the sales team list. Contact HR if this is unexpected.',
+                    title: _unavailableReason == SalesProfile.featureDisabled
+                        ? 'Sales module disabled'
+                        : 'Sales not available',
+                    subtitle: _unavailableReason == SalesProfile.featureDisabled
+                        ? 'Sales Info is turned off in mobile app settings. Ask an admin to enable the Sales module.'
+                        : 'Your employee profile is not on the sales team list. Contact HR if this is unexpected.',
                   ),
                 ),
               ),
