@@ -99,6 +99,8 @@ Handoff for backend teams: **[SALES_AND_PAYMENTS_API_CONTRACT.md](SALES_AND_PAYM
 powershell -ExecutionPolicy Bypass -File .\scripts\build-dev-tunnel-apk.ps1
 ```
 
+`build-dev-tunnel-apk.ps1` auto-increments the Flutter build number in `pubspec.yaml` (`version: X.Y.Z+N` → `N+1`) on every run. Marketing version `X.Y.Z` is unchanged. Profile → About shows live `v{version}+{buildNumber}` via `package_info_plus`.
+
 Live payments:
 
 ```powershell
@@ -111,4 +113,4 @@ Force sales reporting demo:
 flutter build apk --release --split-per-abi --target-platform android-arm,android-arm64 --obfuscate --split-debug-info=build/app/outputs/symbols --dart-define=USE_SALES_DEMO_DATA=true
 ```
 
-Version: **2.2.1**
+Version: **2.2.1** (build number auto-bumped by tunnel script)

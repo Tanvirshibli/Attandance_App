@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:animate_do/animate_do.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import '../config/theme.dart';
 import '../models/auth_user_profile.dart';
 import '../services/auth_service.dart';
@@ -24,11 +25,28 @@ class _ProfileScreenState extends State<ProfileScreen> {
   AuthUserProfile _profile = AuthUserProfile.fallback();
   bool _isLoadingProfile = true;
   String? _profileError;
+  String _appVersionLabel = '…';
 
   @override
   void initState() {
     super.initState();
     _loadProfile();
+    _loadAppVersion();
+  }
+
+  Future<void> _loadAppVersion() async {
+    try {
+      final info = await PackageInfo.fromPlatform();
+      if (!mounted) return;
+      setState(() {
+        _appVersionLabel = 'v${info.version}+${info.buildNumber}';
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _appVersionLabel = 'v—';
+      });
+    }
   }
 
   Future<void> _loadProfile() async {
@@ -471,7 +489,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           _settingsDivider(),
           _settingsTile(Icons.help_outline, 'Help & Support', null),
           _settingsDivider(),
-          _settingsTile(Icons.info_outline, 'About', null, trailing: 'v2.1.0'),
+          _settingsTile(Icons.info_outline, 'About', null, trailing: _appVersionLabel),
         ],
       ),
     );

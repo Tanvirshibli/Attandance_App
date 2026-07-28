@@ -83,6 +83,8 @@ cd Attandance_App
 powershell -ExecutionPolicy Bypass -File .\scripts\build-dev-tunnel-apk.ps1
 ```
 
+Each run bumps `pubspec.yaml` build number (`+N`). Profile → About shows `v{version}+{buildNumber}`.
+
 Outputs (phone):
 
 - `build/app/outputs/flutter-apk/app-arm64-v8a-release.apk` — modern phones

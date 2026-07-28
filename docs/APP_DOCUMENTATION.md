@@ -310,8 +310,9 @@ LoginScreen
 
 | Aspect | Detail |
 |---|---|
-| **State** | `StatelessWidget` |
+| **State** | `StatefulWidget` |
 | **Sections** | Header (avatar, name, designation, employee ID), Personal Info card, Quick Actions (Leave Request, View Reports, **Register Face**, My QR Code), Settings (Notifications, Location, Dark Mode, Language, Password, Help, About), Sign Out |
+| **About** | Trailing label from `PackageInfo` as `v{version}+{buildNumber}` (not hardcoded) |
 | **Face Reg** | "Register Face" quick action card navigates to `FaceRegistrationScreen` |
 | **Sign Out** | `pushAndRemoveUntil` → `LoginScreen` |
 
@@ -934,8 +935,8 @@ The current stack uses **ML Kit for detection** and **MobileFaceNet for identity
 ### `android/app/src/main/AndroidManifest.xml` (52 lines)
 - App label "PPHL Attendance", permissions for camera + location + internet, single-top launch mode.
 
-### `pubspec.yaml` (111 lines)
-- Package name `employee_attendance`, version 2.0.0+2, Dart SDK ^3.11.0, 18 production dependencies, MobileFaceNet asset.
+### `pubspec.yaml`
+- Package name `employee_attendance`, version `2.2.1+N` (build `N` auto-incremented by `scripts/build-dev-tunnel-apk.ps1`), Dart SDK ^3.11.0, includes `package_info_plus`, MobileFaceNet asset.
 
 ### `assets/models/mobilefacenet.tflite` (~5.2 MB)
 - Pre-trained MobileFaceNet TensorFlow Lite model. Input: 1×112×112×3 float32 (pixel values normalized to [-1,1]). Output: 1×192 float32 embedding.

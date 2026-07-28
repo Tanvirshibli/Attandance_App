@@ -31,6 +31,32 @@ function Get-FlutterExe {
     throw 'Flutter SDK not found. Install to C:\flutter or add flutter to PATH.'
 }
 
+function Update-PubspecBuildNumber {
+    $pubspecPath = Join-Path $projectRoot 'pubspec.yaml'
+    if (-not (Test-Path -LiteralPath $pubspecPath)) {
+        throw "pubspec.yaml not found: $pubspecPath"
+    }
+
+    $content = Get-Content -LiteralPath $pubspecPath -Raw
+    if ($content -notmatch '(?m)^version:\s*([0-9]+\.[0-9]+\.[0-9]+)\+(\d+)\s*$') {
+        throw 'Could not parse version: X.Y.Z+N from pubspec.yaml'
+    }
+
+    $versionName = $Matches[1]
+    $oldBuild = [int]$Matches[2]
+    $newBuild = $oldBuild + 1
+    $newLine = "version: $versionName+$newBuild"
+    $updated = [regex]::Replace(
+        $content,
+        '(?m)^version:\s*[0-9]+\.[0-9]+\.[0-9]+\+\d+\s*$',
+        $newLine,
+        1
+    )
+    Set-Content -LiteralPath $pubspecPath -Value $updated -NoNewline
+    Write-Host "Build number: $oldBuild -> $newBuild (version $versionName+$newBuild)" -ForegroundColor Green
+    return "$versionName+$newBuild"
+}
+
 $flutter = Get-FlutterExe
 
 $localProps = Join-Path $projectRoot 'android\local.properties'
@@ -45,6 +71,8 @@ if (Test-Path -LiteralPath $localProps) {
     }
 }
 
+$appVersion = Update-PubspecBuildNumber
+
 $symbolsDir = Join-Path $projectRoot 'build\app\outputs\symbols'
 New-Item -ItemType Directory -Force -Path $symbolsDir | Out-Null
 
@@ -58,6 +86,7 @@ if ($Emulator) {
     Write-Host 'Building Attandance_App release APKs (tunnel, split-per-ABI phone)...' -ForegroundColor Cyan
 }
 
+Write-Host "  App version: $appVersion"
 Write-Host '  AUTH/ERP:  https://hrm.peoplesitsolution.online'
 Write-Host '  ZKTeco:    https://zktecolocal.peoplesitsolution.online'
 Write-Host "  Platforms: $platforms"
@@ -95,4 +124,5 @@ if (-not $found) {
 }
 
 Write-Host ''
+Write-Host "Built app version: $appVersion" -ForegroundColor Cyan
 Write-Host 'Install tip: modern phones -> app-arm64-v8a-release.apk; 32-bit -> app-armeabi-v7a-release.apk; AVD -> use -Emulator.' -ForegroundColor DarkGray
