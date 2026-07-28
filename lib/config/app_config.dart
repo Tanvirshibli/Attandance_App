@@ -25,7 +25,7 @@ class AppConfig {
   /// `--dart-define=SALES_API_BASE_URL=...`.
   static const String salesApiBaseUrl = String.fromEnvironment(
     'SALES_API_BASE_URL',
-    defaultValue: 'http://43.224.116.185:8001',
+    defaultValue: 'https://sales.peoplesitsolution.online',
   );
 
   /// Transport / fleet fleet API. Override with
