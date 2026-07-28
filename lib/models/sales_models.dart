@@ -116,10 +116,17 @@ class SalesProfile {
   const SalesProfile({
     required this.isEligible,
     this.employeeName,
+    this.unavailableReason,
   });
 
   final bool isEligible;
   final String? employeeName;
+
+  /// When [isEligible] is false: `feature_disabled` or `not_on_list`.
+  final String? unavailableReason;
+
+  static const featureDisabled = 'feature_disabled';
+  static const notOnList = 'not_on_list';
 }
 
 class SalesPersonEmployee {
