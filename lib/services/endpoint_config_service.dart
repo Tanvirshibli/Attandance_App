@@ -175,6 +175,7 @@ class EndpointConfigService {
         'payment.enabled': true,
         'vehicle.enabled': true,
         'geo.tracking.enabled': true,
+        'marketing.enabled': true,
         'interval_minutes': AppConfig.geoTrackingIntervalMinutes,
       },
       endpoints: {
@@ -216,6 +217,11 @@ class EndpointConfigService {
           url: '$sales/api/auth-wise-payments',
           backend: 'sales',
         ),
+        'payment.setupData': EndpointDefinition(
+          method: 'GET',
+          url: '$sales/api/payment-setup-data',
+          backend: 'sales',
+        ),
         'sales.eligibility': ep('GET', '/api/get-sales-employee-list', 'hrm'),
         'sales.personSales': EndpointDefinition(
           method: 'GET',
@@ -238,6 +244,16 @@ class EndpointConfigService {
           url: '$sales/api/sales-person-sales',
           backend: 'sales',
         ),
+        'sales.booking.create': EndpointDefinition(
+          method: 'POST',
+          url: '$sales/api/booking-person-books',
+          backend: 'sales',
+        ),
+        'sales.allDealers': EndpointDefinition(
+          method: 'GET',
+          url: '$sales/api/all-dealer-lists',
+          backend: 'sales',
+        ),
         'vehicle.list': EndpointDefinition(
           method: 'GET',
           url: '$transport/api/get-vehicle-active-list',
@@ -247,6 +263,56 @@ class EndpointConfigService {
           method: 'GET',
           url: '$transport/api/get-vehicle-m-history',
           backend: 'transport',
+        ),
+        'marketing.markets': ep(
+          'GET',
+          '/api/v1/mobile/marketing/markets',
+          'zkteco',
+        ),
+        'marketing.parties': ep(
+          'GET',
+          '/api/v1/mobile/marketing/parties',
+          'zkteco',
+        ),
+        'marketing.party.create': ep(
+          'POST',
+          '/api/v1/mobile/marketing/parties',
+          'zkteco',
+        ),
+        'marketing.visits': ep(
+          'GET',
+          '/api/v1/mobile/marketing/visits',
+          'zkteco',
+        ),
+        'marketing.visit.create': ep(
+          'POST',
+          '/api/v1/mobile/marketing/visits',
+          'zkteco',
+        ),
+        'marketing.surveys': ep(
+          'GET',
+          '/api/v1/mobile/marketing/farm-surveys',
+          'zkteco',
+        ),
+        'marketing.survey.create': ep(
+          'POST',
+          '/api/v1/mobile/marketing/farm-surveys',
+          'zkteco',
+        ),
+        'marketing.followups': ep(
+          'GET',
+          '/api/v1/mobile/marketing/followups',
+          'zkteco',
+        ),
+        'marketing.followup.create': ep(
+          'POST',
+          '/api/v1/mobile/marketing/followups',
+          'zkteco',
+        ),
+        'marketing.attachments': ep(
+          'POST',
+          '/api/v1/mobile/marketing/attachments',
+          'zkteco',
         ),
       },
     );
