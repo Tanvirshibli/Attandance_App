@@ -6,6 +6,7 @@ import '../config/theme.dart';
 import 'attendance_report_screen.dart';
 import 'geo_tracking_screen.dart';
 import 'leave_hub_screen.dart';
+import 'marketing/marketing_hub_screen.dart';
 import 'payment_hub_screen.dart';
 import 'sales_info_screen.dart';
 import 'vehicle_list_screen.dart';
@@ -49,6 +50,12 @@ class EmployeeServicesHubScreen extends StatelessWidget {
         label: 'Vehicles',
         color: AppColors.accent,
         screen: const VehicleListScreen(),
+      ),
+      _ServiceTileData(
+        icon: Icons.agriculture_outlined,
+        label: 'Farm &\nDealer',
+        color: const Color(0xFF2E7D32),
+        screen: const MarketingHubScreen(),
       ),
       _ServiceTileData(
         icon: Icons.my_location_outlined,
