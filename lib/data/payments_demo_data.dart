@@ -1,4 +1,5 @@
 import '../models/payment_models.dart';
+import '../models/payment_setup_models.dart';
 
 class PaymentsDemoData {
   PaymentsDemoData._();
@@ -236,4 +237,27 @@ class PaymentsDemoData {
           providentFund().closingBalance,
     );
   }
+
+  static PaymentSetupData paymentSetup() => PaymentSetupData(
+        banks: const [
+          SetupBank(
+            id: 65,
+            bankName: 'Bkash -PPHL',
+            shortName: 'Bkash-PPHL',
+            company: SetupCompany(id: 3, nameEn: 'Peoples poultry'),
+          ),
+        ],
+        employees: const [
+          SetupEmployee(
+            id: 235,
+            employeeId: 110,
+            employeeName: 'Demo Receiver (emp-110)',
+            phoneNumber: '01700000000',
+          ),
+        ],
+        paymentTypes: const [
+          SetupPaymentType(id: 1, name: 'Feed'),
+          SetupPaymentType(id: 5, name: 'Egg'),
+        ],
+      );
 }
