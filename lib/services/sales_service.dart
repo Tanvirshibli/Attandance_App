@@ -7,6 +7,8 @@ import '../config/app_config.dart';
 import '../data/sales_demo_data.dart';
 import '../models/api_result.dart';
 import '../models/sales_models.dart';
+import '../models/dealer_list_models.dart';
+import '../models/sales_booking_post_models.dart';
 import '../models/sales_post_models.dart';
 import '../utils/multipart_form.dart';
 import 'auth_service.dart';
@@ -23,6 +25,8 @@ class SalesService {
 
   final AuthService _authService;
   final EndpointConfigService _configService;
+
+  AllDealerLists? _cachedDealerLists;
 
   bool get useDemoData => AppConfig.useSalesDemoData;
 
@@ -137,6 +141,85 @@ class SalesService {
     }
   }
 
+  Future<ApiResult<AllDealerLists>> fetchAllDealerLists({
+    bool forceRefresh = false,
+  }) async {
+    if (!forceRefresh && _cachedDealerLists != null) {
+      return ApiResult.ok(_cachedDealerLists!);
+    }
+
+    if (useDemoData) {
+      await Future<void>.delayed(const Duration(milliseconds: 200));
+      _cachedDealerLists = const AllDealerLists(
+        egg: [
+          DealerListItem(
+            id: 19,
+            tradeName: 'Demo Egg Dealer',
+            dealerCode: 'DLR250019',
+            zoneName: 'Zone D',
+          ),
+        ],
+        feed: [
+          DealerListItem(
+            id: 100,
+            tradeName: 'Demo Feed Dealer',
+            dealerCode: 'DLR250100',
+            zoneName: 'Zone A',
+          ),
+        ],
+        fertilizer: [],
+        liveBird: [],
+        wastage: [],
+      );
+      return ApiResult.ok(_cachedDealerLists!);
+    }
+
+    final url = await _configService.resolveUrl('sales.allDealers');
+    final uri = Uri.parse(
+      url ??
+          '${AppConfig.salesApiBaseUrl.trim().replaceAll(RegExp(r'/+$'), '')}/api/all-dealer-lists',
+    );
+
+    try {
+      final response = await http
+          .get(
+            uri,
+            headers: {
+              'Accept': 'application/json',
+              'User-Agent': 'PPHLAttendance/2.2 (Android; Flutter)',
+            },
+          )
+          .timeout(const Duration(seconds: 60));
+
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        return ApiResult.fail(
+          'Could not load dealers (${response.statusCode}).',
+        );
+      }
+
+      final decoded = jsonDecode(response.body);
+      if (decoded is! Map<String, dynamic>) {
+        return ApiResult.fail('Invalid dealer lists response.');
+      }
+
+      if (decoded['success'] == false) {
+        return ApiResult.fail(
+          decoded['message']?.toString() ?? 'Could not load dealers.',
+        );
+      }
+
+      final data = decoded['data'];
+      if (data is! Map<String, dynamic>) {
+        return ApiResult.fail('Invalid dealer lists payload.');
+      }
+
+      _cachedDealerLists = AllDealerLists.fromJson(data);
+      return ApiResult.ok(_cachedDealerLists!);
+    } catch (error) {
+      return ApiResult.fail('Network error: $error');
+    }
+  }
+
   Future<ApiResult<SalesPersonSalesData>> getSalesPersonSales({
     required int employeeId,
     required DateTime fromDate,
@@ -196,6 +279,78 @@ class SalesService {
       }
 
       return ApiResult.ok(SalesPersonSalesData.fromJson(data));
+    } catch (error) {
+      return ApiResult.fail('Network error: $error');
+    }
+  }
+
+  Future<ApiResult<BookingPersonBookCreated>> createBookingPersonBook(
+    CreateBookingPersonBookRequest request,
+  ) async {
+    if (useCreateDemo) {
+      await Future<void>.delayed(const Duration(milliseconds: 400));
+      return ApiResult.ok(
+        BookingPersonBookCreated(
+          module: request.module,
+          id: 0,
+          bookingNo: 'DEMO-BK-${DateTime.now().millisecondsSinceEpoch % 100000}',
+          status: 'demo',
+          totalAmount: request.totalAmount,
+          message: 'Demo booking submitted.',
+        ),
+      );
+    }
+
+    if (!await isSalesEnabled()) {
+      return ApiResult.fail('Sales module is disabled.');
+    }
+
+    final url = await _configService.resolveUrl('sales.booking.create');
+    final uri = Uri.parse(
+      url ??
+          '${AppConfig.salesApiBaseUrl.trim().replaceAll(RegExp(r'/+$'), '')}/api/booking-person-books',
+    );
+
+    try {
+      final response = await postFormData(
+        uri: uri,
+        fields: request.toFormFields(),
+      );
+
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        return ApiResult.fail(
+          _messageFromBody(response.body) ??
+              'Could not submit booking (${response.statusCode}).',
+        );
+      }
+
+      final decoded = jsonDecode(response.body);
+      if (decoded is! Map<String, dynamic>) {
+        return ApiResult.fail('Invalid booking response.');
+      }
+
+      if (decoded['success'] == false) {
+        return ApiResult.fail(
+          decoded['message']?.toString() ?? 'Could not submit booking.',
+        );
+      }
+
+      final data = decoded['data'];
+      if (data is! Map<String, dynamic>) {
+        return ApiResult.fail('Invalid booking payload.');
+      }
+
+      final created = BookingPersonBookCreated.fromJson(data);
+      return ApiResult.ok(
+        BookingPersonBookCreated(
+          module: created.module,
+          id: created.id,
+          bookingNo: created.bookingNo,
+          status: created.status,
+          totalAmount: created.totalAmount,
+          message: decoded['message']?.toString(),
+        ),
+      );
     } catch (error) {
       return ApiResult.fail('Network error: $error');
     }
