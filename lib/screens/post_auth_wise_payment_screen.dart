@@ -5,9 +5,11 @@ import 'package:intl/intl.dart';
 
 import '../config/theme.dart';
 import '../models/auth_wise_payment_post_models.dart';
+import '../models/payment_setup_models.dart';
 import '../services/auth_service.dart';
 import '../services/payment_service.dart';
 import '../widgets/gradient_screen_header.dart';
+import '../widgets/searchable_select_field.dart';
 import '../widgets/section_card.dart';
 
 class PostAuthWisePaymentScreen extends StatefulWidget {
@@ -25,14 +27,18 @@ class _PostAuthWisePaymentScreenState extends State<PostAuthWisePaymentScreen> {
 
   DateTime _recDate = DateTime.now();
   bool _isSubmitting = false;
+  bool _loadingSetup = true;
+  String? _setupError;
+  PaymentSetupData? _setup;
   int? _employeeId;
 
-  final _companyId = TextEditingController(text: '3');
+  SetupEmployee? _receiver;
+  SetupPaymentType? _paymentType;
+  SetupBank? _bank;
+
+  final _companyId = TextEditingController();
   final _recType = TextEditingController(text: '1');
-  final _receiverId = TextEditingController(text: '235');
   final _amount = TextEditingController();
-  final _paymentType = TextEditingController(text: '67');
-  final _paymentMode = TextEditingController(text: '2');
   final _paymentFor = TextEditingController(text: '2');
   final _invoiceType = TextEditingController(text: '2');
   final _note = TextEditingController(text: 'Payment received from mobile app');
@@ -45,7 +51,28 @@ class _PostAuthWisePaymentScreenState extends State<PostAuthWisePaymentScreen> {
   void initState() {
     super.initState();
     _loadProfile();
+    _loadSetup();
     _trxId.text = 'APP-TRX-${DateTime.now().millisecondsSinceEpoch % 100000}';
+  }
+
+  Future<void> _loadSetup() async {
+    setState(() {
+      _loadingSetup = true;
+      _setupError = null;
+    });
+    final result = await _paymentService.fetchPaymentSetupData();
+    if (!mounted) return;
+    if (!result.success || result.data == null) {
+      setState(() {
+        _loadingSetup = false;
+        _setupError = result.message ?? 'Could not load payment setup.';
+      });
+      return;
+    }
+    setState(() {
+      _loadingSetup = false;
+      _setup = result.data;
+    });
   }
 
   Future<void> _loadProfile() async {
@@ -58,10 +85,7 @@ class _PostAuthWisePaymentScreenState extends State<PostAuthWisePaymentScreen> {
   void dispose() {
     _companyId.dispose();
     _recType.dispose();
-    _receiverId.dispose();
     _amount.dispose();
-    _paymentType.dispose();
-    _paymentMode.dispose();
     _paymentFor.dispose();
     _invoiceType.dispose();
     _note.dispose();
@@ -100,6 +124,19 @@ class _PostAuthWisePaymentScreenState extends State<PostAuthWisePaymentScreen> {
       return;
     }
 
+    if (_receiver == null) {
+      _snack('Select a receiver.');
+      return;
+    }
+    if (_paymentType == null) {
+      _snack('Select a payment type.');
+      return;
+    }
+    if (_bank == null) {
+      _snack('Select a bank.');
+      return;
+    }
+
     final amount = double.tryParse(_amount.text.trim());
     if (amount == null || amount <= 0) {
       _snack('Enter a valid amount.');
@@ -108,17 +145,11 @@ class _PostAuthWisePaymentScreenState extends State<PostAuthWisePaymentScreen> {
 
     final companyId = _intField(_companyId, 'company ID');
     final recType = _intField(_recType, 'rec type');
-    final receiverId = _intField(_receiverId, 'receiver (dealer) ID');
-    final paymentType = _intField(_paymentType, 'payment type');
-    final paymentMode = _intField(_paymentMode, 'payment mode');
     final paymentFor = _intField(_paymentFor, 'payment for');
     final invoiceType = _intField(_invoiceType, 'invoice type');
 
     if (companyId == null ||
         recType == null ||
-        receiverId == null ||
-        paymentType == null ||
-        paymentMode == null ||
         paymentFor == null ||
         invoiceType == null) {
       return;
@@ -132,11 +163,11 @@ class _PostAuthWisePaymentScreenState extends State<PostAuthWisePaymentScreen> {
         AuthWisePaymentLineInput(
           companyId: companyId,
           recType: recType,
-          receiverId: receiverId,
+          receiverId: _receiver!.id,
           amount: amount,
           recDate: DateFormat('yyyy-MM-dd').format(_recDate),
-          paymentType: paymentType,
-          paymentMode: paymentMode,
+          paymentType: _paymentType!.id,
+          paymentMode: _bank!.id,
           paymentFor: paymentFor,
           invoiceType: invoiceType,
           note: _note.text.trim(),
@@ -171,8 +202,20 @@ class _PostAuthWisePaymentScreenState extends State<PostAuthWisePaymentScreen> {
     );
   }
 
+  void _onBankSelected(SetupBank? bank) {
+    setState(() {
+      _bank = bank;
+      final company = bank?.company;
+      if (company != null && company.id > 0) {
+        _companyId.text = '${company.id}';
+      }
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
+    final setup = _setup;
+
     return Scaffold(
       backgroundColor: AppColors.background,
       body: CustomScrollView(
@@ -202,130 +245,181 @@ class _PostAuthWisePaymentScreenState extends State<PostAuthWisePaymentScreen> {
                               color: AppColors.textSecondary,
                             ),
                           ),
-                        const SizedBox(height: 12),
-                        InkWell(
-                          onTap: _pickRecDate,
-                          borderRadius: BorderRadius.circular(12),
-                          child: InputDecorator(
-                            decoration: _dec(
-                              'Receive date',
-                              Icons.calendar_today_outlined,
-                            ),
-                            child: Text(
-                              DateFormat('dd MMM yyyy').format(_recDate),
-                              style: GoogleFonts.poppins(fontSize: 14),
+                        if (_loadingSetup) ...[
+                          const SizedBox(height: 16),
+                          const Center(child: CircularProgressIndicator()),
+                          const SizedBox(height: 8),
+                          Text(
+                            'Loading banks, receivers, and payment types…',
+                            textAlign: TextAlign.center,
+                            style: GoogleFonts.poppins(
+                              fontSize: 12,
+                              color: AppColors.textSecondary,
                             ),
                           ),
-                        ),
-                        const SizedBox(height: 12),
-                        Row(
-                          children: [
-                            Expanded(
-                              child: _id(_companyId, 'Company ID'),
+                        ] else if (_setupError != null) ...[
+                          const SizedBox(height: 12),
+                          Text(
+                            _setupError!,
+                            style: GoogleFonts.poppins(
+                              fontSize: 13,
+                              color: AppColors.error,
                             ),
-                            const SizedBox(width: 10),
-                            Expanded(
-                              child: _id(_receiverId, 'Receiver (dealer) ID'),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 12),
-                        _money(_amount, 'Amount (৳)'),
-                        const SizedBox(height: 12),
-                        Row(
-                          children: [
-                            Expanded(child: _id(_recType, 'Rec type')),
-                            const SizedBox(width: 10),
-                            Expanded(child: _id(_paymentType, 'Payment type')),
-                          ],
-                        ),
-                        const SizedBox(height: 12),
-                        Row(
-                          children: [
-                            Expanded(child: _id(_paymentMode, 'Payment mode')),
-                            const SizedBox(width: 10),
-                            Expanded(child: _id(_paymentFor, 'Payment for')),
-                          ],
-                        ),
-                        const SizedBox(height: 12),
-                        _id(_invoiceType, 'Invoice type'),
-                        const SizedBox(height: 12),
-                        _text(_note, 'Note', Icons.notes_outlined,
-                            required: false),
-                        const SizedBox(height: 12),
-                        Row(
-                          children: [
-                            Expanded(
-                              child: _text(
-                                _trxId,
-                                'Transaction ID',
-                                Icons.receipt_outlined,
-                                required: false,
-                              ),
-                            ),
-                            const SizedBox(width: 10),
-                            Expanded(
-                              child: _text(
-                                _ref,
-                                'Reference',
-                                Icons.link_outlined,
-                                required: false,
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 12),
-                        Row(
-                          children: [
-                            Expanded(
-                              child: _text(
-                                _checkNo,
-                                'Check no (optional)',
-                                Icons.numbers_outlined,
-                                required: false,
-                              ),
-                            ),
-                            const SizedBox(width: 10),
-                            Expanded(
-                              child: _text(
-                                _checkDate,
-                                'Check date (optional)',
-                                Icons.event_outlined,
-                                required: false,
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 24),
-                        SizedBox(
-                          height: 52,
-                          child: ElevatedButton(
-                            onPressed: _isSubmitting ? null : _submit,
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: AppColors.success,
-                              foregroundColor: Colors.white,
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(14),
-                              ),
-                            ),
-                            child: _isSubmitting
-                                ? const SizedBox(
-                                    width: 22,
-                                    height: 22,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2,
-                                      color: Colors.white,
-                                    ),
-                                  )
-                                : Text(
-                                    'Submit payment',
-                                    style: GoogleFonts.poppins(
-                                      fontWeight: FontWeight.w600,
-                                      fontSize: 15,
-                                    ),
-                                  ),
                           ),
-                        ),
+                          TextButton(
+                            onPressed: _loadSetup,
+                            child: const Text('Retry'),
+                          ),
+                        ] else if (setup != null) ...[
+                          const SizedBox(height: 12),
+                          InkWell(
+                            onTap: _pickRecDate,
+                            borderRadius: BorderRadius.circular(12),
+                            child: InputDecorator(
+                              decoration: _dec(
+                                'Receive date',
+                                Icons.calendar_today_outlined,
+                              ),
+                              child: Text(
+                                DateFormat('dd MMM yyyy').format(_recDate),
+                                style: GoogleFonts.poppins(fontSize: 14),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          SearchableSelectField<SetupEmployee>(
+                            label: 'Receiver',
+                            icon: Icons.person_outline,
+                            options: setup.employees,
+                            selected: _receiver,
+                            displayString: (e) => e.employeeName,
+                            searchText: (e) => e.searchText,
+                            subtitleFor: (e) =>
+                                'ID ${e.id} · emp ${e.employeeId}',
+                            onSelected: (v) => setState(() => _receiver = v),
+                            validator: (v) =>
+                                v == null ? 'Select a receiver' : null,
+                          ),
+                          const SizedBox(height: 12),
+                          SearchableSelectField<SetupBank>(
+                            label: 'Bank (payment mode)',
+                            icon: Icons.account_balance_outlined,
+                            options: setup.banks,
+                            selected: _bank,
+                            displayString: (b) => b.displayLabel,
+                            searchText: (b) => b.searchText,
+                            subtitleFor: (b) =>
+                                b.company?.nameEn ?? 'ID ${b.id}',
+                            onSelected: _onBankSelected,
+                            validator: (v) =>
+                                v == null ? 'Select a bank' : null,
+                          ),
+                          const SizedBox(height: 12),
+                          _id(_companyId, 'Company ID'),
+                          const SizedBox(height: 12),
+                          _money(_amount, 'Amount (৳)'),
+                          const SizedBox(height: 12),
+                          SearchableSelectField<SetupPaymentType>(
+                            label: 'Payment type',
+                            icon: Icons.category_outlined,
+                            options: setup.paymentTypes,
+                            selected: _paymentType,
+                            displayString: (t) => t.name,
+                            searchText: (t) => t.searchText,
+                            subtitleFor: (t) => 'ID ${t.id}',
+                            onSelected: (v) =>
+                                setState(() => _paymentType = v),
+                            validator: (v) =>
+                                v == null ? 'Select payment type' : null,
+                          ),
+                          const SizedBox(height: 12),
+                          Row(
+                            children: [
+                              Expanded(child: _id(_recType, 'Rec type')),
+                              const SizedBox(width: 10),
+                              Expanded(child: _id(_paymentFor, 'Payment for')),
+                            ],
+                          ),
+                          const SizedBox(height: 12),
+                          _id(_invoiceType, 'Invoice type'),
+                          const SizedBox(height: 12),
+                          _text(_note, 'Note', Icons.notes_outlined,
+                              required: false),
+                          const SizedBox(height: 12),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: _text(
+                                  _trxId,
+                                  'Transaction ID',
+                                  Icons.receipt_outlined,
+                                  required: false,
+                                ),
+                              ),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: _text(
+                                  _ref,
+                                  'Reference',
+                                  Icons.link_outlined,
+                                  required: false,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 12),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: _text(
+                                  _checkNo,
+                                  'Check no (optional)',
+                                  Icons.numbers_outlined,
+                                  required: false,
+                                ),
+                              ),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: _text(
+                                  _checkDate,
+                                  'Check date (optional)',
+                                  Icons.event_outlined,
+                                  required: false,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 24),
+                          SizedBox(
+                            height: 52,
+                            child: ElevatedButton(
+                              onPressed: _isSubmitting ? null : _submit,
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: AppColors.success,
+                                foregroundColor: Colors.white,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(14),
+                                ),
+                              ),
+                              child: _isSubmitting
+                                  ? const SizedBox(
+                                      width: 22,
+                                      height: 22,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                        color: Colors.white,
+                                      ),
+                                    )
+                                  : Text(
+                                      'Submit payment',
+                                      style: GoogleFonts.poppins(
+                                        fontWeight: FontWeight.w600,
+                                        fontSize: 15,
+                                      ),
+                                    ),
+                            ),
+                          ),
+                        ],
                       ],
                     ),
                   ),
