@@ -8,6 +8,7 @@ import '../data/payments_demo_data.dart';
 import '../models/api_result.dart';
 import '../models/auth_wise_payment_models.dart';
 import '../models/auth_wise_payment_post_models.dart';
+import '../models/payment_setup_models.dart';
 import '../models/payment_models.dart';
 import '../utils/multipart_form.dart';
 import 'endpoint_config_service.dart';
@@ -27,6 +28,62 @@ class PaymentService {
 
   Future<bool> isPaymentEnabled() =>
       _configService.isFeatureEnabled('payment.enabled', defaultValue: true);
+
+  Future<String> _salesApiBase() async {
+    final fromPersonSales = await _configService.resolveUrl('sales.personSales');
+    if (fromPersonSales != null && fromPersonSales.isNotEmpty) {
+      final uri = Uri.parse(fromPersonSales);
+      return '${uri.scheme}://${uri.host}${uri.hasPort ? ':${uri.port}' : ''}';
+    }
+    return AppConfig.salesApiBaseUrl.trim().replaceAll(RegExp(r'/+$'), '');
+  }
+
+  /// Banks, auth-wise employees, payment types for receive-payment form.
+  Future<ApiResult<PaymentSetupData>> fetchPaymentSetupData() async {
+    final url = await _configService.resolveUrl('payment.setupData');
+    final base = await _salesApiBase();
+    final uri = Uri.parse(
+      url ?? '$base/api/payment-setup-data',
+    );
+
+    try {
+      final response = await http
+          .get(
+            uri,
+            headers: {
+              'Accept': 'application/json',
+              'User-Agent': 'PPHLAttendance/2.2 (Android; Flutter)',
+            },
+          )
+          .timeout(const Duration(seconds: 45));
+
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        return ApiResult.fail(
+          'Could not load payment setup (${response.statusCode}).',
+        );
+      }
+
+      final decoded = jsonDecode(response.body);
+      if (decoded is! Map<String, dynamic>) {
+        return ApiResult.fail('Invalid payment setup response.');
+      }
+
+      if (decoded['success'] == false) {
+        return ApiResult.fail(
+          decoded['message']?.toString() ?? 'Could not load payment setup.',
+        );
+      }
+
+      final data = decoded['data'];
+      if (data is! Map<String, dynamic>) {
+        return ApiResult.fail('Invalid payment setup payload.');
+      }
+
+      return ApiResult.ok(PaymentSetupData.fromJson(data));
+    } catch (error) {
+      return ApiResult.fail('Network error: $error');
+    }
+  }
 
   /// Live dealer payment-receive report (no JWT). Gated by [isPaymentEnabled].
   Future<ApiResult<AuthWisePaymentsData>> getAuthWisePayments({
