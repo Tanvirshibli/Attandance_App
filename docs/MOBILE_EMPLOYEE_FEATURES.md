@@ -1,8 +1,8 @@
 # Mobile Employee Features (v2.2.0)
 
-Last updated: July 22, 2026
+Last updated: July 28, 2026
 
-This document describes the employee self-service modules in **Attandance_App**. HRM/ZKTeco APIs are wired where available. **Sales Info reporting is live** (person-sales API). **Payments** and **Post Sale** still use demo by default (see [SALES_AND_PAYMENTS_API_CONTRACT.md](SALES_AND_PAYMENTS_API_CONTRACT.md)).
+This document describes the employee self-service modules in **Attandance_App**. HRM/ZKTeco APIs are wired where available. **Sales Info reporting and Post Sale create are live** when demo flags are off. **Auth-wise payment report and receive** use the sales host when `payment.enabled` is on. HRM loan/payslip screens still demo by default (see [SALES_AND_PAYMENTS_API_CONTRACT.md](SALES_AND_PAYMENTS_API_CONTRACT.md)).
 
 ---
 
@@ -10,7 +10,7 @@ This document describes the employee self-service modules in **Attandance_App**.
 
 | Entry point | Destination |
 |-------------|-------------|
-| Footer **Services** tab | `EmployeeServicesHubScreen` (Attendance Report, Leave, Payments, Sales Info, Vehicles, Geo Tracking) |
+| Footer **Services** tab | `EmployeeServicesHubScreen` (Attendance Report, Leave, Payments, Sales Info, Vehicles, Farm & Dealer, Geo Tracking) |
 | Profile → Quick Actions → Leave Request | `LeaveHubScreen` |
 | Profile → Quick Actions → View Reports | `AttendanceReportScreen` |
 | Profile → Settings → Location Services | `GeoTrackingScreen` |
@@ -21,8 +21,9 @@ This document describes the employee self-service modules in **Attandance_App**.
 - Attendance Report
 - Leave (single page: balance cards + history report + apply)
 - Payments (payslips, loans, PF, mess, compensation, post payment — demo by default)
-- Sales Info (live overall + module breakdown; Post sale still demo)
+- Sales Info (live overall + module breakdown; Post sale with searchable dealer list)
 - Vehicles (active fleet list + maintenance history)
+- Farm & Dealer (field collection: dealers, farms, visits, surveys, follow-ups)
 - Geo Tracking
 
 ---
@@ -49,8 +50,11 @@ This document describes the employee self-service modules in **Attandance_App**.
 | Auth-wise payments | Sales host `GET /api/auth-wise-payments/{employeeId}?from_date=&to_date=` (no auth) | **Live** (requires ZKTeco `payment.enabled=true`) |
 | Vehicles list | Transport `GET /api/get-vehicle-active-list` (no auth) | **Live** (requires ZKTeco `vehicle.enabled=true`) |
 | Vehicle maintenance | Transport `GET /api/get-vehicle-m-history/{id}` (no auth) | **Live** |
-| Post sale | Sales `POST /api/sales-person-sales` (form-data) | **Live** when `USE_SALES_DEMO_DATA=false` |
-| Auth-wise payment post | Sales `POST /api/auth-wise-payments` (form-data) | **Live** when `payment.enabled=true` |
+| Farm & Dealer (marketing) | ZKTeco `/api/v1/mobile/marketing/*` (no JWT; `employee_id` = `canonicalEmployeeId`) | **Wired** (requires `marketing.enabled=true`) |
+| Post sale / booking | Sales `POST /api/sales-person-sales` (egg, fertilizer, liveBird, cullBird) or `POST /api/booking-person-books` (feed, chicks) | **Live** when `USE_SALES_DEMO_DATA=false`; dealers from `GET /api/all-dealer-lists` |
+| Auth-wise payment post | Sales `POST /api/auth-wise-payments` (form-data) | **Live** when `payment.enabled=true`; setup from `GET /api/payment-setup-data` |
+| Payment setup lists | Sales `GET /api/payment-setup-data` | **Live** (banks, receivers, payment types) |
+| All dealer lists | Sales `GET /api/all-dealer-lists` | **Live** (module-filtered searchable dropdown on Post sale) |
 | Geo location upload | ZKTeco `POST /api/v1/mobile/geo-location` | **Wired** |
 | App endpoint config | ZKTeco `GET /api/v1/mobile/app-config` | **Wired** |
 | Holidays | HRM `GET /api/v1/mobile/holidays` | **Wired** |
@@ -68,7 +72,7 @@ Handoff for backend teams: **[SALES_AND_PAYMENTS_API_CONTRACT.md](SALES_AND_PAYM
 - Overall KPIs: orders, returns, net/gross sales, net qty
 - Module tabs: Egg | Feed | Fertilizer | Chicks | Live Bird | Cull Bird
 - Per module: summary, Products / Dealers / Sectors, line details
-- **Post sale** FAB kept; submissions are demo-only (`Demo` chip on form)
+- **Post sale / booking** FAB → feed/chicks use booking form (`booking-person-books`); other modules use sale order form (`sales-person-sales`); dealer lists loaded once per session; type-to-search dealer by name/code/phone; module switches list (Chicks/Cull Bird use live bird list for now)
 - Force reporting demo: `--dart-define=USE_SALES_DEMO_DATA=true`
 - Override sales host: `--dart-define=SALES_API_BASE_URL=...`
 
@@ -79,9 +83,17 @@ Handoff for backend teams: **[SALES_AND_PAYMENTS_API_CONTRACT.md](SALES_AND_PAYM
 - Host: `https://transport.peoplesitsolution.online` (override `--dart-define=TRANSPORT_API_BASE_URL=...`)
 - Requires ZKTeco `vehicle.enabled=true`
 
+### Farm & Dealer (marketing)
+
+- Services tile → hub (Dealers, Farms, My visits, Follow-ups) + New Dealer / New Farm FABs
+- Create party with GPS, product rows, multi-photo upload; visit / farm survey / follow-up from party detail
+- ZKTeco `/api/v1/mobile/marketing/*` (no JWT); flag `marketing.enabled`
+- See [FARM_DEALER_MOBILE.md](FARM_DEALER_MOBILE.md) for endpoint keys and payloads
+
 ### Payments hub (v2.3)
 
 - **Primary:** live auth-wise payment-receive report (same host as Sales) — date chips, overall KPIs, module tabs (Egg…Other)
+- **Receive dealer payment:** searchable bank, receiver, and payment type from `payment-setup-data`; rec type / payment for / invoice type remain numeric fields
 - **Secondary HR benefits:** Payslips, My loans, Loan payments, Post payment, Provident fund, Mess deposit, Compensation (still demo by default via `USE_PAYMENT_DEMO_DATA`)
 - Requires ZKTeco `payment.enabled=true` and endpoint `payment.authWise`
 
@@ -89,7 +101,7 @@ Handoff for backend teams: **[SALES_AND_PAYMENTS_API_CONTRACT.md](SALES_AND_PAYM
 
 - First launch: **Server Bootstrap** — enter ZKTeco base URL only
 - Admin maps APIs in ZKTeco: **Settings → Mobile App API**
-- Feature flags: `sales.enabled`, `payment.enabled`, `vehicle.enabled`, `geo.tracking.enabled`
+- Feature flags: `sales.enabled`, `payment.enabled`, `vehicle.enabled`, `geo.tracking.enabled`, `marketing.enabled`
 - Sales reporting defaults live; Payments remain demo until dart-define flip
 
 ---

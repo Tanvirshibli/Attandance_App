@@ -1,6 +1,6 @@
 # Sales & Payments API Contract (Android Attandance_App)
 
-**Last updated:** July 23, 2026  
+**Last updated:** July 28, 2026  
 **Audience:** External sales backend team · pphl_erp (HRM) · ZKTeco Mobile App API admins  
 **App:** `Attandance_App` (Flutter)  
 **Status:** **Sales Info reporting and Post Sale create are live** against `https://sales.peoplesitsolution.online` when `USE_SALES_DEMO_DATA=false` (default). **Auth-wise payment POST** is live when `payment.enabled` is on. HRM loan/payslip screens still demo by default (`USE_PAYMENT_DEMO_DATA=true`).
@@ -13,7 +13,7 @@
 | Module   | Compile-time flag                           | Default        | Live requirement                                      |
 | -------- | ------------------------------------------- | -------------- | ----------------------------------------------------- |
 | Sales reporting | `--dart-define=USE_SALES_DEMO_DATA=true` | `false` (live) | Person-sales GET + HRM eligibility list               |
-| Sales create (Post sale) | `--dart-define=USE_SALES_DEMO_DATA=true` | `false` (live) | `POST /api/sales-person-sales` (form-data) |
+| Sales create (Post sale) | `--dart-define=USE_SALES_DEMO_DATA=true` | `false` (live) | `POST /api/sales-person-sales` (egg, fertilizer, liveBird, cullBird) or `POST /api/booking-person-books` (feed, chicks) |
 | Payments | `--dart-define=USE_PAYMENT_DEMO_DATA=false` | `true` (demo)  | Existing pphl_erp JWT APIs + ZKTeco `payment.enabled` |
 
 
@@ -24,7 +24,7 @@ ZKTeco dashboard (**Settings → Mobile App API**) can override endpoint URLs an
 
 - `feature.sales.enabled` (**must be on** for Sales Info; when off the app shows a disabled-module empty state and does not call person-sales)
 - `feature.payment.enabled` (**must be on** for auth-wise Payments report)
-- Endpoint keys listed below (including `sales.personSales`, `payment.authWise`)
+- Endpoint keys listed below (including `sales.personSales`, `sales.allDealers`, `payment.authWise`, `payment.setupData`)
 
 **Canonical employee id:** always numeric `employees.id` from HRM `GET /api/v1/get-my-info` (`user.employeeId` / app `canonicalEmployeeId`). **Do not** use display `emp_id` strings.
 
@@ -148,7 +148,9 @@ App parsers also accept legacy camelCase employee keys and module `details[]` (a
 
 Android UI: overall KPI strip (orders, returns, sales, qty-by-unit) → module tabs → summary + expandable Products / Dealers / Sectors / Line details.
 
-### A.2 Create sale (Post Sale) — live
+### A.2 Create sale (Post Sale) — live (non feed / non chicks)
+
+Applies to modules **egg**, **fertilizer**, **liveBird**, **cullBird** only. **Feed** and **chicks** use [A.2b Booking create](#a2b-booking-create-feed--chicks--live).
 
 `POST {SALES_API_BASE_URL}/api/sales-person-sales`
 
@@ -192,6 +194,45 @@ App config key: `sales.create` (POST, full URL or path).
 
 When `USE_SALES_DEMO_DATA=true`, Post Sale stays on-device demo only.
 
+### A.2b Booking create (feed & chicks) — live
+
+`POST {SALES_API_BASE_URL}/api/booking-person-books`
+
+**Content-Type:** `multipart/form-data` (field names match Postman form-data).
+
+| Field | Notes |
+| ----- | ----- |
+| `module` | `feed` or `chicks` |
+| `dealerId`, `categoryId`, `subCategoryId`, `childCategoryId`, `bookingPointId` | IDs |
+| `bookingPerson` | App sends logged-in `canonicalEmployeeId` |
+| `bookingType` | e.g. `regular` |
+| `isBookingMoney` | `0` / `1` |
+| `discount`, `discountType` | e.g. `fixed` |
+| `advanceAmount`, `totalAmount` | numbers |
+| `bookingDate`, `invoiceDate` | `YYYY-MM-DD` |
+| `note` | optional header note |
+| `details[i][productId]`, `unitId`, `qty`, `price`, `note` | line item |
+| **Chicks only** | `cZoneId`, `isMultiDelivery` (`0`/`1`), optional `chicksPriceId`; line `cdPriceId`, `mrp`, `details[i][settingIds][j]`, `details[i][flockIds][j]` |
+| **Optional** | `commissionId` |
+
+**Success (example):**
+
+```json
+{
+  "success": true,
+  "message": "Booking created successfully.",
+  "data": {
+    "module": "chicks",
+    "id": 123,
+    "bookingNo": "BK26070123",
+    "status": "pending",
+    "totalAmount": 5900
+  }
+}
+```
+
+App config key: `sales.booking.create` (POST, full URL or path).
+
 ### A.3 Errors
 
 ```json
@@ -206,7 +247,8 @@ When `USE_SALES_DEMO_DATA=true`, Post Sale stays on-device demo only.
 | `sales.eligibility` | GET    | HRM `/api/get-sales-employee-list` |
 | `sales.personSales` | GET    | `{salesBase}/api/sales-person-sales` (app appends `/{id}`) |
 | `sales.overview` / `sales.list` | GET | Legacy aliases → same person-sales base (unused by UI) |
-| `sales.create`      | POST   | `{salesBase}/api/sales-person-sales` (form-data) |
+| `sales.create`      | POST   | `{salesBase}/api/sales-person-sales` (form-data; non feed/chicks) |
+| `sales.booking.create` | POST | `{salesBase}/api/booking-person-books` (form-data; feed & chicks) |
 
 Enable `feature.sales.enabled` (default true in app fallback).
 
@@ -403,11 +445,11 @@ HRM payslip/loan/PF screens remain under **HR benefits** on the same Payments pa
 | `employeeId` | `27` |
 | `payments[0][companyId]` | `3` |
 | `payments[0][recType]` | `1` |
-| `payments[0][receiverId]` | `235` (dealer) |
+| `payments[0][receiverId]` | `235` (auth-wise receiver — use **`employeeList[].id`**, not `employeeId`) |
 | `payments[0][amount]` | `1000` |
 | `payments[0][recDate]` | `YYYY-MM-DD` |
-| `payments[0][paymentType]` | `67` |
-| `payments[0][paymentMode]` | `2` |
+| `payments[0][paymentType]` | payment type id from setup (`paymentTypeList[].id`) |
+| `payments[0][paymentMode]` | bank id from setup (`bankList[].id`) |
 | `payments[0][paymentFor]` | `2` |
 | `payments[0][invoiceType]` | `2` |
 | `payments[0][note]` | optional |
@@ -417,6 +459,37 @@ HRM payslip/loan/PF screens remain under **HR benefits** on the same Payments pa
 App config key: `payment.authWisePost` (POST; falls back to `payment.authWise` URL).
 
 **Success:** `success`, `message`, `data.createdPaymentCount`, `data.payments[].voucherNo`.
+
+### C.2 Payment setup data (Post receive dropdowns)
+
+`GET {SALES_API_BASE_URL}/api/payment-setup-data` — **no auth**.
+
+App config key: `payment.setupData`.
+
+**Success shape:**
+
+```json
+{
+  "success": true,
+  "data": {
+    "bankList": [{ "id": 65, "bankName": "...", "shortName": "...", "company": { "id": 3, "nameEn": "..." } }],
+    "employeeList": [{ "id": 235, "employeeId": 110, "employeeName": "..." }],
+    "paymentTypeList": [{ "id": 1, "name": "Feed" }]
+  }
+}
+```
+
+**App mapping:** Bank → `paymentMode` + auto `companyId` from `company.id`; Receiver → `receiverId` = `employeeList[].id`; Payment type → `paymentType`.
+
+### C.3 All dealer lists (Post sale dropdown)
+
+`GET {SALES_API_BASE_URL}/api/all-dealer-lists` — **no auth**.
+
+App config key: `sales.allDealers`.
+
+**Success shape:** `data.eggDealList`, `feedDealList`, `fertilizerDealList`, `liveBirdDealList`, `wastageDealList` — each item includes `id`, `tradeName`, `dealerCode`, `zoneName`, etc.
+
+**Module → list (app):** `feed` → feed; `egg` → egg; `fertilizer` → fertilizer; `liveBird` / `chicks` / `cullBird` → liveBird (temporary). Post sale uses selected dealer `id` as `dealerId`.
 
 ---
 

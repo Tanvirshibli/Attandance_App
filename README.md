@@ -7,13 +7,13 @@ Flutter Android app for PPHL attendance.
 - Login/auth session: JWT on `pphl_erp`
 - Face registration: JWT on `pphl_erp` → `face_registration_android`
 - Check-in/check-out + attendance history: public API on `zkteco-Automation-management-PPHL` (no JWT; `employee_id` required) with HRM JWT mobile attendance preferred when logged in
-- **Employee services (v2.2.0):** footer **Services** tab (Attendance Report, Leave, Payments hub, Sales Info with live person-sales report + demo Post sale, Geo Tracking). Payments remain demo by default; see [docs/SALES_AND_PAYMENTS_API_CONTRACT.md](docs/SALES_AND_PAYMENTS_API_CONTRACT.md)
+- **Employee services (v2.2.0):** footer **Services** tab (Attendance Report, Leave, Payments hub, Sales Info with live person-sales report + Post sale/booking (feed/chicks → booking API; other modules → sales-person-sales) with dealer dropdowns, Vehicles, **Farm & Dealer** field collection, Geo Tracking). Auth-wise receive uses live setup lists; HRM payments remain demo by default; see [docs/SALES_AND_PAYMENTS_API_CONTRACT.md](docs/SALES_AND_PAYMENTS_API_CONTRACT.md) and [docs/FARM_DEALER_MOBILE.md](docs/FARM_DEALER_MOBILE.md)
 - Home / Attendance KPIs driven from live punches + HRM summary (Alerts empty until a notifications API exists)
 - JWT refresh on 401; endpoint config refresh after login and on app resume
 - Geo: live OpenStreetMap window, 5-min foreground timer, WorkManager, ongoing notification; FCM wake registers tokens and handles `geo_wake` data pushes when `android/app/google-services.json` is present (see `.example`)
 - Persistent per-install device identity sent with attendance and face-registration requests
 
-See [docs/MOBILE_EMPLOYEE_FEATURES.md](docs/MOBILE_EMPLOYEE_FEATURES.md) for API wiring status per feature. Backend handoff for Sales/Payments: [docs/SALES_AND_PAYMENTS_API_CONTRACT.md](docs/SALES_AND_PAYMENTS_API_CONTRACT.md). Emulator workflow: [docs/EMULATOR_TESTING.md](docs/EMULATOR_TESTING.md).
+See [docs/MOBILE_EMPLOYEE_FEATURES.md](docs/MOBILE_EMPLOYEE_FEATURES.md) for API wiring status per feature. Farm & Dealer mobile API: [docs/FARM_DEALER_MOBILE.md](docs/FARM_DEALER_MOBILE.md). Backend handoff for Sales/Payments: [docs/SALES_AND_PAYMENTS_API_CONTRACT.md](docs/SALES_AND_PAYMENTS_API_CONTRACT.md). Emulator workflow: [docs/EMULATOR_TESTING.md](docs/EMULATOR_TESTING.md).
 
 ## Backend split
 
