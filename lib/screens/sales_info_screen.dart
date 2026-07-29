@@ -235,7 +235,7 @@ class _SalesInfoScreenState extends State<SalesInfoScreen>
               foregroundColor: Colors.white,
               icon: const Icon(Icons.add),
               label: Text(
-                'Post sale',
+                'Post sale / booking',
                 style: GoogleFonts.poppins(fontWeight: FontWeight.w600),
               ),
             )
