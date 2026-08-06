@@ -8,6 +8,8 @@ This document describes the employee self-service modules in **Attandance_App**.
 
 ## Navigation
 
+On **every cold start and when returning from background**, the app checks notifications, camera, and location (foreground + background). If any are missing, a blocking **Permissions** screen appears before login or the main shell. Users cannot proceed until all are granted.
+
 | Entry point | Destination |
 |-------------|-------------|
 | Footer **Services** tab | `EmployeeServicesHubScreen` (Attendance Report, Leave, Payments, Sales Info, Vehicles, Farm & Dealer, Geo Tracking) |
