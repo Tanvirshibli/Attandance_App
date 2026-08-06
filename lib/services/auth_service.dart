@@ -9,6 +9,7 @@ import '../config/app_config.dart';
 import '../models/auth_user_profile.dart';
 import 'endpoint_config_service.dart';
 import 'fcm_wake_handler.dart';
+import 'geo_tracking_service.dart';
 
 class AuthResult {
   const AuthResult({
@@ -26,8 +27,32 @@ class AuthService {
   static const String _tokenKey = 'auth_token';
   static const String _emailKey = 'auth_email';
   static const String _rememberKey = 'remember_me';
+  static const Duration _profileCacheTtl = Duration(minutes: 20);
 
   final EndpointConfigService _configService = EndpointConfigService.instance;
+
+  static Completer<bool>? _refreshCompleter;
+  static AuthUserProfile? _cachedProfile;
+  static DateTime? _cachedProfileAt;
+
+  static void clearProfileCache() {
+    _cachedProfile = null;
+    _cachedProfileAt = null;
+  }
+
+  /// Cached profile when still within TTL (null if missing/stale).
+  AuthUserProfile? get cachedProfileOrNull {
+    if (_cachedProfile == null || _cachedProfileAt == null) {
+      return null;
+    }
+    if (DateTime.now().difference(_cachedProfileAt!) > _profileCacheTtl) {
+      return null;
+    }
+    return _cachedProfile;
+  }
+
+  int? get cachedCanonicalEmployeeId =>
+      cachedProfileOrNull?.canonicalEmployeeId;
 
   Future<AuthResult> login({
     required String email,
@@ -78,6 +103,11 @@ class AuthService {
             rememberMe: rememberMe,
           );
 
+          AuthService.clearProfileCache();
+          try {
+            await GeoTrackingService().clearHrmPause();
+          } catch (_) {}
+
           // Register FCM token after session exists (no-op without Firebase config).
           try {
             await FcmWakeHandler.syncTokenWithBackend();
@@ -87,6 +117,16 @@ class AuthService {
             success: true,
             message: data['message']?.toString() ?? 'Login successful',
             token: token,
+          );
+        }
+
+        if (response.statusCode == 429) {
+          final retryAfter = response.headers['retry-after'];
+          return AuthResult(
+            success: false,
+            message: retryAfter != null && retryAfter.isNotEmpty
+                ? 'Too many requests. Please wait $retryAfter seconds and try again.'
+                : 'Too many requests. Please wait a moment and try again.',
           );
         }
 
@@ -140,8 +180,28 @@ class AuthService {
   }
 
   /// Refresh JWT via HRM `auth.refresh` (`POST /api/v1/refresh`).
-  /// Returns true when a new token was stored.
+  /// Returns true when a new token was stored. Concurrent callers share one request.
   Future<bool> refreshToken() async {
+    if (_refreshCompleter != null) {
+      return _refreshCompleter!.future;
+    }
+
+    final completer = Completer<bool>();
+    _refreshCompleter = completer;
+
+    try {
+      final result = await _refreshTokenOnce();
+      completer.complete(result);
+      return result;
+    } catch (error) {
+      completer.complete(false);
+      return false;
+    } finally {
+      _refreshCompleter = null;
+    }
+  }
+
+  Future<bool> _refreshTokenOnce() async {
     final token = await getToken();
     if (token == null || token.isEmpty) {
       return false;
@@ -162,6 +222,10 @@ class AuthService {
             },
           )
           .timeout(const Duration(seconds: 15));
+
+      if (response.statusCode == 429) {
+        return false;
+      }
 
       final data = _decodeMap(response.body);
       if (response.statusCode < 200 || response.statusCode >= 300) {
@@ -186,7 +250,14 @@ class AuthService {
     }
   }
 
-  Future<AuthUserProfile?> getCurrentUserProfile() async {
+  Future<AuthUserProfile?> getCurrentUserProfile({bool forceRefresh = false}) async {
+    if (!forceRefresh) {
+      final cached = cachedProfileOrNull;
+      if (cached != null) {
+        return cached;
+      }
+    }
+
     final initialToken = await getToken();
     if (initialToken == null || initialToken.isEmpty) {
       return null;
@@ -201,6 +272,11 @@ class AuthService {
 
         if (response.statusCode == 404) {
           continue;
+        }
+
+        if (response.statusCode == 429) {
+          // Do not clear session on rate limit; return stale cache if any.
+          return _cachedProfile;
         }
 
         if (response.statusCode == 401) {
@@ -220,18 +296,25 @@ class AuthService {
             await logout(invalidateServerSession: false);
             return null;
           }
+          if (response.statusCode == 429) {
+            return _cachedProfile;
+          }
         }
 
         final data = _decodeMap(response.body);
         if (response.statusCode == 200 && data['user'] is Map<String, dynamic>) {
-          return AuthUserProfile.fromJson(data['user'] as Map<String, dynamic>);
+          final profile =
+              AuthUserProfile.fromJson(data['user'] as Map<String, dynamic>);
+          _cachedProfile = profile;
+          _cachedProfileAt = DateTime.now();
+          return profile;
         }
       } catch (_) {
         continue;
       }
     }
 
-    return null;
+    return _cachedProfile;
   }
 
   Map<String, dynamic> _decodeMap(String responseBody) {
@@ -305,6 +388,12 @@ class AuthService {
         }
       }
     }
+
+    clearProfileCache();
+
+    try {
+      await GeoTrackingService().pauseForLogout();
+    } catch (_) {}
 
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_tokenKey);
