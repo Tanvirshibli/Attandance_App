@@ -14,6 +14,11 @@ void geoBackgroundCallbackDispatcher() {
       final enabled = prefs.getBool('geo_tracking_enabled') ?? false;
       if (!enabled) return true;
 
+      final pausedUntil = prefs.getInt('geo_hrm_paused_until_ms') ?? 0;
+      if (DateTime.now().millisecondsSinceEpoch < pausedUntil) {
+        return true;
+      }
+
       final service = GeoTrackingService();
       await service.captureAndQueue(source: 'background');
       await service.flushQueue();

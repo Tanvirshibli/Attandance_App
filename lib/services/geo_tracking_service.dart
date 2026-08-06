@@ -21,6 +21,7 @@ const String _enabledKey = 'geo_tracking_enabled';
 const String _lastPingKey = 'geo_last_ping_json';
 const String _queueKey = 'geo_ping_queue';
 const String _lastCaptureKey = 'geo_last_capture_ms';
+const String _hrmPausedUntilKey = 'geo_hrm_paused_until_ms';
 
 class GeoTrackingService {
   GeoTrackingService({
@@ -47,6 +48,51 @@ class GeoTrackingService {
     }
   }
 
+  /// Stop foreground/background HRM-bound geo work so leftover traffic cannot
+  /// block the next login on the same IP after 429 or logout.
+  Future<void> pauseForLogout() async {
+    _foregroundTimer?.cancel();
+    _foregroundTimer = null;
+    await GeoBackgroundWorker.cancelPeriodicTask();
+    await GeoNotificationService.instance.cancelTrackingNotification();
+    await _setHrmPausedUntil(
+      DateTime.now().add(const Duration(minutes: 2)),
+    );
+  }
+
+  Future<void> pauseForRateLimit({Duration duration = const Duration(minutes: 1)}) async {
+    await _setHrmPausedUntil(DateTime.now().add(duration));
+    debugPrint('Geo HRM calls paused for ${duration.inSeconds}s due to rate limit');
+  }
+
+  Future<void> clearHrmPause() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_hrmPausedUntilKey);
+  }
+
+  Future<bool> _isHrmPaused() async {
+    final prefs = await SharedPreferences.getInstance();
+    final until = prefs.getInt(_hrmPausedUntilKey) ?? 0;
+    return DateTime.now().millisecondsSinceEpoch < until;
+  }
+
+  Future<void> _setHrmPausedUntil(DateTime until) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(_hrmPausedUntilKey, until.millisecondsSinceEpoch);
+  }
+
+  Future<int?> _resolveEmployeeId({bool forceRefresh = false}) async {
+    if (!forceRefresh) {
+      final cached = _authService.cachedCanonicalEmployeeId;
+      if (cached != null && cached > 0) {
+        return cached;
+      }
+    }
+    final profile =
+        await _authService.getCurrentUserProfile(forceRefresh: forceRefresh);
+    return profile?.canonicalEmployeeId;
+  }
+
   Future<bool> isEnabled() async {
     final prefs = await SharedPreferences.getInstance();
     return prefs.getBool(_enabledKey) ?? false;
@@ -60,6 +106,7 @@ class GeoTrackingService {
     await prefs.setBool(_enabledKey, enabled);
 
     if (enabled) {
+      await clearHrmPause();
       await _startForegroundTimer();
       await GeoBackgroundWorker.registerPeriodicTask();
       final intervalMinutes = await _configService.geoIntervalMinutes();
@@ -81,8 +128,7 @@ class GeoTrackingService {
 
   /// Recent pings from ZKTeco `geo.history` (falls back to local queue).
   Future<List<GeoPing>> fetchHistory({int limit = 20}) async {
-    final profile = await _authService.getCurrentUserProfile();
-    final employeeId = profile?.canonicalEmployeeId;
+    final employeeId = await _resolveEmployeeId();
     if (employeeId == null || employeeId <= 0) {
       final queue = await _loadQueue();
       return queue.reversed.take(limit).toList();
@@ -240,10 +286,17 @@ class GeoTrackingService {
     }
   }
 
-  Future<void> _tryUpload(GeoPing ping, {String source = 'foreground'}) async {
-    final profile = await _authService.getCurrentUserProfile();
-    final employeeId = profile?.canonicalEmployeeId;
-    if (employeeId == null || employeeId <= 0) return;
+  Future<void> _tryUpload(
+    GeoPing ping, {
+    String source = 'foreground',
+    int? employeeId,
+  }) async {
+    if (await _isHrmPaused()) {
+      return;
+    }
+
+    final resolvedId = employeeId ?? await _resolveEmployeeId();
+    if (resolvedId == null || resolvedId <= 0) return;
 
     final uploadUrl = await _configService.resolveUrl('geo.upload') ??
         AppConfig.geoLocationUploadUrl;
@@ -256,7 +309,7 @@ class GeoTrackingService {
       } catch (_) {}
 
       final body = <String, dynamic>{
-        'employee_id': employeeId,
+        'employee_id': resolvedId,
         'lat': ping.latitude,
         'lng': ping.longitude,
         'address': ping.address,
@@ -280,6 +333,14 @@ class GeoTrackingService {
           )
           .timeout(const Duration(seconds: 15));
 
+      if (response.statusCode == 429) {
+        final retryAfter = int.tryParse(response.headers['retry-after'] ?? '');
+        await pauseForRateLimit(
+          duration: Duration(seconds: retryAfter != null && retryAfter > 0 ? retryAfter : 60),
+        );
+        return;
+      }
+
       if (response.statusCode >= 200 && response.statusCode < 300) {
         await _markUploaded(ping);
       }
@@ -289,9 +350,27 @@ class GeoTrackingService {
   }
 
   Future<void> flushQueue() async {
+    if (await _isHrmPaused()) {
+      return;
+    }
+
     final queue = await _loadQueue();
-    for (final ping in queue.where((p) => !p.uploaded)) {
-      await _tryUpload(ping, source: 'background');
+    final pending = queue.where((p) => !p.uploaded).toList();
+    if (pending.isEmpty) {
+      return;
+    }
+
+    // Resolve profile once per flush batch (avoids N× get-my-info).
+    final employeeId = await _resolveEmployeeId();
+    if (employeeId == null || employeeId <= 0) {
+      return;
+    }
+
+    for (final ping in pending) {
+      if (await _isHrmPaused()) {
+        break;
+      }
+      await _tryUpload(ping, source: 'background', employeeId: employeeId);
     }
   }
 

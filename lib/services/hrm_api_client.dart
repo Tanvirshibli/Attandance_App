@@ -140,6 +140,13 @@ class HrmApiClient {
             .timeout(const Duration(seconds: 20));
       }
 
+      if (response.statusCode == 429) {
+        return ApiResult.fail(
+          'Too many requests. Please wait a moment and try again.',
+          statusCode: 429,
+        );
+      }
+
       return _mapResponse(response);
     } catch (error) {
       return ApiResult.fail('Network error: $error');
@@ -180,6 +187,13 @@ class HrmApiClient {
               body: jsonEncode(body ?? {}),
             )
             .timeout(const Duration(seconds: 25));
+      }
+
+      if (response.statusCode == 429) {
+        return ApiResult.fail(
+          'Too many requests. Please wait a moment and try again.',
+          statusCode: 429,
+        );
       }
 
       return _mapResponse(response);
