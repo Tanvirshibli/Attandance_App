@@ -38,8 +38,31 @@ class FaceRegistrationApiService {
         }
 
         if (response.statusCode == 401) {
-          await _authService.logout(invalidateServerSession: false);
-          return null;
+          final refreshed = await _authService.refreshToken();
+          if (!refreshed) {
+            await _authService.logout(invalidateServerSession: false);
+            return null;
+          }
+          final refreshedToken = await _authService.getToken();
+          if (refreshedToken == null || refreshedToken.isEmpty) {
+            return null;
+          }
+          final retry = await http.get(
+            Uri.parse(url),
+            headers: {
+              'Accept': 'application/json',
+              'Authorization': 'Bearer $refreshedToken',
+            },
+          ).timeout(const Duration(seconds: 15));
+          if (retry.statusCode == 401) {
+            await _authService.logout(invalidateServerSession: false);
+            return null;
+          }
+          if (retry.statusCode != 200) {
+            continue;
+          }
+          final retryBody = _decodeMap(retry.body);
+          return FaceRegistrationData.fromJson(retryBody['face_registration']);
         }
 
         if (response.statusCode != 200) {
@@ -92,8 +115,34 @@ class FaceRegistrationApiService {
         }
 
         if (response.statusCode == 401) {
-          await _authService.logout(invalidateServerSession: false);
-          return false;
+          final refreshed = await _authService.refreshToken();
+          if (!refreshed) {
+            await _authService.logout(invalidateServerSession: false);
+            return false;
+          }
+          final refreshedToken = await _authService.getToken();
+          if (refreshedToken == null || refreshedToken.isEmpty) {
+            return false;
+          }
+          final retry = await http
+              .post(
+                Uri.parse(url),
+                headers: {
+                  'Accept': 'application/json',
+                  'Content-Type': 'application/json',
+                  'Authorization': 'Bearer $refreshedToken',
+                },
+                body: jsonEncode(payload),
+              )
+              .timeout(const Duration(seconds: 20));
+          if (retry.statusCode == 401) {
+            await _authService.logout(invalidateServerSession: false);
+            return false;
+          }
+          if (retry.statusCode == 200 || retry.statusCode == 201) {
+            return true;
+          }
+          continue;
         }
 
         if (response.statusCode == 200 || response.statusCode == 201) {

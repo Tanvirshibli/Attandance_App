@@ -4,7 +4,6 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
-import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../config/app_config.dart';
@@ -53,10 +52,6 @@ class FcmWakeHandler {
     }
 
     FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
-
-    try {
-      await Permission.notification.request();
-    } catch (_) {}
 
     final messaging = FirebaseMessaging.instance;
     await messaging.setForegroundNotificationPresentationOptions(
