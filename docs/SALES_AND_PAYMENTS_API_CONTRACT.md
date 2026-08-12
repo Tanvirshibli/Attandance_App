@@ -23,7 +23,7 @@ Default: `https://sales.peoplesitsolution.online`
 ZKTeco dashboard (**Settings → Mobile App API**) can override endpoint URLs and feature flags without an app rebuild:
 
 - `feature.sales.enabled` (**must be on** for Sales Info; when off the app shows a disabled-module empty state and does not call person-sales)
-- `feature.payment.enabled` (**must be on** for auth-wise Payments report)
+- `feature.payment.enabled` / app `payment.enabled` (**must be on** for auth-wise Payments report; aliases accepted)
 - Endpoint keys listed below (including `sales.personSales`, `sales.allDealers`, `payment.authWise`, `payment.setupData`)
 
 **Canonical employee id:** always numeric `employees.id` from HRM `GET /api/v1/get-my-info` (`user.employeeId` / app `canonicalEmployeeId`). **Do not** use display `emp_id` strings.
@@ -401,6 +401,20 @@ Enable `feature.payment.enabled` for the live auth-wise Payments report (HRM pay
 - Same host default as Sales: `https://sales.peoplesitsolution.online`.
 - App config key: `payment.authWise` (base path without trailing id).
 - Feature gate: ZKTeco `feature.payment.enabled` / app `payment.enabled` (**must be on**).
+- App pre-check: `GET /api/payment-setup-data` — logged-in `canonicalEmployeeId` must appear in `employeeList[].employeeId` before calling the report.
+- **200 with zero payments** is success (empty period), not an error.
+
+**HTTP 422 (common)**
+
+App parsing: prefer JSON **`error`** over generic **`message`** for user-visible headline; show mapped English action hint as secondary line.
+
+| `error` / message | Meaning | Fix |
+| ----------------- | ------- | --- |
+| `Sales employee was not found.` | Path `employeeId` not in sales employee flat table | Sales admin: create/link employee record |
+| Bengali: *এই employee-এর সাথে কোনো user account পাওয়া যায়নি* (no user account linked) | Employee is in `employeeList` but has no sales `userId` (e.g. GAZI `employeeId` **1904** vs working Shuntu **19** with `userId: 14`) | Sales admin: link a user account to that employee on the sales server |
+| App shows friendly text | *Your sales account is not linked. Contact admin.* | Same backend fix |
+
+Verified 2026-08-11: `GET .../auth-wise-payments/19` → **200**; `GET .../auth-wise-payments/1904` → **422** (no linked user account).
 
 **Success shape (summary)**
 
@@ -432,7 +446,7 @@ Enable `feature.payment.enabled` for the live auth-wise Payments report (HRM pay
 
 Modules: `egg`, `feed`, `fertilizer`, `chicks`, `liveBird`, `cullBird`, `unclassified`.
 
-HRM payslip/loan/PF screens remain under **HR benefits** on the same Payments page and still default to demo (`USE_PAYMENT_DEMO_DATA`).
+HRM payslip/loan/PF screens are under **Services → HR Benefits** (`HrBenefitsHubScreen`) and still default to demo (`USE_PAYMENT_DEMO_DATA`).
 
 ### C.1 Create auth-wise payment (Post receive)
 

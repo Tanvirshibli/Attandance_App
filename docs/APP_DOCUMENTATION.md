@@ -7,7 +7,7 @@
 
 > March 5, 2026 update: Face registration and attendance records are now backend-synced. Face data is persisted in backend `face_registration_android` and hydrated into app memory on login/profile fetch. Attendance check-in/check-out submits to backend `new_attendance_requests`, and attendance screens now show backend `requested` records. Any older local-only notes in this file are superseded by this update and `docs/AUTHENTICATION_INTEGRATION.md`.
 
-> March 7, 2026 UI update: Home screen uses separate `Check In` and `Check Out` buttons instead of a single toggle action. Buttons are state-aware and prevent invalid sequences.
+> March 7, 2026 UI update: Home screen uses separate `Check In` and `Check Out` buttons instead of a single toggle action. Buttons are state-aware and prevent invalid sequences. As of v2.2.3+33, only **one** punch button shows at a time; pending days with both times show **Update Check Out**; approved days hide all punch buttons.
 
 > March 7, 2026 integration update: Android submissions now include a persistent device identifier, backend device approval is live, and canonical employee identity for attendance/ZKTeco flows is now `employees.id`.
 
@@ -173,8 +173,14 @@ User → Login (dummy) → MainShell → [Home | Attendance | Notifications | Pr
 ## 5. Navigation Flow
 
 ```
-LoginScreen
-  └─(Sign In)→ MainShell (IndexedStack with bottom nav)
+AttendEaseApp
+  └─ UpdateGate (OTA manifest check on cold start)
+        ├─(update required)→ AppUpdateScreen (blocking download + install)
+        └─(up to date / offline continue)→ AppBootstrap
+              ├─ PermissionsGateScreen
+              ├─ ServerBootstrapScreen
+              ├─ LoginScreen
+              └─ MainShell (IndexedStack with bottom nav)
                   ├── Tab 0: HomeScreen
                   │     └─(Clock-In Card)→ CheckInScreen → (pop on success)
                   ├── Tab 1: AttendanceHistoryScreen
@@ -185,7 +191,8 @@ LoginScreen
                   └── Tab 4: EmployeeServicesHubScreen (Services)
                         ├─ AttendanceReportScreen
                         ├─ LeaveHubScreen (balance cards + leave report)
-                        ├─ PaymentHubScreen (payslips, loans, PF, mess, compensation)
+                        ├─ PaymentHubScreen (dealer auth-wise report + receive)
+                        ├─ HrBenefitsHubScreen (payslips, loans, PF, mess, compensation)
                         │   ├─ PayslipListScreen / PayslipDetailScreen
                         │   ├─ LoanListScreen / LoanDetailScreen
                         │   ├─ PostPaymentScreen / PaymentReportScreen
@@ -232,7 +239,7 @@ LoginScreen
 | **Load order** | Profile → attendance list → month summary (resume uses same sequence) |
 | **Header** | Gradient card with live backend avatar letters, employee name, designation/employee ID, greeting (dynamic AM/PM), today's check-in/out/hours |
 | **Quick Stats** | 4 `StatCard` widgets: Present / Absent / Holiday / Leave from HRM single-employee daily `rows` (`attendanceType`); punch-day fallback when rows empty |
-| **Clock-In Card** | Today-only clocked-in; separate Check In / Check Out buttons → `CheckInScreen` |
+| **Clock-In Card** | Today-only; one punch button at a time (Check In **or** Check Out); day-complete hides both buttons → `CheckInScreen` |
 | **Weekly Chart** | `BarChart` from punch records (open shifts use `now` as end) |
 | **Recent Attendance** | List of top 5 `AttendanceTile` widgets from live requests |
 
@@ -251,7 +258,7 @@ LoginScreen
 | Phase | What Happens |
 |---|---|
 | **Initializing** | Camera + FaceRecognitionService initialization, verify face is registered |
-| **Scanning** | Live camera preview active. Each step is gated by face placement (must be centered and sized correctly in the face guide). Placement validation uses actual captured frame dimensions (not only preview metadata), includes width/height orientation fallback, and uses check-in centering tolerance tuned to ±35%. Liveness challenges run in randomized order with periodic `takePicture()` every 700ms. |
+| **Scanning** | Live camera preview active with `startImageStream` (~4–5 FPS, drop-if-busy). Each step is gated by face placement (must be centered and sized correctly in the face guide). Placement validation uses stream frame dimensions (not only preview metadata), includes width/height orientation fallback, and uses check-in centering tolerance tuned to ±35%. Live guidance uses the fast ML Kit detector (`minFaceSize: 0.12`); JPEG `takePicture()` runs only for verify/challenge commits. Liveness challenges run in randomized order. |
 | **Verifying** | Early verification starts only after at least **2** challenges are passed (up to 2 captures). If a match is found, remaining steps are skipped; otherwise scanning continues. If all challenges are consumed, a final verification runs with up to 3 captures and best-confidence selection. |
 | **GPS** | Face verified → capture GPS coordinates via `Geolocator` (high accuracy, 15s timeout) → reverse geocode address |
 | **Success** | All steps complete → "Done ✓" button pops the screen and calls `onCheckIn` callback |
@@ -282,7 +289,7 @@ LoginScreen
 | **State** | `StatefulWidget` with `TickerProviderStateMixin` |
 | **Camera** | Live front-camera preview using `camera` package in normal non-mirrored orientation, with face-shaped guide and progress ring |
 | **Flow** | Delete old registration → Auto-detect angle 1 (straight) → Auto-capture → Angle 2 (left) → ... → Angle 5 (down) → Done |
-| **Angle Detection** | Periodic `takePicture()` every 700ms → face placement gate (orientation-robust width/height fallback + ±28% centering tolerance) → live quality gate (also evaluated with orientation fallback) → `isTargetAngle(face, targetAngle)`. When target angle is held for 2 frames (~1.4s), auto-captures. |
+| **Angle Detection** | Live `startImageStream` (~4–5 FPS, Android NV21) → placement gate (rotation-aware frame dimensions + ±35% centering) → `isTargetAngle(face, targetAngle)`. Strict quality only on final `takePicture()` capture. When target angle is held for 1 frame, auto-captures. Preview uses `ResolutionPreset.medium`. |
 | **5 Angles** | Straight (\|yaw\|<14, \|pitch\|<14), Left (yaw 15–55°), Right (yaw -55– -15°), Up (pitch 9–45°), Down (pitch -70– -6°) |
 | **Same-Person** | Each new embedding checked against all previous captures via cosine similarity ≥ 65% |
 | **Quality** | Every step is pre-validated in live analysis (`checkFrontCamera` placement + `checkFaceQuality`) before angle hold/capture. Capture-time validation still runs via `registerFaceCapture()` pipeline. |
@@ -397,8 +404,8 @@ The face recognition pipeline is implemented entirely on-device in `FaceRecognit
 #### Registration Pipeline (per capture, 5 angles)
 
 ```
-Live Camera Preview (front, non-mirrored, periodic takePicture every 700ms)
-  → ML Kit Face Detection (accurate mode, minFaceSize 0.25)
+Live Camera Preview (front, non-mirrored, startImageStream ~4–5 FPS)
+  → ML Kit Face Detection — live: fast mode, minFaceSize 0.12; final still: accurate mode, minFaceSize 0.15
     → Placement Gate: face must be centered and correctly sized in guide (orientation-aware width/height fallback)
     → Live Quality Gate: quality checks must pass before step progression
     → Angle Detection: isTargetAngle(face, targetAngle)
@@ -421,7 +428,7 @@ Live Camera Preview (front, non-mirrored, periodic takePicture every 700ms)
 
 ```
 Live Camera Preview (front, face-shaped container, non-mirrored display)
-  → Periodic frame analysis (takePicture every 700ms)
+  → Live stream frame analysis (~4–5 FPS; fast detector for guidance)
   → Placement Gate: face must be centered and correctly sized in face guide (orientation-aware width/height fallback)
   → Randomized Liveness Challenges (dynamic, up to 5):
     1. Look Straight — isTargetAngle(straight), hold 2 frames
@@ -755,7 +762,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\build-dev-tunnel-apk.ps1
 #   -UpdateLevel Medium  # 2.2.1 -> 2.3.1
 #   -UpdateLevel Major   # 2.2.1 -> 3.2.1
 # Production (no tunnel defines):
-# flutter build apk --release --split-per-abi --target-platform android-arm,android-arm64 --obfuscate --split-debug-info=build/app/outputs/symbols
+# flutter build apk --release --split-per-abi --target-platform android-arm,android-arm64 --no-tree-shake-icons --obfuscate --split-debug-info=build/app/outputs/symbols
 ```
 
 Release builds enable **R8 minify + shrinkResources** (`android/app/build.gradle.kts`) and ProGuard keep rules for Flutter / ML Kit / TFLite (`android/app/proguard-rules.pro`). Every tunnel script run increments `+N`; optional `-UpdateLevel` bumps marketing version.
@@ -784,6 +791,8 @@ build\app\outputs\flutter-apk\app-armeabi-v7a-release.apk (~36.7 MB, 32-bit phon
 - If CMake/NDK configure fails in OneDrive path (for example `:app:configureCMakeRelease[arm64-v8a]`), build in a non-OneDrive path such as `C:\temp\employee_attendance_build`, then copy the APK back.
 - Prefer `--split-per-abi` so each device installs only one ABI’s native libs (ML Kit + TFLite dominate size).
 - Symbols for obfuscated Dart: `build/app/outputs/symbols` (keep for crash deobfuscation).
+- Always pass `--no-tree-shake-icons` on release APKs: icon tree-shaking can strip Material glyph data and leave empty ☐ placeholders in the UI.
+- Impeller is disabled in `AndroidManifest.xml` (`EnableImpeller=false`) because some x86_64 emulators SIGSEGV during `FlutterJNI.attachToNative` with Impeller enabled.
 - The build uses debug signing keys — a release keystore is needed for production.
 
 ---
@@ -799,7 +808,7 @@ build\app\outputs\flutter-apk\app-armeabi-v7a-release.apk (~36.7 MB, 32-bit phon
 | **Backend** | Live API integration is required for production flows; the app is no longer an offline-only prototype |
 | **Face data** | Stored in `SharedPreferences` (plain JSON) — not encrypted |
 | **GPS data** | Captured but not persisted after screen closes |
-| **Camera** | Uses `camera` package for live preview — full programmatic control over front camera. Angle detection, smile/blink checks done in real-time via periodic `takePicture()` calls. |
+| **Camera** | Uses `camera` package for live preview — full programmatic control over front camera. Angle detection, smile/blink checks done in real-time via `startImageStream` (~4–5 FPS); JPEG capture only on final register/verify commits. |
 | **Single user** | Only one face can be registered at a time (single-tenant) |
 | **Liveness** | Passive (smile + sharpness) — no active 3D depth or IR checks |
 | **Notifications** | Static dummy data, no push notification integration |
@@ -884,7 +893,7 @@ The current stack uses **ML Kit for detection** and **MobileFaceNet for identity
 ### Auth / geo reliability
 - `AuthService.refreshToken()` + `HrmApiClient` 401 retry.
 - Geo ongoing notification via `GeoNotificationService`; FCM wake is active in `FcmWakeHandler` when Firebase is configured (`google-services.json`).
-- `GeoTrackingScreen` uses `LiveLocationMap` (OpenStreetMap / `flutter_map`) for a live GPS view with history pins.
+- `GeoTrackingScreen` uses `LiveLocationMap` (Carto Voyager / `flutter_map`, zoom 17/15, +/- controls) for a live GPS view with history pins; status card only (no on/off toggle) — tracking auto-enables after first-launch permissions / login.
 
 ### `lib/screens/home_screen.dart` (545 lines)
 - Dashboard with gradient header, stats row (4 StatCards), clock-in card (navigates to CheckInScreen), weekly bar chart, recent attendance list.
@@ -907,9 +916,8 @@ The current stack uses **ML Kit for detection** and **MobileFaceNet for identity
 ### `lib/screens/face_registration_screen.dart` (~1000 lines)
 - 5-angle live-camera face registration: straight, left, right, up, down.
 - Front camera preview with face-shaped overlay (`_FaceOvalOverlayPainter`) plus animated face-path progress ring (`_FaceRegistrationProgressPainter`).
-- Periodic `takePicture()` every 700ms for real-time angle detection.
-- Each step is gated by placement and live quality checks before angle hold begins.
-- Placement + live quality gates use orientation-robust dimension fallback to avoid being stuck on face-placement messaging when camera metadata orientation differs.
+- Live `startImageStream` (~4–5 FPS, NV21 on Android) for angle detection; `takePicture()` only on auto-capture.
+- Each step is gated by placement before angle hold; strict quality runs at capture time only.
 - Auto-captures when target angle is held for 2 frames (~1.4s) for improved capture clarity.
 - Step indicator dots (5), capture flash animation, completion overlay.
 - Same-person validation between captures (cosine similarity ≥ 65%).

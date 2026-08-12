@@ -74,7 +74,7 @@ Or manually:
 
 ```powershell
 flutter pub get
-flutter build apk --release --split-per-abi --target-platform android-arm,android-arm64 --obfuscate --split-debug-info=build/app/outputs/symbols --dart-define=USE_LOCAL_TUNNEL_BACKENDS=true
+flutter build apk --release --split-per-abi --target-platform android-arm,android-arm64 --no-tree-shake-icons --obfuscate --split-debug-info=build/app/outputs/symbols --dart-define=USE_LOCAL_TUNNEL_BACKENDS=true
 ```
 
 Outputs: `build/app/outputs/flutter-apk/app-arm64-v8a-release.apk`, `app-armeabi-v7a-release.apk`
@@ -82,7 +82,7 @@ Outputs: `build/app/outputs/flutter-apk/app-arm64-v8a-release.apk`, `app-armeabi
 ## Production APK (no tunnel)
 
 ```powershell
-flutter build apk --release --split-per-abi --target-platform android-arm,android-arm64 --obfuscate --split-debug-info=build/app/outputs/symbols
+flutter build apk --release --split-per-abi --target-platform android-arm,android-arm64 --no-tree-shake-icons --obfuscate --split-debug-info=build/app/outputs/symbols
 ```
 
 Only change URLs for production by **omitting** `USE_LOCAL_TUNNEL_BACKENDS` (defaults in `app_config.dart`).

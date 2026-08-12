@@ -1,6 +1,6 @@
 # Mobile Employee Features (v2.2.0)
 
-Last updated: July 28, 2026
+Last updated: August 11, 2026
 
 This document describes the employee self-service modules in **Attandance_App**. HRM/ZKTeco APIs are wired where available. **Sales Info reporting and Post Sale create are live** when demo flags are off. **Auth-wise payment report and receive** use the sales host when `payment.enabled` is on. HRM loan/payslip screens still demo by default (see [SALES_AND_PAYMENTS_API_CONTRACT.md](SALES_AND_PAYMENTS_API_CONTRACT.md)).
 
@@ -12,7 +12,7 @@ On **every cold start and when returning from background**, the app checks notif
 
 | Entry point | Destination |
 |-------------|-------------|
-| Footer **Services** tab | `EmployeeServicesHubScreen` (Attendance Report, Leave, Payments, Sales Info, Vehicles, Farm & Dealer, Geo Tracking) |
+| Footer **Services** tab | `EmployeeServicesHubScreen` (Attendance Report, Leave, Payments, HR Benefits, Sales Info, Vehicles, Farm & Dealer, Geo Tracking) |
 | Profile → Quick Actions → Leave Request | `LeaveHubScreen` |
 | Profile → Quick Actions → View Reports | `AttendanceReportScreen` |
 | Profile → Settings → Location Services | `GeoTrackingScreen` |
@@ -22,13 +22,25 @@ On **every cold start and when returning from background**, the app checks notif
 
 - Attendance Report
 - Leave (single page: balance cards + history report + apply)
-- Payments (payslips, loans, PF, mess, compensation, post payment — demo by default)
+- Payments (dealer auth-wise report + receive payment — live when `payment.enabled`)
+- HR Benefits (payslips, loans, PF, mess, compensation, post payment — demo by default)
 - Sales Info (live overall + module breakdown; Post sale with searchable dealer list)
 - Vehicles (active fleet list + maintenance history)
 - Farm & Dealer (field collection: dealers, farms, visits, surveys, follow-ups)
-- Geo Tracking
+- Geo Tracking (status only — no on/off toggle; auto-enabled after first-launch permissions)
 
 ---
+
+## First-launch permissions (blocking)
+
+Required before login / main shell (`AppPermissionsService.requiredItems`):
+
+1. Notifications  
+2. Camera  
+3. Location (while using app)  
+4. Location (all the time) — background geo tracking  
+
+Geo tracking turns on automatically once these are granted (`GeoTrackingService.ensureEnabledIfAllowed`). The Geo Tracking screen shows **Tracking on/off** status and permission subtitle only — no user toggle. Logout still pauses schedules via `pauseForLogout`.
 
 ## API mapping
 
@@ -87,17 +99,62 @@ Handoff for backend teams: **[SALES_AND_PAYMENTS_API_CONTRACT.md](SALES_AND_PAYM
 
 ### Farm & Dealer (marketing)
 
-- Services tile → hub (Dealers, Farms, My visits, Follow-ups) + New Dealer / New Farm FABs
-- Create party with GPS, product rows, multi-photo upload; visit / farm survey / follow-up from party detail
-- ZKTeco `/api/v1/mobile/marketing/*` (no JWT); flag `marketing.enabled`
+- Services tile → hub (Markets, Dealers, Farms, Visits, Follow-ups) + New Market / New Dealer / New Farm FABs
+- Party create: `employee_id` required; **Company/Sector dropdowns** from Sales `GET /api/booking-person-books/form-data`; farms can link parent dealer; products, photos
+- Create forms **auto-fill GPS + address** (no Capture GPS / Check-in GPS buttons); visits start `in_progress` with auto check-in; check-out completes visit; farm survey + follow-ups from party detail
+- ZKTeco `/api/v1/mobile/marketing/*` including `visits/{id}/check-in|check-out` (no JWT); flag `marketing.enabled`
 - See [FARM_DEALER_MOBILE.md](FARM_DEALER_MOBILE.md) for endpoint keys and payloads
+
+### Face check-in & registration (v2.2.3+33)
+
+- **Attendance sync fix (v2.2.3+33):** API in-only rows no longer inherit stale local checkout times; pending days with both in/out show **Update Check Out**; POST punch synthesizes a local record when the server omits `request`; checkout refresh retries up to 5× with backoff
+- **Home day-complete UI (v2.2.3+31):** approved days hide punch buttons; pending days allow checkout update
+- **Pull-to-refresh:** Home screen refreshes profile + attendance on swipe down
+- **Home today merge (v2.2.3+29):** machine + Android punches for the same civil day collapse via `matchesCalendarDay` (any of `attDate` / in / out timestamps) and `mergeRecords` (earliest in, latest out)
+- **Punch-priority calendar day:** `effectiveCalendarDay` prefers punch timestamps over `attDate` so mismatched `request_date` rows still group correctly
+- **Dual Home fetch:** today-scoped list (`from`/`to` = today) merged with recent history for weekly chart
+- **Optimistic preservation:** local punch in-time kept when post-punch API refresh returns incomplete rows (retry up to 3×)
+- **Home times refresh:** list parser accepts ZKTeco `records` and HRM JWT `data` arrays; all list URLs are tried and merged (no stop on first empty 200)
+- **Today resolution:** `effectiveCalendarDay` uses `attDate` or punch timestamps when date is missing; Home picks the best today row (prefer rows with times, highest id)
+- **Optimistic punch UI:** successful POST returns `request` → Home applies immediately, then retries list refresh (3×, 400ms apart)
+- Punch POST sends explicit local `attDate` (`yyyy-MM-dd`); `pending` status normalized to `requested` for subtitles
+- **Approved vs pending:** Home subtitle shows *Approved* or *Pending approval* based on today's record status
+- **Single check-in route:** Home guards against double-tap; only one `CheckInScreen` may be active (static route guard + opening lock)
+- Successful punch auto-returns to Home after ~1.5s (or **Done**) with the punched record; Home refreshes from API after optimistic merge
+- Live camera uses **image stream** (~5 FPS) with **NV21** on Android and **device-orientation-aware** ML Kit rotation
+- Registration live path matches check-in: **placement + angle hold only**; strict quality runs on final `takePicture()` capture
+- Arm's-length framing accepted during live guidance; strict quality only on final verify/register still
+- Early check-in verify uses single embedding pass; final match keeps robust 4-variant embedding
+
+### Geo map (v2.2.3+25)
+
+- **Carto Voyager** tiles (street/place labels) with default zoom **17** live / **15** history
+- Zoom **+ / −** controls beside recenter on Geo Tracking map
 
 ### Payments hub (v2.3)
 
-- **Primary:** live auth-wise payment-receive report (same host as Sales) — date chips, overall KPIs, module tabs (Egg…Other)
+- **Dealer payments only:** live auth-wise payment-receive report (same host as Sales) — date chips, overall KPIs, module tabs (Egg…Other)
 - **Receive dealer payment:** searchable bank, receiver, and payment type from `payment-setup-data`; rec type / payment for / invoice type remain numeric fields
-- **Secondary HR benefits:** Payslips, My loans, Loan payments, Post payment, Provident fund, Mess deposit, Compensation (still demo by default via `USE_PAYMENT_DEMO_DATA`)
-- Requires ZKTeco `payment.enabled=true` and endpoint `payment.authWise`
+- When `payment.enabled` is off: banner explains dealer report is disabled; open **Services → HR Benefits** for payslips and loans
+- Dealer report errors: app shows sales JSON **`error`** field as headline (e.g. Bengali account-link text), English **action hint** as subtitle, amber banner for setup/422 (not generic red title)
+- Eligibility: must be listed in `payment-setup-data` `employeeList` before report loads
+- Feature flag alias: `feature.payment.enabled` ↔ `payment.enabled`
+- Requires ZKTeco `payment.enabled=true` and endpoint `payment.authWise` for live dealer report/receive
+
+### HR Benefits hub
+
+- Dedicated Services tile: payslips, loans, loan payments, post payment, PF, mess deposit, compensation
+- Demo payroll/loan data by default (`USE_PAYMENT_DEMO_DATA`); independent of dealer `payment.enabled`
+
+### Forced OTA updates (v2.2.3+)
+
+- On cold start, app checks `UPDATE_MANIFEST_URL` (GitHub raw `ota/manifest.json`)
+- APKs download from GitHub Release asset URLs in the manifest
+- When `version_code` is newer than installed build: blocking **Update required** screen (no skip)
+- Download shows progress bar with size and percentage; interrupted downloads restart on next launch
+- After download: system install dialog opens; app relaunches via `MY_PACKAGE_REPLACED` after successful replace
+- Publish updates with **Rocket Launcher** — double-click `Attandance_App/PUBLISH-OTA-UPDATE.cmd` (or `rocket launcher/PUBLISH-OTA-UPDATE.cmd`), enter release notes, wait for build + GitHub publish
+- Disable checks in dev: `--dart-define=UPDATE_CHECK_ENABLED=false`
 
 ### Endpoint configuration
 
@@ -141,13 +198,13 @@ Profile → About shows live `v{version}+{buildNumber}` via `package_info_plus` 
 Live payments:
 
 ```powershell
-flutter build apk --release --dart-define=USE_LOCAL_TUNNEL_BACKENDS=true --dart-define=USE_PAYMENT_DEMO_DATA=false --split-per-abi --target-platform android-arm,android-arm64 --obfuscate --split-debug-info=build/app/outputs/symbols
+flutter build apk --release --dart-define=USE_LOCAL_TUNNEL_BACKENDS=true --dart-define=USE_PAYMENT_DEMO_DATA=false --split-per-abi --target-platform android-arm,android-arm64 --no-tree-shake-icons --obfuscate --split-debug-info=build/app/outputs/symbols
 ```
 
 Force sales reporting demo:
 
 ```powershell
-flutter build apk --release --split-per-abi --target-platform android-arm,android-arm64 --obfuscate --split-debug-info=build/app/outputs/symbols --dart-define=USE_SALES_DEMO_DATA=true
+flutter build apk --release --split-per-abi --target-platform android-arm,android-arm64 --no-tree-shake-icons --obfuscate --split-debug-info=build/app/outputs/symbols --dart-define=USE_SALES_DEMO_DATA=true
 ```
 
 Version: **2.2.x** (marketing + build bumped via tunnel script `-UpdateLevel`)

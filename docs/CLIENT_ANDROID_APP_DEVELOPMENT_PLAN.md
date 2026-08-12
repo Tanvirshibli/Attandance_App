@@ -143,7 +143,8 @@ All API calls are **direct HTTP** — no extra middleware layer:
 | Upload API | `POST /api/v1/mobile/geo-location` |
 | Live map | OpenStreetMap via `flutter_map` — live GPS marker, history pins, recenter |
 | Background | Foreground timer + WorkManager + ongoing notification; FCM wake when Firebase configured |
-| Permissions | Foreground + background location |
+| Permissions | Foreground + background location (required at first launch) |
+| Control | **No user on/off toggle** — status card only; auto-enabled after permissions / login |
 
 ![Geo location capture and upload flow](images/client-plan/03-geo-tracking.png)
 
@@ -166,7 +167,7 @@ All API calls are **direct HTTP** — no extra middleware layer:
 
 - **Services** footer tab (5th item) opens the employee services hub with all modules  
 - Profile shows user info from HRM `get-my-info` and quick-action shortcuts  
-- Settings include geo tracking toggle  
+- Location Services opens Geo Tracking (**status only**, no toggle)  
 
 ---
 

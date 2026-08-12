@@ -1,6 +1,6 @@
 # Authentication & Mobile Attendance Integration
 
-Last updated: July 9, 2026
+Last updated: August 11, 2026
 
 ## Summary
 
@@ -9,11 +9,19 @@ The app uses a **dual-backend** integration aligned with PeoplesHRM:
 - **pphl_erp** — JWT auth, profile, face registration, and future ERP features (leave, holiday, sales, payment)
 - **zkteco-Automation-management-PPHL** — public mobile attendance requests (no JWT); **primary** source for Home/History punches (same DB as the web Attendance Requests grid)
 
-### Attendance list merge (July 9, 2026)
+### Attendance list merge (August 11, 2026)
 
 1. Fetch ZKTeco `GET /api/v1/mobile/attendance-requests?employee_id=` (machine + android rows).
 2. Fetch HRM JWT `GET /api/v1/mobile/attendance-requests` when a token exists.
 3. Merge by calendar day (earliest in / latest out). Do **not** stop after a non-empty JWT list — that previously hid ZKTeco machine punches.
+4. **List response shapes:** ZKTeco returns `records[]`; HRM JWT returns `data[]` — both are parsed and merged.
+5. **List URL fallback:** every configured list URL is tried; empty `records`/`data` does not short-circuit remaining URLs.
+6. **Punch optimistic merge:** `POST` 201 body includes `request` (attDate, requestedInTime/Out, status). The app applies this on Home immediately, then retries GET (3×, 400ms) for server sync.
+7. **Calendar day:** rows match "today" via `matchesCalendarDay` (any of `attDate`, in/out timestamps); grouping prefers punch timestamps over `attDate`; POST includes explicit local `attDate`.
+8. **Home today merge (v2.2.3+29):** `resolveTodayRecord` merges all same-day rows (machine in + android out); dual fetch (today-scoped + history); local punch preserved when API list lags.
+9. **Home day-complete UI (v2.2.3+31):** approved days hide punch buttons; pending days allow **Update Check Out**.
+10. **Attendance sync (v2.2.3+33):** `preserveLocal` trusts API in-only over stale local out; `synthesizePunchRecord` on POST; list span-merge + unique `(employee_id, request_date)` on ZKTeco backend.
+11. **ZKTeco list merge (v2.2.3+33):** mobile list API merges duplicate same-day rows (earliest in, latest out).
 
 ## Backend endpoints
 
@@ -34,7 +42,7 @@ The app uses a **dual-backend** integration aligned with PeoplesHRM:
 | GET | `/api/v1/mobile/attendance-requests?employee_id=` | List employee records |
 | POST | `/api/v1/mobile/attendance-requests` | Check-in/out self punch |
 
-POST body includes `employee_id` (canonical `employees.id`), `direction`, geo fields, and device metadata.
+POST body includes `employee_id` (canonical `employees.id`), `direction`, `attDate` (local `yyyy-MM-dd`), geo fields, and device metadata.
 
 Face embeddings are **not** sent to zkteco; they remain on pphl_erp only.
 

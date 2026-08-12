@@ -74,9 +74,42 @@ C:\flutter\bin\flutter.bat run -d emulator-5554
 
 In Cursor: **Tasks: Run Task** → **Start Android Emulator**, then **Run and Debug** → **Attandance_App (emulator)**.
 
-### Dev APK (tunnel backends — install on phone for testing)
+### Production APK (live backends — default for distribution)
 
-Lightweight **split-per-ABI** APKs (R8 minify + resource shrink + Dart obfuscation):
+Lightweight **split-per-ABI** APKs against **production** URLs (`hrm.peoplesitsolution.com` + `zkteco.peoplesitsolution.online`). **Do not** pass `USE_LOCAL_TUNNEL_BACKENDS`.
+
+```powershell
+cd Attandance_App
+powershell -ExecutionPolicy Bypass -File .\scripts\build-production-apk.ps1
+# Optional marketing bump: -UpdateLevel Minor|Medium|Major
+# Emulator x86_64: add -Emulator
+```
+
+Each run bumps `pubspec.yaml` build number (`+N`). Profile → About shows `v{version}+{buildNumber}`.
+
+Outputs (phone):
+
+- `build/app/outputs/flutter-apk/app-arm64-v8a-release.apk` — modern phones
+- `build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk` — 32-bit phones
+
+Emulator (x86_64 AVD):
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\build-production-apk.ps1 -Emulator
+```
+
+Equivalent manual phone build:
+
+```powershell
+flutter pub get
+flutter build apk --release --split-per-abi --target-platform android-arm,android-arm64 --obfuscate --split-debug-info=build/app/outputs/symbols
+```
+
+Install the ABI that matches the device (prefer `app-arm64-v8a-release.apk`). Do **not** ship a fat multi-ABI APK for phones.
+
+### Dev APK (tunnel backends — local PC / Cloudflare only)
+
+Use this only when testing against Docker stacks on this PC via Cloudflare tunnel. **Not** for production distribution.
 
 ```powershell
 cd Attandance_App
@@ -104,13 +137,6 @@ Equivalent manual phone build:
 ```powershell
 flutter pub get
 flutter build apk --release --split-per-abi --target-platform android-arm,android-arm64 --obfuscate --split-debug-info=build/app/outputs/symbols --dart-define=USE_LOCAL_TUNNEL_BACKENDS=true
-```
-
-### Production APK
-
-```powershell
-flutter pub get
-flutter build apk --release --split-per-abi --target-platform android-arm,android-arm64 --obfuscate --split-debug-info=build/app/outputs/symbols
 ```
 
 Install the ABI that matches the device (prefer `app-arm64-v8a-release.apk`). Do **not** ship a fat multi-ABI APK for phones.
