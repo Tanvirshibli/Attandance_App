@@ -10,6 +10,7 @@ import '../models/auth_wise_payment_models.dart';
 import '../models/auth_wise_payment_post_models.dart';
 import '../models/payment_setup_models.dart';
 import '../models/payment_models.dart';
+import '../models/payment_report_failure.dart';
 import '../utils/multipart_form.dart';
 import 'endpoint_config_service.dart';
 import 'hrm_api_client.dart';
@@ -85,6 +86,32 @@ class PaymentService {
     }
   }
 
+  /// Whether the logged-in HRM employee is listed as an auth-wise receiver.
+  Future<ApiResult<void>> checkAuthWiseReceiverEligibility(int employeeId) async {
+    if (employeeId <= 0) {
+      return ApiResult.fail('Please login again to load dealer payments.');
+    }
+
+    final setup = await fetchPaymentSetupData();
+    if (!setup.success || setup.data == null) {
+      return ApiResult.fail(
+        setup.message ?? 'Could not verify payment eligibility.',
+      );
+    }
+
+    final listed = setup.data!.employees
+        .any((employee) => employee.employeeId == employeeId);
+    if (!listed) {
+      return ApiResult.fail(
+        'You are not registered as an auth-wise payment receiver.',
+        isSetupIssue: true,
+        detail: 'Contact admin to add you as an auth-wise payment receiver.',
+      );
+    }
+
+    return ApiResult.ok(null);
+  }
+
   /// Live dealer payment-receive report (no JWT). Gated by [isPaymentEnabled].
   Future<ApiResult<AuthWisePaymentsData>> getAuthWisePayments({
     required int employeeId,
@@ -122,8 +149,23 @@ class PaymentService {
           .timeout(const Duration(seconds: 30));
 
       if (response.statusCode < 200 || response.statusCode >= 300) {
+        assert(() {
+          // ignore: avoid_print
+          print(
+            'getAuthWisePayments failed: $uri status=${response.statusCode} '
+            'body=${response.body}',
+          );
+          return true;
+        }());
+        final failure = _parsePaymentReportFailure(
+          response.body,
+          response.statusCode,
+        );
         return ApiResult.fail(
-          'Could not load payments (${response.statusCode}).',
+          failure.headline,
+          statusCode: failure.statusCode,
+          detail: failure.actionHint ?? failure.context,
+          isSetupIssue: failure.isSetupIssue,
         );
       }
 
@@ -133,8 +175,12 @@ class PaymentService {
       }
 
       if (decoded['success'] == false) {
+        final failure = _parsePaymentReportFailure(response.body, null);
         return ApiResult.fail(
-          decoded['message']?.toString() ?? 'Could not load payments.',
+          failure.headline,
+          statusCode: failure.statusCode,
+          detail: failure.actionHint ?? failure.context,
+          isSetupIssue: failure.isSetupIssue,
         );
       }
 
@@ -272,13 +318,88 @@ class PaymentService {
     }
   }
 
-  String? _messageFromBody(String body) {
+  String? _messageFromBody(String body, {bool preferErrorField = false}) {
     try {
       final decoded = jsonDecode(body);
-      if (decoded is Map && decoded['message'] != null) {
-        return decoded['message'].toString();
+      if (decoded is Map) {
+        final error = decoded['error']?.toString().trim();
+        final message = decoded['message']?.toString().trim();
+        if (preferErrorField) {
+          if (error != null && error.isNotEmpty) return error;
+          if (message != null && message.isNotEmpty) return message;
+        } else {
+          if (message != null && message.isNotEmpty) return message;
+          if (error != null && error.isNotEmpty) return error;
+        }
       }
     } catch (_) {}
+    return null;
+  }
+
+  PaymentReportFailure _parsePaymentReportFailure(
+    String body,
+    int? statusCode,
+  ) {
+    String? errorField;
+    String? messageField;
+    try {
+      final decoded = jsonDecode(body);
+      if (decoded is Map) {
+        errorField = decoded['error']?.toString().trim();
+        messageField = decoded['message']?.toString().trim();
+      }
+    } catch (_) {}
+
+    final headline = (errorField != null && errorField.isNotEmpty)
+        ? errorField
+        : (messageField != null && messageField.isNotEmpty)
+            ? messageField
+            : 'Could not load payments${statusCode != null ? ' ($statusCode)' : ''}.';
+
+    String? context;
+    if (errorField != null &&
+        errorField.isNotEmpty &&
+        messageField != null &&
+        messageField.isNotEmpty &&
+        messageField != errorField) {
+      context = messageField;
+    } else if (errorField == null || errorField.isEmpty) {
+      context = null;
+    }
+
+    final setupIssue = _isSetupIssue(headline, messageField, statusCode);
+    final actionHint = _actionHintForSetupIssue(headline, messageField);
+
+    return PaymentReportFailure(
+      headline: headline,
+      context: context,
+      actionHint: actionHint,
+      isSetupIssue: setupIssue,
+      statusCode: statusCode,
+    );
+  }
+
+  bool _isSetupIssue(String headline, String? message, int? statusCode) {
+    if (statusCode == 422) return true;
+    final combined = '${headline.toLowerCase()} ${message?.toLowerCase() ?? ''}';
+    return combined.contains('user account') ||
+        combined.contains('sales employee was not found') ||
+        headline.contains('ব্যবহারকারী') ||
+        headline.contains('employee');
+  }
+
+  String? _actionHintForSetupIssue(String headline, String? message) {
+    final lower = '${headline.toLowerCase()} ${message?.toLowerCase() ?? ''}';
+    if (lower.contains('sales employee was not found')) {
+      return 'Ask admin to register your employee on the sales system.';
+    }
+    if (lower.contains('user account') || headline.contains('ব্যবহারকারী')) {
+      return 'Ask admin to link your sales user account.';
+    }
+    if (lower.contains('not registered') ||
+        lower.contains('auth-wise payment receiver')) {
+      return 'Contact admin to add you as an auth-wise payment receiver.';
+    }
     return null;
   }
 

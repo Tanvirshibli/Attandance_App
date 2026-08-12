@@ -28,6 +28,9 @@ class LiveLocationMap extends StatefulWidget {
 }
 
 class LiveLocationMapState extends State<LiveLocationMap> {
+  static const double _liveZoom = 17;
+  static const double _historyZoom = 15;
+
   final MapController _controller = MapController();
   bool _followLive = true;
   bool _hasCenteredOnce = false;
@@ -47,7 +50,7 @@ class LiveLocationMapState extends State<LiveLocationMap> {
     if (!_hasCenteredOnce) {
       _hasCenteredOnce = true;
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) _controller.move(next, 16);
+        if (mounted) _controller.move(next, _liveZoom);
       });
       return;
     }
@@ -69,12 +72,19 @@ class LiveLocationMapState extends State<LiveLocationMap> {
   void recenter() {
     final target = widget.livePosition ?? _center;
     setState(() => _followLive = true);
-    _controller.move(target, 16);
+    _controller.move(target, widget.livePosition != null ? _liveZoom : _historyZoom);
   }
 
-  void moveTo(LatLng point, {double zoom = 16}) {
+  void moveTo(LatLng point, {double? zoom}) {
     setState(() => _followLive = false);
-    _controller.move(point, zoom);
+    _controller.move(point, zoom ?? _liveZoom);
+  }
+
+  void _zoomBy(double delta) {
+    final camera = _controller.camera;
+    final next = (camera.zoom + delta).clamp(3.0, 19.0);
+    setState(() => _followLive = false);
+    _controller.move(camera.center, next);
   }
 
   @override
@@ -103,7 +113,7 @@ class LiveLocationMapState extends State<LiveLocationMap> {
                 mapController: _controller,
                 options: MapOptions(
                   initialCenter: _center,
-                  initialZoom: live != null ? 16 : 13,
+                  initialZoom: live != null ? _liveZoom : _historyZoom,
                   minZoom: 3,
                   maxZoom: 19,
                   onPositionChanged: (camera, hasGesture) {
@@ -118,7 +128,8 @@ class LiveLocationMapState extends State<LiveLocationMap> {
                 children: [
                   TileLayer(
                     urlTemplate:
-                        'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                        'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png',
+                    subdomains: const ['a', 'b', 'c', 'd'],
                     userAgentPackageName: 'com.pphl.employee_attendance',
                     maxNativeZoom: 19,
                   ),
@@ -209,7 +220,7 @@ class LiveLocationMapState extends State<LiveLocationMap> {
                       ),
                     ),
                     child: Text(
-                      '© OpenStreetMap',
+                      '© OpenStreetMap · © CARTO',
                       style: TextStyle(
                         fontSize: 10,
                         color: Colors.white.withValues(alpha: 0.9),
@@ -221,25 +232,68 @@ class LiveLocationMapState extends State<LiveLocationMap> {
               Positioned(
                 right: 12,
                 bottom: 14,
-                child: Material(
-                  color: Colors.white,
-                  elevation: 4,
-                  shadowColor: AppColors.shadow.withValues(alpha: 0.25),
-                  borderRadius: BorderRadius.circular(14),
-                  child: InkWell(
-                    onTap: recenter,
-                    borderRadius: BorderRadius.circular(14),
-                    child: Padding(
-                      padding: const EdgeInsets.all(12),
-                      child: Icon(
-                        Icons.my_location_rounded,
-                        color: _followLive
-                            ? AppColors.primary
-                            : AppColors.textSecondary,
-                        size: 22,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Material(
+                      color: Colors.white,
+                      elevation: 4,
+                      shadowColor: AppColors.shadow.withValues(alpha: 0.25),
+                      borderRadius: BorderRadius.circular(14),
+                      child: InkWell(
+                        onTap: () => _zoomBy(1),
+                        borderRadius: BorderRadius.circular(14),
+                        child: const Padding(
+                          padding: EdgeInsets.all(12),
+                          child: Icon(
+                            Icons.add_rounded,
+                            color: AppColors.textSecondary,
+                            size: 22,
+                          ),
+                        ),
                       ),
                     ),
-                  ),
+                    const SizedBox(height: 8),
+                    Material(
+                      color: Colors.white,
+                      elevation: 4,
+                      shadowColor: AppColors.shadow.withValues(alpha: 0.25),
+                      borderRadius: BorderRadius.circular(14),
+                      child: InkWell(
+                        onTap: () => _zoomBy(-1),
+                        borderRadius: BorderRadius.circular(14),
+                        child: const Padding(
+                          padding: EdgeInsets.all(12),
+                          child: Icon(
+                            Icons.remove_rounded,
+                            color: AppColors.textSecondary,
+                            size: 22,
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Material(
+                      color: Colors.white,
+                      elevation: 4,
+                      shadowColor: AppColors.shadow.withValues(alpha: 0.25),
+                      borderRadius: BorderRadius.circular(14),
+                      child: InkWell(
+                        onTap: recenter,
+                        borderRadius: BorderRadius.circular(14),
+                        child: Padding(
+                          padding: const EdgeInsets.all(12),
+                          child: Icon(
+                            Icons.my_location_rounded,
+                            color: _followLive
+                                ? AppColors.primary
+                                : AppColors.textSecondary,
+                            size: 22,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
               if (live == null)

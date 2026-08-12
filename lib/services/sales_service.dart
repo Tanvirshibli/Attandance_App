@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 import '../config/app_config.dart';
 import '../data/sales_demo_data.dart';
 import '../models/api_result.dart';
+import '../models/booking_form_data_models.dart';
 import '../models/sales_models.dart';
 import '../models/dealer_list_models.dart';
 import '../models/sales_booking_post_models.dart';
@@ -15,6 +16,7 @@ import 'auth_service.dart';
 import 'endpoint_config_service.dart';
 
 export '../models/sales_models.dart' show SalesProfile;
+export '../models/booking_form_data_models.dart';
 
 class SalesService {
   SalesService({
@@ -27,6 +29,7 @@ class SalesService {
   final EndpointConfigService _configService;
 
   AllDealerLists? _cachedDealerLists;
+  BookingFormData? _cachedBookingFormData;
 
   bool get useDemoData => AppConfig.useSalesDemoData;
 
@@ -215,6 +218,80 @@ class SalesService {
 
       _cachedDealerLists = AllDealerLists.fromJson(data);
       return ApiResult.ok(_cachedDealerLists!);
+    } catch (error) {
+      return ApiResult.fail('Network error: $error');
+    }
+  }
+
+  /// Companies + sectors from booking form-data (cached for the process lifetime).
+  Future<ApiResult<BookingFormData>> fetchBookingFormData({
+    bool forceRefresh = false,
+  }) async {
+    if (!forceRefresh && _cachedBookingFormData != null) {
+      return ApiResult.ok(_cachedBookingFormData!);
+    }
+
+    if (useDemoData) {
+      await Future<void>.delayed(const Duration(milliseconds: 120));
+      _cachedBookingFormData = const BookingFormData(
+        companies: [
+          BookingFormCompany(id: 2, nameEn: 'Peoples feed'),
+          BookingFormCompany(id: 3, nameEn: 'Peoples poultry & hatchery ltd'),
+        ],
+        sectors: [
+          BookingFormSector(id: 25, name: 'Sanabandha Hatchery', companyId: 3),
+          BookingFormSector(id: 26, name: 'Comilla Hatchery', companyId: 3),
+        ],
+      );
+      return ApiResult.ok(_cachedBookingFormData!);
+    }
+
+    final token = await _authService.getToken();
+    if (token == null || token.isEmpty) {
+      return ApiResult.fail('Please login to continue.');
+    }
+
+    final url = await _configService.resolveUrl('sales.booking.formData');
+    final uri = Uri.parse(
+      url ??
+          '${AppConfig.salesApiBaseUrl.trim().replaceAll(RegExp(r'/+$'), '')}/api/booking-person-books/form-data',
+    );
+
+    try {
+      final response = await http
+          .get(
+            uri,
+            headers: {
+              'Accept': 'application/json',
+              'Authorization': 'Bearer $token',
+              'User-Agent': 'PPHLAttendance/2.2 (Android; Flutter)',
+            },
+          )
+          .timeout(const Duration(seconds: 60));
+
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        return ApiResult.fail(
+          'Could not load form masters (${response.statusCode}).',
+        );
+      }
+
+      final decoded = jsonDecode(response.body);
+      if (decoded is! Map<String, dynamic>) {
+        return ApiResult.fail('Invalid form-data response.');
+      }
+      if (decoded['success'] == false) {
+        return ApiResult.fail(
+          decoded['message']?.toString() ?? 'Could not load form masters.',
+        );
+      }
+
+      final data = decoded['data'];
+      if (data is! Map<String, dynamic>) {
+        return ApiResult.fail('Invalid form-data payload.');
+      }
+
+      _cachedBookingFormData = BookingFormData.fromApiData(data);
+      return ApiResult.ok(_cachedBookingFormData!);
     } catch (error) {
       return ApiResult.fail('Network error: $error');
     }

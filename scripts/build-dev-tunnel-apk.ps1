@@ -130,6 +130,7 @@ if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 & $flutter build apk --release `
   --split-per-abi `
   --target-platform $platforms `
+  --no-tree-shake-icons `
   --obfuscate `
   --split-debug-info=$symbolsDir `
   --dart-define=USE_LOCAL_TUNNEL_BACKENDS=true

@@ -49,8 +49,15 @@ class MarketingService {
   Future<ApiResult<Market>> createMarket({
     required String name,
     String? code,
+    String? divisionName,
     String? district,
     String? upazila,
+    String? unionName,
+    String? villageName,
+    String? address,
+    double? lat,
+    double? lng,
+    String? status,
     String? notes,
   }) async {
     if (!await isMarketingEnabled()) {
@@ -65,8 +72,17 @@ class MarketingService {
       body: {
         'name': name,
         if (code != null && code.isNotEmpty) 'code': code,
+        if (divisionName != null && divisionName.isNotEmpty)
+          'division_name': divisionName,
         if (district != null && district.isNotEmpty) 'district': district,
         if (upazila != null && upazila.isNotEmpty) 'upazila': upazila,
+        if (unionName != null && unionName.isNotEmpty) 'union_name': unionName,
+        if (villageName != null && villageName.isNotEmpty)
+          'village_name': villageName,
+        if (address != null && address.isNotEmpty) 'address': address,
+        'lat': ?lat,
+        'lng': ?lng,
+        if (status != null && status.isNotEmpty) 'status': status,
         if (notes != null && notes.isNotEmpty) 'notes': notes,
       },
       parse: Market.fromJson,
@@ -124,6 +140,25 @@ class MarketingService {
     return _postObject(uri: Uri.parse(url), body: payload, parse: Party.fromJson);
   }
 
+  Future<ApiResult<Party>> updateParty(
+    int partyId,
+    Map<String, dynamic> payload,
+  ) async {
+    if (!await isMarketingEnabled()) {
+      return ApiResult.fail('feature_disabled');
+    }
+    if (partyId <= 0) return ApiResult.fail('Invalid party.');
+    final base = await _url(
+      'marketing.parties',
+      '/api/v1/mobile/marketing/parties',
+    );
+    return _putObject(
+      uri: Uri.parse('$base/$partyId'),
+      body: payload,
+      parse: Party.fromJson,
+    );
+  }
+
   Future<ApiResult<List<Visit>>> listVisits({
     int? employeeId,
     int? partyId,
@@ -152,16 +187,19 @@ class MarketingService {
     if (!await isMarketingEnabled()) {
       return ApiResult.fail('feature_disabled');
     }
+    final body = Map<String, dynamic>.from(payload);
+    body.putIfAbsent('status', () => 'in_progress');
     final url = await _url(
       'marketing.visit.create',
       '/api/v1/mobile/marketing/visits',
     );
-    return _postObject(uri: Uri.parse(url), body: payload, parse: Visit.fromJson);
+    return _postObject(uri: Uri.parse(url), body: body, parse: Visit.fromJson);
   }
 
-  Future<ApiResult<Visit>> completeVisit(
+  Future<ApiResult<Visit>> checkInVisit(
     int visitId, {
-    Map<String, dynamic>? updates,
+    double? lat,
+    double? lng,
   }) async {
     if (!await isMarketingEnabled()) {
       return ApiResult.fail('feature_disabled');
@@ -171,25 +209,59 @@ class MarketingService {
       'marketing.visits',
       '/api/v1/mobile/marketing/visits',
     );
-    final body = <String, dynamic>{
-      'status': 'completed',
-      ...?updates,
-    };
-    try {
-      final response = await http
-          .put(
-            Uri.parse('$base/$visitId'),
-            headers: {
-              ..._headers,
-              'Content-Type': 'application/json',
-            },
-            body: jsonEncode(body),
-          )
-          .timeout(const Duration(seconds: 30));
-      return _parseObjectResponse(response, Visit.fromJson);
-    } catch (error) {
-      return ApiResult.fail('Network error: $error');
+    return _postObject(
+      uri: Uri.parse('$base/$visitId/check-in'),
+      body: {
+        'check_in_lat': ?lat,
+        'check_in_lng': ?lng,
+      },
+      parse: Visit.fromJson,
+    );
+  }
+
+  Future<ApiResult<Visit>> checkOutVisit(
+    int visitId, {
+    double? lat,
+    double? lng,
+    Map<String, dynamic>? extra,
+  }) async {
+    if (!await isMarketingEnabled()) {
+      return ApiResult.fail('feature_disabled');
     }
+    if (visitId <= 0) return ApiResult.fail('Invalid visit.');
+    final base = await _url(
+      'marketing.visits',
+      '/api/v1/mobile/marketing/visits',
+    );
+    return _postObject(
+      uri: Uri.parse('$base/$visitId/check-out'),
+      body: {
+        'check_out_lat': ?lat,
+        'check_out_lng': ?lng,
+        ...?extra,
+      },
+      parse: Visit.fromJson,
+    );
+  }
+
+  Future<ApiResult<Visit>> completeVisit(
+    int visitId, {
+    Map<String, dynamic>? updates,
+  }) async {
+    Map<String, dynamic>? extra;
+    if (updates != null) {
+      extra = Map<String, dynamic>.from(updates);
+      extra.remove('check_out_lat');
+      extra.remove('check_out_lng');
+      extra.remove('lat');
+      extra.remove('lng');
+    }
+    return checkOutVisit(
+      visitId,
+      lat: marketingParseDouble(updates?['check_out_lat'] ?? updates?['lat']),
+      lng: marketingParseDouble(updates?['check_out_lng'] ?? updates?['lng']),
+      extra: extra,
+    );
   }
 
   Future<ApiResult<FarmSurvey>> createFarmSurvey(
@@ -245,6 +317,25 @@ class MarketingService {
     );
     return _postObject(
       uri: Uri.parse(url),
+      body: payload,
+      parse: Followup.fromJson,
+    );
+  }
+
+  Future<ApiResult<Followup>> updateFollowup(
+    int followupId,
+    Map<String, dynamic> payload,
+  ) async {
+    if (!await isMarketingEnabled()) {
+      return ApiResult.fail('feature_disabled');
+    }
+    if (followupId <= 0) return ApiResult.fail('Invalid follow-up.');
+    final base = await _url(
+      'marketing.followups',
+      '/api/v1/mobile/marketing/followups',
+    );
+    return _putObject(
+      uri: Uri.parse('$base/$followupId'),
       body: payload,
       parse: Followup.fromJson,
     );
@@ -349,6 +440,28 @@ class MarketingService {
     try {
       final response = await http
           .post(
+            uri,
+            headers: {
+              ..._headers,
+              'Content-Type': 'application/json',
+            },
+            body: jsonEncode(body),
+          )
+          .timeout(const Duration(seconds: 45));
+      return _parseObjectResponse(response, parse);
+    } catch (error) {
+      return ApiResult.fail('Network error: $error');
+    }
+  }
+
+  Future<ApiResult<T>> _putObject<T>({
+    required Uri uri,
+    required Map<String, dynamic> body,
+    required T Function(Map<String, dynamic>) parse,
+  }) async {
+    try {
+      final response = await http
+          .put(
             uri,
             headers: {
               ..._headers,

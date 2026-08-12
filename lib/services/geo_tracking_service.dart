@@ -101,6 +101,20 @@ class GeoTrackingService {
   Future<bool> isGeoFeatureEnabled() =>
       _configService.isFeatureEnabled('geo.tracking.enabled', defaultValue: true);
 
+  /// Turn tracking on when the feature flag is on and background location is granted.
+  /// Safe to call after the permissions gate, on login, or when opening Geo Tracking.
+  Future<bool> ensureEnabledIfAllowed() async {
+    if (!await isGeoFeatureEnabled()) {
+      return false;
+    }
+    final always = await Permission.locationAlways.status;
+    if (!always.isGranted && !always.isLimited) {
+      return false;
+    }
+    await setEnabled(true);
+    return true;
+  }
+
   Future<void> setEnabled(bool enabled) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_enabledKey, enabled);
