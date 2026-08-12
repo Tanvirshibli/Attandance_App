@@ -76,8 +76,25 @@ class EndpointConfig {
   }
 
   bool isFeatureEnabled(String key, {bool defaultValue = false}) {
-    final value = features[key];
-    if (value is bool) return value;
+    final aliases = <String, List<String>>{
+      'payment.enabled': ['feature.payment.enabled'],
+      'feature.payment.enabled': ['payment.enabled'],
+    };
+
+    bool? read(String featureKey) {
+      final value = features[featureKey];
+      if (value is bool) return value;
+      return null;
+    }
+
+    final direct = read(key);
+    if (direct != null) return direct;
+
+    for (final alias in aliases[key] ?? const <String>[]) {
+      final aliased = read(alias);
+      if (aliased != null) return aliased;
+    }
+
     return defaultValue;
   }
 

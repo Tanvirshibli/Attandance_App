@@ -14,6 +14,16 @@ double? marketingParseDouble(Object? v) {
   return double.tryParse(v.toString());
 }
 
+bool? marketingParseBool(Object? v) {
+  if (v == null) return null;
+  if (v is bool) return v;
+  if (v is num) return v != 0;
+  final s = v.toString().trim().toLowerCase();
+  if (s == 'true' || s == '1' || s == 'yes') return true;
+  if (s == 'false' || s == '0' || s == 'no') return false;
+  return null;
+}
+
 String? marketingNonEmpty(Object? v) {
   final s = v?.toString().trim();
   if (s == null || s.isEmpty) return null;
@@ -64,17 +74,31 @@ class Market {
     required this.id,
     required this.name,
     this.code,
+    this.divisionName,
     this.district,
     this.upazila,
+    this.unionName,
+    this.villageName,
+    this.address,
+    this.lat,
+    this.lng,
     this.status,
+    this.notes,
   });
 
   final int id;
   final String name;
   final String? code;
+  final String? divisionName;
   final String? district;
   final String? upazila;
+  final String? unionName;
+  final String? villageName;
+  final String? address;
+  final double? lat;
+  final double? lng;
   final String? status;
+  final String? notes;
 
   String get displayName {
     final c = code?.trim();
@@ -82,14 +106,36 @@ class Market {
     return name;
   }
 
+  String get locationLine {
+    final parts = [
+      villageName,
+      unionName,
+      upazila,
+      district,
+      divisionName,
+    ].whereType<String>().where((e) => e.isNotEmpty);
+    return parts.join(', ');
+  }
+
   factory Market.fromJson(Map<String, dynamic> json) {
     return Market(
       id: marketingParseInt(json['id']) ?? 0,
       name: (json['name'] ?? '').toString(),
       code: marketingNonEmpty(json['code']),
+      divisionName: marketingNonEmpty(
+        json['divisionName'] ?? json['division_name'],
+      ),
       district: marketingNonEmpty(json['district']),
       upazila: marketingNonEmpty(json['upazila']),
+      unionName: marketingNonEmpty(json['unionName'] ?? json['union_name']),
+      villageName: marketingNonEmpty(
+        json['villageName'] ?? json['village_name'],
+      ),
+      address: marketingNonEmpty(json['address']),
+      lat: marketingParseDouble(json['lat']),
+      lng: marketingParseDouble(json['lng']),
       status: marketingNonEmpty(json['status']),
+      notes: marketingNonEmpty(json['notes']),
     );
   }
 }
@@ -100,11 +146,19 @@ class PartyProduct {
     required this.productName,
     this.categoryName,
     this.brand,
+    this.brandName,
     this.unit,
     this.demandQty,
     this.stockQty,
     this.competitorPrice,
     this.competitorBrand,
+    this.competitorCompany,
+    this.relationType,
+    this.monthlyQuantity,
+    this.currentStock,
+    this.unitId,
+    this.unitPrice,
+    this.isOurProduct,
     this.notes,
     this.productId,
   });
@@ -114,33 +168,59 @@ class PartyProduct {
   final String productName;
   final String? categoryName;
   final String? brand;
+  final String? brandName;
   final String? unit;
   final double? demandQty;
   final double? stockQty;
   final double? competitorPrice;
   final String? competitorBrand;
+  final String? competitorCompany;
+  final String? relationType;
+  final double? monthlyQuantity;
+  final double? currentStock;
+  final int? unitId;
+  final double? unitPrice;
+  final bool? isOurProduct;
   final String? notes;
 
   factory PartyProduct.fromJson(Map<String, dynamic> json) {
     return PartyProduct(
       id: marketingParseInt(json['id']),
-      productId: marketingParseInt(json['product_id']),
+      productId: marketingParseInt(json['productId'] ?? json['product_id']),
       productName:
-          (json['product_name'] ?? json['productName'] ?? '').toString(),
+          (json['productName'] ?? json['product_name'] ?? '').toString(),
       categoryName: marketingNonEmpty(
-        json['category_name'] ?? json['categoryName'],
+        json['categoryName'] ?? json['category_name'],
       ),
       brand: marketingNonEmpty(json['brand']),
+      brandName: marketingNonEmpty(json['brandName'] ?? json['brand_name']),
       unit: marketingNonEmpty(json['unit']),
       demandQty: marketingParseDouble(
-        json['demand_qty'] ?? json['demandQty'],
+        json['demandQty'] ?? json['demand_qty'],
       ),
-      stockQty: marketingParseDouble(json['stock_qty'] ?? json['stockQty']),
+      stockQty: marketingParseDouble(json['stockQty'] ?? json['stock_qty']),
       competitorPrice: marketingParseDouble(
-        json['competitor_price'] ?? json['competitorPrice'],
+        json['competitorPrice'] ?? json['competitor_price'],
       ),
       competitorBrand: marketingNonEmpty(
-        json['competitor_brand'] ?? json['competitorBrand'],
+        json['competitorBrand'] ?? json['competitor_brand'],
+      ),
+      competitorCompany: marketingNonEmpty(
+        json['competitorCompany'] ?? json['competitor_company'],
+      ),
+      relationType: marketingNonEmpty(
+        json['relationType'] ?? json['relation_type'],
+      ),
+      monthlyQuantity: marketingParseDouble(
+        json['monthlyQuantity'] ?? json['monthly_quantity'],
+      ),
+      currentStock: marketingParseDouble(
+        json['currentStock'] ?? json['current_stock'],
+      ),
+      unitId: marketingParseInt(json['unitId'] ?? json['unit_id']),
+      unitPrice: marketingParseDouble(json['unitPrice'] ?? json['unit_price']),
+      isOurProduct: marketingParseBool(
+        json['isOurProduct'] ?? json['is_our_product'],
       ),
       notes: marketingNonEmpty(json['notes']),
     );
@@ -152,11 +232,19 @@ class PartyProduct {
       'product_name': productName,
       if (categoryName != null) 'category_name': categoryName,
       if (brand != null) 'brand': brand,
+      if (brandName != null) 'brand_name': brandName,
       if (unit != null) 'unit': unit,
       if (demandQty != null) 'demand_qty': demandQty,
       if (stockQty != null) 'stock_qty': stockQty,
       if (competitorPrice != null) 'competitor_price': competitorPrice,
       if (competitorBrand != null) 'competitor_brand': competitorBrand,
+      if (competitorCompany != null) 'competitor_company': competitorCompany,
+      if (relationType != null) 'relation_type': relationType,
+      if (monthlyQuantity != null) 'monthly_quantity': monthlyQuantity,
+      if (currentStock != null) 'current_stock': currentStock,
+      if (unitId != null) 'unit_id': unitId,
+      if (unitPrice != null) 'unit_price': unitPrice,
+      if (isOurProduct != null) 'is_our_product': isOurProduct,
       if (notes != null) 'notes': notes,
     };
   }
@@ -167,16 +255,31 @@ class Party {
     required this.id,
     required this.partyType,
     required this.name,
+    this.publicId,
     this.tradeName,
     this.code,
     this.contactPerson,
+    this.ownerName,
     this.phone,
     this.altPhone,
+    this.email,
+    this.nidNo,
+    this.tradeLicenseNo,
     this.address,
+    this.businessYears,
+    this.farmType,
+    this.capacity,
+    this.capacityUnitId,
+    this.creditLimit,
+    this.paymentMode,
+    this.leadStatus,
     this.marketId,
+    this.parentPartyId,
+    this.existingDealerId,
     this.companyId,
     this.sectorId,
     this.ownerEmployeeId,
+    this.createdByEmployeeId,
     this.lat,
     this.lng,
     this.status,
@@ -187,18 +290,33 @@ class Party {
   });
 
   final int id;
+  final String? publicId;
   final String partyType;
   final String name;
   final String? tradeName;
   final String? code;
   final String? contactPerson;
+  final String? ownerName;
   final String? phone;
   final String? altPhone;
+  final String? email;
+  final String? nidNo;
+  final String? tradeLicenseNo;
   final String? address;
+  final double? businessYears;
+  final String? farmType;
+  final double? capacity;
+  final int? capacityUnitId;
+  final double? creditLimit;
+  final String? paymentMode;
+  final String? leadStatus;
   final int? marketId;
+  final int? parentPartyId;
+  final int? existingDealerId;
   final int? companyId;
   final int? sectorId;
   final int? ownerEmployeeId;
+  final int? createdByEmployeeId;
   final double? lat;
   final double? lng;
   final String? status;
@@ -225,30 +343,64 @@ class Party {
     }
     return Party(
       id: marketingParseInt(json['id']) ?? 0,
-      partyType: (json['party_type'] ?? json['partyType'] ?? '').toString(),
+      publicId: marketingNonEmpty(json['publicId'] ?? json['public_id']),
+      partyType: (json['partyType'] ?? json['party_type'] ?? '').toString(),
       name: (json['name'] ?? '').toString(),
-      tradeName: marketingNonEmpty(json['trade_name'] ?? json['tradeName']),
+      tradeName: marketingNonEmpty(json['tradeName'] ?? json['trade_name']),
       code: marketingNonEmpty(json['code']),
       contactPerson: marketingNonEmpty(
-        json['contact_person'] ?? json['contactPerson'],
+        json['contactPerson'] ?? json['contact_person'],
       ),
+      ownerName: marketingNonEmpty(json['ownerName'] ?? json['owner_name']),
       phone: marketingNonEmpty(json['phone']),
-      altPhone: marketingNonEmpty(json['alt_phone'] ?? json['altPhone']),
+      altPhone: marketingNonEmpty(json['altPhone'] ?? json['alt_phone']),
+      email: marketingNonEmpty(json['email']),
+      nidNo: marketingNonEmpty(json['nidNo'] ?? json['nid_no']),
+      tradeLicenseNo: marketingNonEmpty(
+        json['tradeLicenseNo'] ?? json['trade_license_no'],
+      ),
       address: marketingNonEmpty(json['address']),
-      marketId: marketingParseInt(json['market_id'] ?? json['marketId']),
-      companyId: marketingParseInt(json['company_id'] ?? json['companyId']),
-      sectorId: marketingParseInt(json['sector_id'] ?? json['sectorId']),
+      businessYears: marketingParseDouble(
+        json['businessYears'] ?? json['business_years'],
+      ),
+      farmType: marketingNonEmpty(json['farmType'] ?? json['farm_type']),
+      capacity: marketingParseDouble(json['capacity']),
+      capacityUnitId: marketingParseInt(
+        json['capacityUnitId'] ?? json['capacity_unit_id'],
+      ),
+      creditLimit: marketingParseDouble(
+        json['creditLimit'] ?? json['credit_limit'],
+      ),
+      paymentMode: marketingNonEmpty(
+        json['paymentMode'] ?? json['payment_mode'],
+      ),
+      leadStatus: marketingNonEmpty(json['leadStatus'] ?? json['lead_status']),
+      marketId: marketingParseInt(json['marketId'] ?? json['market_id']),
+      parentPartyId: marketingParseInt(
+        json['parentPartyId'] ?? json['parent_party_id'],
+      ),
+      existingDealerId: marketingParseInt(
+        json['existingDealerId'] ?? json['existing_dealer_id'],
+      ),
+      companyId: marketingParseInt(json['companyId'] ?? json['company_id']),
+      sectorId: marketingParseInt(json['sectorId'] ?? json['sector_id']),
       ownerEmployeeId: marketingParseInt(
-        json['owner_employee_id'] ?? json['ownerEmployeeId'],
+        json['ownerEmployeeId'] ?? json['owner_employee_id'],
+      ),
+      createdByEmployeeId: marketingParseInt(
+        json['createdByEmployeeId'] ?? json['created_by_employee_id'],
       ),
       lat: marketingParseDouble(json['lat']),
       lng: marketingParseDouble(json['lng']),
       status: marketingNonEmpty(json['status']),
       notes: marketingNonEmpty(json['notes']),
-      products: marketingMapList(json['products']).map(PartyProduct.fromJson).toList(),
-      attachments:
-          marketingMapList(json['attachments']).map(Attachment.fromJson).toList(),
-      marketName: marketName ?? marketingNonEmpty(json['market_name']),
+      products:
+          marketingMapList(json['products']).map(PartyProduct.fromJson).toList(),
+      attachments: marketingMapList(json['attachments'])
+          .map(Attachment.fromJson)
+          .toList(),
+      marketName: marketName ??
+          marketingNonEmpty(json['marketName'] ?? json['market_name']),
     );
   }
 }
@@ -263,6 +415,15 @@ class VisitProduct {
     this.price,
     this.notes,
     this.productId,
+    this.observationType,
+    this.brandName,
+    this.competitorCompany,
+    this.quantity,
+    this.demandQuantity,
+    this.stockQuantity,
+    this.unitId,
+    this.unitPrice,
+    this.amount,
   });
 
   final int? id;
@@ -273,20 +434,46 @@ class VisitProduct {
   final double? orderQty;
   final double? price;
   final String? notes;
+  final String? observationType;
+  final String? brandName;
+  final String? competitorCompany;
+  final double? quantity;
+  final double? demandQuantity;
+  final double? stockQuantity;
+  final int? unitId;
+  final double? unitPrice;
+  final double? amount;
 
   factory VisitProduct.fromJson(Map<String, dynamic> json) {
     return VisitProduct(
       id: marketingParseInt(json['id']),
-      productId: marketingParseInt(json['product_id']),
+      productId: marketingParseInt(json['productId'] ?? json['product_id']),
       productName:
-          (json['product_name'] ?? json['productName'] ?? '').toString(),
+          (json['productName'] ?? json['product_name'] ?? '').toString(),
       unit: marketingNonEmpty(json['unit']),
       observedStock: marketingParseDouble(
-        json['observed_stock'] ?? json['observedStock'],
+        json['observedStock'] ?? json['observed_stock'],
       ),
-      orderQty: marketingParseDouble(json['order_qty'] ?? json['orderQty']),
+      orderQty: marketingParseDouble(json['orderQty'] ?? json['order_qty']),
       price: marketingParseDouble(json['price']),
       notes: marketingNonEmpty(json['notes']),
+      observationType: marketingNonEmpty(
+        json['observationType'] ?? json['observation_type'],
+      ),
+      brandName: marketingNonEmpty(json['brandName'] ?? json['brand_name']),
+      competitorCompany: marketingNonEmpty(
+        json['competitorCompany'] ?? json['competitor_company'],
+      ),
+      quantity: marketingParseDouble(json['quantity']),
+      demandQuantity: marketingParseDouble(
+        json['demandQuantity'] ?? json['demand_quantity'],
+      ),
+      stockQuantity: marketingParseDouble(
+        json['stockQuantity'] ?? json['stock_quantity'],
+      ),
+      unitId: marketingParseInt(json['unitId'] ?? json['unit_id']),
+      unitPrice: marketingParseDouble(json['unitPrice'] ?? json['unit_price']),
+      amount: marketingParseDouble(json['amount']),
     );
   }
 
@@ -299,6 +486,15 @@ class VisitProduct {
       if (orderQty != null) 'order_qty': orderQty,
       if (price != null) 'price': price,
       if (notes != null) 'notes': notes,
+      if (observationType != null) 'observation_type': observationType,
+      if (brandName != null) 'brand_name': brandName,
+      if (competitorCompany != null) 'competitor_company': competitorCompany,
+      if (quantity != null) 'quantity': quantity,
+      if (demandQuantity != null) 'demand_quantity': demandQuantity,
+      if (stockQuantity != null) 'stock_quantity': stockQuantity,
+      if (unitId != null) 'unit_id': unitId,
+      if (unitPrice != null) 'unit_price': unitPrice,
+      if (amount != null) 'amount': amount,
     };
   }
 }
@@ -308,13 +504,30 @@ class Visit {
     required this.id,
     required this.partyId,
     required this.employeeId,
+    this.publicId,
+    this.clientUuid,
+    this.visitNo,
+    this.marketId,
+    this.companyId,
+    this.sectorId,
     this.visitDate,
+    this.visitType,
     this.checkInAt,
     this.checkOutAt,
     this.checkInLat,
     this.checkInLng,
+    this.checkOutLat,
+    this.checkOutLng,
+    this.geoVerified,
     this.purpose,
+    this.objective,
+    this.findings,
+    this.result,
     this.outcome,
+    this.nextPlan,
+    this.nextVisitDate,
+    this.orderAmount,
+    this.collectionAmount,
     this.status,
     this.notes,
     this.products = const [],
@@ -323,15 +536,32 @@ class Visit {
   });
 
   final int id;
+  final String? publicId;
+  final String? clientUuid;
+  final String? visitNo;
   final int partyId;
   final int employeeId;
+  final int? marketId;
+  final int? companyId;
+  final int? sectorId;
   final String? visitDate;
+  final String? visitType;
   final String? checkInAt;
   final String? checkOutAt;
   final double? checkInLat;
   final double? checkInLng;
+  final double? checkOutLat;
+  final double? checkOutLng;
+  final bool? geoVerified;
   final String? purpose;
+  final String? objective;
+  final String? findings;
+  final String? result;
   final String? outcome;
+  final String? nextPlan;
+  final String? nextVisitDate;
+  final double? orderAmount;
+  final double? collectionAmount;
   final String? status;
   final String? notes;
   final List<VisitProduct> products;
@@ -342,30 +572,64 @@ class Visit {
     final party = json['party'];
     String? partyName;
     if (party is Map) {
-      partyName = marketingNonEmpty(party['trade_name'] ?? party['name']);
+      partyName = marketingNonEmpty(party['tradeName'] ??
+          party['trade_name'] ??
+          party['name']);
     }
     return Visit(
       id: marketingParseInt(json['id']) ?? 0,
-      partyId: marketingParseInt(json['party_id'] ?? json['partyId']) ?? 0,
+      publicId: marketingNonEmpty(json['publicId'] ?? json['public_id']),
+      clientUuid: marketingNonEmpty(json['clientUuid'] ?? json['client_uuid']),
+      visitNo: marketingNonEmpty(json['visitNo'] ?? json['visit_no']),
+      partyId: marketingParseInt(json['partyId'] ?? json['party_id']) ?? 0,
       employeeId:
-          marketingParseInt(json['employee_id'] ?? json['employeeId']) ?? 0,
-      visitDate: marketingNonEmpty(json['visit_date'] ?? json['visitDate']),
-      checkInAt: marketingNonEmpty(json['check_in_at'] ?? json['checkInAt']),
-      checkOutAt: marketingNonEmpty(json['check_out_at'] ?? json['checkOutAt']),
+          marketingParseInt(json['employeeId'] ?? json['employee_id']) ?? 0,
+      marketId: marketingParseInt(json['marketId'] ?? json['market_id']),
+      companyId: marketingParseInt(json['companyId'] ?? json['company_id']),
+      sectorId: marketingParseInt(json['sectorId'] ?? json['sector_id']),
+      visitDate: marketingNonEmpty(json['visitDate'] ?? json['visit_date']),
+      visitType: marketingNonEmpty(json['visitType'] ?? json['visit_type']),
+      checkInAt: marketingNonEmpty(json['checkInAt'] ?? json['check_in_at']),
+      checkOutAt: marketingNonEmpty(json['checkOutAt'] ?? json['check_out_at']),
       checkInLat: marketingParseDouble(
-        json['check_in_lat'] ?? json['checkInLat'],
+        json['checkInLat'] ?? json['check_in_lat'],
       ),
       checkInLng: marketingParseDouble(
-        json['check_in_lng'] ?? json['checkInLng'],
+        json['checkInLng'] ?? json['check_in_lng'],
+      ),
+      checkOutLat: marketingParseDouble(
+        json['checkOutLat'] ?? json['check_out_lat'],
+      ),
+      checkOutLng: marketingParseDouble(
+        json['checkOutLng'] ?? json['check_out_lng'],
+      ),
+      geoVerified: marketingParseBool(
+        json['geoVerified'] ?? json['geo_verified'],
       ),
       purpose: marketingNonEmpty(json['purpose']),
+      objective: marketingNonEmpty(json['objective']),
+      findings: marketingNonEmpty(json['findings']),
+      result: marketingNonEmpty(json['result']),
       outcome: marketingNonEmpty(json['outcome']),
+      nextPlan: marketingNonEmpty(json['nextPlan'] ?? json['next_plan']),
+      nextVisitDate: marketingNonEmpty(
+        json['nextVisitDate'] ?? json['next_visit_date'],
+      ),
+      orderAmount: marketingParseDouble(
+        json['orderAmount'] ?? json['order_amount'],
+      ),
+      collectionAmount: marketingParseDouble(
+        json['collectionAmount'] ?? json['collection_amount'],
+      ),
       status: marketingNonEmpty(json['status']),
       notes: marketingNonEmpty(json['notes']),
-      products: marketingMapList(json['products']).map(VisitProduct.fromJson).toList(),
-      attachments:
-          marketingMapList(json['attachments']).map(Attachment.fromJson).toList(),
-      partyName: partyName ?? marketingNonEmpty(json['party_name']),
+      products:
+          marketingMapList(json['products']).map(VisitProduct.fromJson).toList(),
+      attachments: marketingMapList(json['attachments'])
+          .map(Attachment.fromJson)
+          .toList(),
+      partyName: partyName ??
+          marketingNonEmpty(json['partyName'] ?? json['party_name']),
     );
   }
 }
@@ -377,6 +641,9 @@ class SurveyMetric {
     this.valueText,
     this.valueNumber,
     this.unit,
+    this.booleanValue,
+    this.dateValue,
+    this.remarks,
   });
 
   final String metricKey;
@@ -384,18 +651,31 @@ class SurveyMetric {
   final String? valueText;
   final double? valueNumber;
   final String? unit;
+  final bool? booleanValue;
+  final String? dateValue;
+  final String? remarks;
 
   factory SurveyMetric.fromJson(Map<String, dynamic> json) {
     return SurveyMetric(
-      metricKey: (json['metric_key'] ?? json['metricKey'] ?? '').toString(),
+      metricKey: (json['metricKey'] ??
+              json['metric_key'] ??
+              json['metricCode'] ??
+              json['metric_code'] ??
+              '')
+          .toString(),
       metricLabel: marketingNonEmpty(
-        json['metric_label'] ?? json['metricLabel'],
+        json['metricLabel'] ?? json['metric_label'],
       ),
-      valueText: marketingNonEmpty(json['value_text'] ?? json['valueText']),
+      valueText: marketingNonEmpty(json['valueText'] ?? json['value_text']),
       valueNumber: marketingParseDouble(
-        json['value_number'] ?? json['valueNumber'],
+        json['valueNumber'] ?? json['value_number'],
       ),
       unit: marketingNonEmpty(json['unit']),
+      booleanValue: marketingParseBool(
+        json['booleanValue'] ?? json['boolean_value'],
+      ),
+      dateValue: marketingNonEmpty(json['dateValue'] ?? json['date_value']),
+      remarks: marketingNonEmpty(json['remarks']),
     );
   }
 
@@ -406,6 +686,9 @@ class SurveyMetric {
       if (valueText != null) 'value_text': valueText,
       if (valueNumber != null) 'value_number': valueNumber,
       if (unit != null) 'unit': unit,
+      if (booleanValue != null) 'boolean_value': booleanValue,
+      if (dateValue != null) 'date_value': dateValue,
+      if (remarks != null) 'remarks': remarks,
     };
   }
 }
@@ -415,13 +698,33 @@ class FarmSurvey {
     required this.id,
     required this.partyId,
     required this.employeeId,
+    this.publicId,
     this.visitId,
     this.surveyDate,
+    this.surveyType,
     this.farmType,
+    this.ageDays,
+    this.quantity,
+    this.mortalityQuantity,
+    this.chicksBrand,
     this.birdCapacity,
     this.currentBirds,
     this.housingType,
     this.feedBrand,
+    this.totalFeedIntakeKg,
+    this.avgFeedIntakeKg,
+    this.productionPercent,
+    this.fcr,
+    this.avgBodyWeightKg,
+    this.uniformityPercent,
+    this.biosecurityRating,
+    this.managementRating,
+    this.technicalSupportRating,
+    this.economicSolvencyRating,
+    this.diseasePresent,
+    this.diseaseDetails,
+    this.problems,
+    this.recommendation,
     this.notes,
     this.status,
     this.metrics = const [],
@@ -429,15 +732,35 @@ class FarmSurvey {
   });
 
   final int id;
+  final String? publicId;
   final int partyId;
   final int? visitId;
   final int employeeId;
   final String? surveyDate;
+  final String? surveyType;
   final String? farmType;
+  final int? ageDays;
+  final double? quantity;
+  final double? mortalityQuantity;
+  final String? chicksBrand;
   final double? birdCapacity;
   final double? currentBirds;
   final String? housingType;
   final String? feedBrand;
+  final double? totalFeedIntakeKg;
+  final double? avgFeedIntakeKg;
+  final double? productionPercent;
+  final double? fcr;
+  final double? avgBodyWeightKg;
+  final double? uniformityPercent;
+  final int? biosecurityRating;
+  final int? managementRating;
+  final int? technicalSupportRating;
+  final int? economicSolvencyRating;
+  final bool? diseasePresent;
+  final String? diseaseDetails;
+  final String? problems;
+  final String? recommendation;
   final String? notes;
   final String? status;
   final List<SurveyMetric> metrics;
@@ -447,27 +770,74 @@ class FarmSurvey {
     final values = json['values'] ?? json['metrics'];
     return FarmSurvey(
       id: marketingParseInt(json['id']) ?? 0,
-      partyId: marketingParseInt(json['party_id'] ?? json['partyId']) ?? 0,
-      visitId: marketingParseInt(json['visit_id'] ?? json['visitId']),
+      publicId: marketingNonEmpty(json['publicId'] ?? json['public_id']),
+      partyId: marketingParseInt(json['partyId'] ?? json['party_id']) ?? 0,
+      visitId: marketingParseInt(json['visitId'] ?? json['visit_id']),
       employeeId:
-          marketingParseInt(json['employee_id'] ?? json['employeeId']) ?? 0,
-      surveyDate: marketingNonEmpty(json['survey_date'] ?? json['surveyDate']),
-      farmType: marketingNonEmpty(json['farm_type'] ?? json['farmType']),
+          marketingParseInt(json['employeeId'] ?? json['employee_id']) ?? 0,
+      surveyDate: marketingNonEmpty(json['surveyDate'] ?? json['survey_date']),
+      surveyType: marketingNonEmpty(json['surveyType'] ?? json['survey_type']),
+      farmType: marketingNonEmpty(json['farmType'] ?? json['farm_type']),
+      ageDays: marketingParseInt(json['ageDays'] ?? json['age_days']),
+      quantity: marketingParseDouble(json['quantity']),
+      mortalityQuantity: marketingParseDouble(
+        json['mortalityQuantity'] ?? json['mortality_quantity'],
+      ),
+      chicksBrand: marketingNonEmpty(
+        json['chicksBrand'] ?? json['chicks_brand'],
+      ),
       birdCapacity: marketingParseDouble(
-        json['bird_capacity'] ?? json['birdCapacity'],
+        json['birdCapacity'] ?? json['bird_capacity'],
       ),
       currentBirds: marketingParseDouble(
-        json['current_birds'] ?? json['currentBirds'],
+        json['currentBirds'] ?? json['current_birds'],
       ),
       housingType: marketingNonEmpty(
-        json['housing_type'] ?? json['housingType'],
+        json['housingType'] ?? json['housing_type'],
       ),
-      feedBrand: marketingNonEmpty(json['feed_brand'] ?? json['feedBrand']),
+      feedBrand: marketingNonEmpty(json['feedBrand'] ?? json['feed_brand']),
+      totalFeedIntakeKg: marketingParseDouble(
+        json['totalFeedIntakeKg'] ?? json['total_feed_intake_kg'],
+      ),
+      avgFeedIntakeKg: marketingParseDouble(
+        json['avgFeedIntakeKg'] ?? json['avg_feed_intake_kg'],
+      ),
+      productionPercent: marketingParseDouble(
+        json['productionPercent'] ?? json['production_percent'],
+      ),
+      fcr: marketingParseDouble(json['fcr']),
+      avgBodyWeightKg: marketingParseDouble(
+        json['avgBodyWeightKg'] ?? json['avg_body_weight_kg'],
+      ),
+      uniformityPercent: marketingParseDouble(
+        json['uniformityPercent'] ?? json['uniformity_percent'],
+      ),
+      biosecurityRating: marketingParseInt(
+        json['biosecurityRating'] ?? json['biosecurity_rating'],
+      ),
+      managementRating: marketingParseInt(
+        json['managementRating'] ?? json['management_rating'],
+      ),
+      technicalSupportRating: marketingParseInt(
+        json['technicalSupportRating'] ?? json['technical_support_rating'],
+      ),
+      economicSolvencyRating: marketingParseInt(
+        json['economicSolvencyRating'] ?? json['economic_solvency_rating'],
+      ),
+      diseasePresent: marketingParseBool(
+        json['diseasePresent'] ?? json['disease_present'],
+      ),
+      diseaseDetails: marketingNonEmpty(
+        json['diseaseDetails'] ?? json['disease_details'],
+      ),
+      problems: marketingNonEmpty(json['problems']),
+      recommendation: marketingNonEmpty(json['recommendation']),
       notes: marketingNonEmpty(json['notes']),
       status: marketingNonEmpty(json['status']),
       metrics: marketingMapList(values).map(SurveyMetric.fromJson).toList(),
-      attachments:
-          marketingMapList(json['attachments']).map(Attachment.fromJson).toList(),
+      attachments: marketingMapList(json['attachments'])
+          .map(Attachment.fromJson)
+          .toList(),
     );
   }
 }
@@ -480,9 +850,13 @@ class Followup {
     this.visitId,
     this.dueDate,
     this.actionType,
+    this.title,
+    this.description,
     this.priority,
     this.status,
     this.notes,
+    this.completionNote,
+    this.completedAt,
     this.partyName,
   });
 
@@ -492,29 +866,50 @@ class Followup {
   final int employeeId;
   final String? dueDate;
   final String? actionType;
+  final String? title;
+  final String? description;
   final String? priority;
   final String? status;
   final String? notes;
+  final String? completionNote;
+  final String? completedAt;
   final String? partyName;
+
+  String get displayTitle {
+    final t = title?.trim();
+    if (t != null && t.isNotEmpty) return t;
+    return actionType ?? 'Follow-up';
+  }
 
   factory Followup.fromJson(Map<String, dynamic> json) {
     final party = json['party'];
     String? partyName;
     if (party is Map) {
-      partyName = marketingNonEmpty(party['trade_name'] ?? party['name']);
+      partyName = marketingNonEmpty(party['tradeName'] ??
+          party['trade_name'] ??
+          party['name']);
     }
     return Followup(
       id: marketingParseInt(json['id']) ?? 0,
-      partyId: marketingParseInt(json['party_id'] ?? json['partyId']) ?? 0,
-      visitId: marketingParseInt(json['visit_id'] ?? json['visitId']),
+      partyId: marketingParseInt(json['partyId'] ?? json['party_id']) ?? 0,
+      visitId: marketingParseInt(json['visitId'] ?? json['visit_id']),
       employeeId:
-          marketingParseInt(json['employee_id'] ?? json['employeeId']) ?? 0,
-      dueDate: marketingNonEmpty(json['due_date'] ?? json['dueDate']),
-      actionType: marketingNonEmpty(json['action_type'] ?? json['actionType']),
+          marketingParseInt(json['employeeId'] ?? json['employee_id']) ?? 0,
+      dueDate: marketingNonEmpty(json['dueDate'] ?? json['due_date']),
+      actionType: marketingNonEmpty(json['actionType'] ?? json['action_type']),
+      title: marketingNonEmpty(json['title']),
+      description: marketingNonEmpty(json['description']),
       priority: marketingNonEmpty(json['priority']),
       status: marketingNonEmpty(json['status']),
       notes: marketingNonEmpty(json['notes']),
-      partyName: partyName ?? marketingNonEmpty(json['party_name']),
+      completionNote: marketingNonEmpty(
+        json['completionNote'] ?? json['completion_note'],
+      ),
+      completedAt: marketingNonEmpty(
+        json['completedAt'] ?? json['completed_at'],
+      ),
+      partyName: partyName ??
+          marketingNonEmpty(json['partyName'] ?? json['party_name']),
     );
   }
 }
@@ -529,6 +924,7 @@ class Attachment {
     this.originalName,
     this.mimeType,
     this.caption,
+    this.fileType,
   });
 
   final int id;
@@ -539,6 +935,7 @@ class Attachment {
   final String? originalName;
   final String? mimeType;
   final String? caption;
+  final String? fileType;
 
   String? get displayUrl {
     final u = url?.trim();
@@ -550,18 +947,19 @@ class Attachment {
     return Attachment(
       id: marketingParseInt(json['id']) ?? 0,
       attachableType: marketingNonEmpty(
-        json['attachable_type'] ?? json['attachableType'],
+        json['attachableType'] ?? json['attachable_type'],
       ),
       attachableId: marketingParseInt(
-        json['attachable_id'] ?? json['attachableId'],
+        json['attachableId'] ?? json['attachable_id'],
       ),
       url: marketingNonEmpty(json['url']),
       path: marketingNonEmpty(json['path']),
       originalName: marketingNonEmpty(
-        json['original_name'] ?? json['originalName'],
+        json['originalName'] ?? json['original_name'],
       ),
-      mimeType: marketingNonEmpty(json['mime_type'] ?? json['mimeType']),
+      mimeType: marketingNonEmpty(json['mimeType'] ?? json['mime_type']),
       caption: marketingNonEmpty(json['caption']),
+      fileType: marketingNonEmpty(json['fileType'] ?? json['file_type']),
     );
   }
 }

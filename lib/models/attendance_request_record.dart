@@ -50,7 +50,18 @@ class AttendanceRequestRecord {
     return outTime.isBefore(inTime);
   }
 
-  bool get canTreatAsActiveCheckIn => hasCheckIn && !hasCheckOut && !isRejected;
+  bool get canUpdateCheckOut =>
+      !isRejected && hasCheckIn && status.toLowerCase() == 'requested';
+
+  bool get isDayComplete =>
+      hasCheckIn && hasCheckOut && !isRejected && !canUpdateCheckOut;
+
+  bool get canPunchCheckIn => !isRejected && !hasCheckIn;
+
+  bool get canPunchCheckOut =>
+      !isRejected && hasCheckIn && (!hasCheckOut || canUpdateCheckOut);
+
+  bool get canTreatAsActiveCheckIn => canPunchCheckOut;
 
   /// Date-only calendar day for [attDate], or null if unparseable.
   DateTime? get attDateOnly {
@@ -59,13 +70,49 @@ class AttendanceRequestRecord {
     return DateTime(parsed.year, parsed.month, parsed.day);
   }
 
-  bool isSameCalendarDay(DateTime day) {
-    final mine = attDateOnly;
-    if (mine == null) return false;
-    return mine.year == day.year &&
-        mine.month == day.month &&
-        mine.day == day.day;
+  /// Best calendar day for grouping when punches exist; falls back to [attDate].
+  DateTime? get effectiveCalendarDay {
+    for (final raw in [requestedInTime, requestedOutTime]) {
+      final parsed = parseFlexibleDateTime(raw);
+      if (parsed != null) {
+        return DateTime(parsed.year, parsed.month, parsed.day);
+      }
+    }
+
+    final fromAttDate = attDateOnly;
+    if (fromAttDate != null) return fromAttDate;
+
+    final created = parseFlexibleDateTime(createdAt);
+    if (created != null) {
+      return DateTime(created.year, created.month, created.day);
+    }
+    return null;
   }
+
+  /// True when [attDate] or any punch timestamp falls on [day].
+  bool matchesCalendarDay(DateTime day) {
+    final target = DateTime(day.year, day.month, day.day);
+
+    bool sameDay(DateTime? candidate) {
+      if (candidate == null) return false;
+      return candidate.year == target.year &&
+          candidate.month == target.month &&
+          candidate.day == target.day;
+    }
+
+    if (sameDay(attDateOnly)) return true;
+
+    for (final raw in [requestedInTime, requestedOutTime, createdAt]) {
+      final parsed = parseFlexibleDateTime(raw);
+      if (parsed != null &&
+          sameDay(DateTime(parsed.year, parsed.month, parsed.day))) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  bool isSameCalendarDay(DateTime day) => matchesCalendarDay(day);
 
   String get dayLabel {
     final parsed = attDateOnly;
@@ -135,7 +182,7 @@ class AttendanceRequestRecord {
       attDate: (json['attDate'] ?? json['att_date'] ?? '').toString(),
       requestType:
           (json['requestType'] ?? json['request_type'] ?? 'self_punch').toString(),
-      status: (json['status'] ?? 'requested').toString(),
+      status: _normalizeStatus(json['status']),
       requestedInTime:
           (json['requestedInTime'] ?? json['requested_in_time'])?.toString(),
       requestedOutTime:
@@ -166,5 +213,12 @@ class AttendanceRequestRecord {
     if (value is int) return value;
     if (value is num) return value.toInt();
     return int.tryParse(value?.toString() ?? '');
+  }
+
+  static String _normalizeStatus(Object? raw) {
+    final value = (raw ?? 'requested').toString().trim();
+    if (value.isEmpty) return 'requested';
+    if (value.toLowerCase() == 'pending') return 'requested';
+    return value;
   }
 }
