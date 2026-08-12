@@ -1,16 +1,15 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
-import 'package:geolocator/geolocator.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
-import 'package:permission_handler/permission_handler.dart';
 
 import '../../config/theme.dart';
 import '../../models/marketing_models.dart';
 import '../../services/auth_service.dart';
 import '../../services/marketing_service.dart';
+import '../../utils/marketing_location_helper.dart';
 import '../../widgets/gradient_screen_header.dart';
 import '../../widgets/section_card.dart';
 
@@ -19,6 +18,7 @@ class _ObsRow {
   final stock = TextEditingController();
   final order = TextEditingController();
   final price = TextEditingController();
+  String observationType = 'stock';
 
   void dispose() {
     name.dispose();
@@ -40,58 +40,138 @@ class VisitFormScreen extends StatefulWidget {
 class _VisitFormScreenState extends State<VisitFormScreen> {
   final MarketingService _service = MarketingService();
   final AuthService _authService = AuthService();
-  final _purpose = TextEditingController();
-  final _outcome = TextEditingController();
+  final _objective = TextEditingController();
+  final _findings = TextEditingController();
+  final _result = TextEditingController();
+  final _nextPlan = TextEditingController();
   final _notes = TextEditingController();
+  final _orderAmount = TextEditingController();
+  final _collectionAmount = TextEditingController();
 
+  String _visitType = 'regular';
+  List<Market> _markets = const [];
+  int? _selectedMarketId;
+  DateTime? _nextVisitDate;
   double? _lat;
   double? _lng;
-  bool _capturingGps = false;
+  bool _loadingMarkets = true;
+  bool _resolvingLocation = true;
+  String? _locationStatus;
   bool _submitting = false;
+  bool _checkingOut = false;
+  Visit? _savedVisit;
   final List<_ObsRow> _products = [_ObsRow()];
   final List<XFile> _photos = [];
 
+  static const _visitTypes = [
+    'regular',
+    'survey',
+    'order',
+    'collection',
+    'technical_support',
+    'complaint',
+    'dealer_opening',
+    'other',
+  ];
+  static const _observationTypes = [
+    'stock',
+    'demand',
+    'order',
+    'price',
+    'competitor',
+    'other',
+  ];
+
+  @override
+  void initState() {
+    super.initState();
+    _selectedMarketId = widget.party.marketId;
+    _loadMarkets();
+    _autoFillLocation();
+  }
+
   @override
   void dispose() {
-    _purpose.dispose();
-    _outcome.dispose();
+    _objective.dispose();
+    _findings.dispose();
+    _result.dispose();
+    _nextPlan.dispose();
     _notes.dispose();
+    _orderAmount.dispose();
+    _collectionAmount.dispose();
     for (final p in _products) {
       p.dispose();
     }
     super.dispose();
   }
 
-  Future<void> _captureGps() async {
-    setState(() => _capturingGps = true);
+  Future<void> _loadMarkets() async {
+    final result = await _service.listMarkets();
+    if (!mounted) return;
+    setState(() {
+      _markets = result.data ?? const [];
+      _loadingMarkets = false;
+    });
+  }
+
+  Future<void> _autoFillLocation() async {
+    setState(() {
+      _resolvingLocation = true;
+      _locationStatus = 'Detecting check-in location…';
+    });
     try {
-      final status = await Permission.locationWhenInUse.request();
-      if (!status.isGranted) {
-        _snack('Location permission required.');
+      final snap = await MarketingLocationHelper.capture();
+      if (!mounted) return;
+      if (snap == null) {
+        setState(() {
+          _resolvingLocation = false;
+          _locationStatus =
+              'Location unavailable — will retry on start visit.';
+        });
         return;
       }
-      final pos = await Geolocator.getCurrentPosition(
-        locationSettings: const LocationSettings(
-          accuracy: LocationAccuracy.high,
-          timeLimit: Duration(seconds: 15),
-        ),
-      );
-      if (!mounted) return;
       setState(() {
-        _lat = pos.latitude;
-        _lng = pos.longitude;
+        _lat = snap.latitude;
+        _lng = snap.longitude;
+        _resolvingLocation = false;
+        _locationStatus =
+            'Check-in location ready (${snap.latitude.toStringAsFixed(5)}, ${snap.longitude.toStringAsFixed(5)})';
       });
     } catch (e) {
-      _snack('Could not get GPS: $e');
-    } finally {
-      if (mounted) setState(() => _capturingGps = false);
+      if (!mounted) return;
+      setState(() {
+        _resolvingLocation = false;
+        _locationStatus = 'Location failed — will retry on start visit.';
+      });
+      _snack('Could not get location: $e');
     }
+  }
+
+  Future<void> _ensureCheckInCoords() async {
+    if (_lat != null && _lng != null) return;
+    final snap = await MarketingLocationHelper.capture();
+    if (snap == null) {
+      _snack('Location permission required for check-in.');
+      return;
+    }
+    _lat = snap.latitude;
+    _lng = snap.longitude;
   }
 
   Future<void> _pickPhotos() async {
     final files = await ImagePicker().pickMultiImage(imageQuality: 85);
     if (files.isEmpty) return;
     setState(() => _photos.addAll(files));
+  }
+
+  Future<void> _pickNextVisitDate() async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _nextVisitDate ?? DateTime.now().add(const Duration(days: 7)),
+      firstDate: DateTime.now(),
+      lastDate: DateTime.now().add(const Duration(days: 365)),
+    );
+    if (picked != null) setState(() => _nextVisitDate = picked);
   }
 
   Future<void> _submit() async {
@@ -103,12 +183,16 @@ class _VisitFormScreenState extends State<VisitFormScreen> {
     }
 
     setState(() => _submitting = true);
+
+    await _ensureCheckInCoords();
+
     final products = <Map<String, dynamic>>[];
     for (final row in _products) {
       final name = row.name.text.trim();
       if (name.isEmpty) continue;
       products.add({
         'product_name': name,
+        'observation_type': row.observationType,
         if (row.stock.text.trim().isNotEmpty)
           'observed_stock': double.tryParse(row.stock.text.trim()),
         if (row.order.text.trim().isNotEmpty)
@@ -123,13 +207,25 @@ class _VisitFormScreenState extends State<VisitFormScreen> {
       'party_id': widget.party.id,
       'employee_id': employeeId,
       'visit_date': DateFormat('yyyy-MM-dd').format(now),
+      'visit_type': _visitType,
+      if (_selectedMarketId != null) 'market_id': _selectedMarketId,
       'check_in_at': now.toIso8601String(),
       if (_lat != null) 'check_in_lat': _lat,
       if (_lng != null) 'check_in_lng': _lng,
-      if (_purpose.text.trim().isNotEmpty) 'purpose': _purpose.text.trim(),
-      if (_outcome.text.trim().isNotEmpty) 'outcome': _outcome.text.trim(),
+      if (_objective.text.trim().isNotEmpty) 'objective': _objective.text.trim(),
+      if (_objective.text.trim().isNotEmpty) 'purpose': _objective.text.trim(),
+      if (_findings.text.trim().isNotEmpty) 'findings': _findings.text.trim(),
+      if (_result.text.trim().isNotEmpty) 'result': _result.text.trim(),
+      if (_result.text.trim().isNotEmpty) 'outcome': _result.text.trim(),
+      if (_nextPlan.text.trim().isNotEmpty) 'next_plan': _nextPlan.text.trim(),
+      if (_nextVisitDate != null)
+        'next_visit_date': DateFormat('yyyy-MM-dd').format(_nextVisitDate!),
+      if (_orderAmount.text.trim().isNotEmpty)
+        'order_amount': double.tryParse(_orderAmount.text.trim()),
+      if (_collectionAmount.text.trim().isNotEmpty)
+        'collection_amount': double.tryParse(_collectionAmount.text.trim()),
       if (_notes.text.trim().isNotEmpty) 'notes': _notes.text.trim(),
-      'status': 'completed',
+      'status': 'in_progress',
       if (products.isNotEmpty) 'products': products,
     };
 
@@ -141,7 +237,18 @@ class _VisitFormScreenState extends State<VisitFormScreen> {
       return;
     }
 
-    final visit = result.data!;
+    var visit = result.data!;
+    if (_lat != null || _lng != null) {
+      final checkIn = await _service.checkInVisit(
+        visit.id,
+        lat: _lat,
+        lng: _lng,
+      );
+      if (checkIn.success && checkIn.data != null) {
+        visit = checkIn.data!;
+      }
+    }
+
     if (_photos.isNotEmpty) {
       await _service.uploadAttachments(
         attachableType: 'visit',
@@ -152,9 +259,61 @@ class _VisitFormScreenState extends State<VisitFormScreen> {
     }
 
     if (!mounted) return;
-    setState(() => _submitting = false);
-    _snack('Visit saved.');
-    Navigator.of(context).pop(visit);
+    setState(() {
+      _submitting = false;
+      _savedVisit = visit;
+    });
+    _snack('Visit started (in progress).');
+  }
+
+  Future<void> _completeCheckout() async {
+    final visit = _savedVisit;
+    if (visit == null) return;
+    setState(() => _checkingOut = true);
+    try {
+      double? lat = _lat;
+      double? lng = _lng;
+      try {
+        final snap = await MarketingLocationHelper.capture();
+        if (snap != null) {
+          lat = snap.latitude;
+          lng = snap.longitude;
+        }
+      } catch (_) {}
+
+      final result = await _service.checkOutVisit(
+        visit.id,
+        lat: lat,
+        lng: lng,
+        extra: {
+          if (_findings.text.trim().isNotEmpty) 'findings': _findings.text.trim(),
+          if (_result.text.trim().isNotEmpty) 'result': _result.text.trim(),
+          if (_nextPlan.text.trim().isNotEmpty) 'next_plan': _nextPlan.text.trim(),
+          if (_nextVisitDate != null)
+            'next_visit_date':
+                DateFormat('yyyy-MM-dd').format(_nextVisitDate!),
+          if (_orderAmount.text.trim().isNotEmpty)
+            'order_amount': double.tryParse(_orderAmount.text.trim()),
+          if (_collectionAmount.text.trim().isNotEmpty)
+            'collection_amount':
+                double.tryParse(_collectionAmount.text.trim()),
+          if (_notes.text.trim().isNotEmpty) 'notes': _notes.text.trim(),
+        },
+      );
+      if (!mounted) return;
+      setState(() => _checkingOut = false);
+      if (!result.success || result.data == null) {
+        _snack(result.message ?? 'Check-out failed.');
+        return;
+      }
+      _snack('Visit completed.');
+      Navigator.of(context).pop(result.data);
+    } catch (e) {
+      if (mounted) {
+        setState(() => _checkingOut = false);
+        _snack('Check-out failed: $e');
+      }
+    }
   }
 
   void _snack(String msg) {
@@ -187,213 +346,401 @@ class _VisitFormScreenState extends State<VisitFormScreen> {
     );
   }
 
+  Widget _sectionTitle(String text) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Text(
+        text,
+        style: GoogleFonts.poppins(
+          fontSize: 14,
+          fontWeight: FontWeight.w600,
+          color: AppColors.textPrimary,
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    final locked = _savedVisit != null;
     return Scaffold(
       backgroundColor: AppColors.background,
       body: Column(
         children: [
           GradientScreenHeader(
-            title: 'New Visit',
+            title: locked ? 'Visit in progress' : 'New Visit',
             subtitle: widget.party.displayName,
           ),
           Expanded(
             child: SingleChildScrollView(
               padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
-              child: SectionCard(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    _label('Purpose'),
-                    TextField(
-                      controller: _purpose,
-                      decoration: _decoration(hint: 'e.g. Stock check'),
-                    ),
-                    const SizedBox(height: 14),
-                    _label('Outcome'),
-                    TextField(
-                      controller: _outcome,
-                      decoration: _decoration(hint: 'e.g. Order promised'),
-                    ),
-                    const SizedBox(height: 14),
-                    OutlinedButton.icon(
-                      onPressed: _capturingGps ? null : _captureGps,
-                      icon: _capturingGps
-                          ? const SizedBox(
-                              width: 16,
-                              height: 16,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          : const Icon(Icons.my_location_outlined),
-                      label: Text(
-                        _lat == null
-                            ? 'Check-in GPS'
-                            : 'Check-in: ${_lat!.toStringAsFixed(5)}, ${_lng!.toStringAsFixed(5)}',
-                      ),
-                    ),
-                    const SizedBox(height: 14),
-                    _label('Notes'),
-                    TextField(
-                      controller: _notes,
-                      maxLines: 2,
-                      decoration: _decoration(),
-                    ),
-                    const SizedBox(height: 16),
-                    Row(
+              child: Column(
+                children: [
+                  SectionCard(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        Text(
-                          'Product observations',
-                          style: GoogleFonts.poppins(
-                            fontWeight: FontWeight.w600,
-                            fontSize: 14,
-                          ),
-                        ),
-                        const Spacer(),
-                        TextButton.icon(
-                          onPressed: () =>
-                              setState(() => _products.add(_ObsRow())),
-                          icon: const Icon(Icons.add, size: 18),
-                          label: const Text('Add'),
-                        ),
-                      ],
-                    ),
-                    ...List.generate(_products.length, (i) {
-                      final row = _products[i];
-                      return Padding(
-                        padding: const EdgeInsets.only(bottom: 10),
-                        child: Container(
-                          padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(
-                            color: AppColors.background,
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: Column(
-                            children: [
-                              TextField(
-                                controller: row.name,
-                                decoration:
-                                    _decoration(hint: 'Product name'),
+                        _sectionTitle('Visit details'),
+                        _label('Market'),
+                        if (_loadingMarkets)
+                          const Padding(
+                            padding: EdgeInsets.symmetric(vertical: 12),
+                            child: Center(child: CircularProgressIndicator()),
+                          )
+                        else
+                          DropdownButtonFormField<int?>(
+                            initialValue: _selectedMarketId,
+                            decoration: _decoration(hint: 'Select market'),
+                            items: [
+                              const DropdownMenuItem<int?>(
+                                value: null,
+                                child: Text('None'),
                               ),
-                              const SizedBox(height: 8),
-                              Row(
+                              ..._markets.map(
+                                (m) => DropdownMenuItem(
+                                  value: m.id,
+                                  child: Text(m.displayName),
+                                ),
+                              ),
+                            ],
+                            onChanged: locked
+                                ? null
+                                : (v) =>
+                                    setState(() => _selectedMarketId = v),
+                          ),
+                        const SizedBox(height: 14),
+                        _label('Visit type'),
+                        DropdownButtonFormField<String>(
+                          initialValue: _visitType,
+                          decoration: _decoration(),
+                          items: _visitTypes
+                              .map(
+                                (t) => DropdownMenuItem(
+                                  value: t,
+                                  child: Text(t.replaceAll('_', ' ')),
+                                ),
+                              )
+                              .toList(),
+                          onChanged: locked
+                              ? null
+                              : (v) {
+                                  if (v != null) {
+                                    setState(() => _visitType = v);
+                                  }
+                                },
+                        ),
+                        const SizedBox(height: 14),
+                        _label('Objective'),
+                        TextField(
+                          controller: _objective,
+                          enabled: !locked,
+                          decoration:
+                              _decoration(hint: 'e.g. Stock check, order'),
+                        ),
+                        const SizedBox(height: 14),
+                        _label('Findings'),
+                        TextField(
+                          controller: _findings,
+                          maxLines: 2,
+                          decoration: _decoration(),
+                        ),
+                        const SizedBox(height: 14),
+                        _label('Result'),
+                        TextField(
+                          controller: _result,
+                          decoration: _decoration(),
+                        ),
+                        const SizedBox(height: 14),
+                        _label('Next plan'),
+                        TextField(
+                          controller: _nextPlan,
+                          maxLines: 2,
+                          decoration: _decoration(),
+                        ),
+                        const SizedBox(height: 14),
+                        _label('Next visit date'),
+                        InkWell(
+                          onTap: _pickNextVisitDate,
+                          borderRadius: BorderRadius.circular(12),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 14,
+                              vertical: 14,
+                            ),
+                            decoration: BoxDecoration(
+                              color: AppColors.background,
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Row(
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    _nextVisitDate == null
+                                        ? 'Select date'
+                                        : DateFormat('dd MMM yyyy')
+                                            .format(_nextVisitDate!),
+                                    style: GoogleFonts.poppins(fontSize: 13),
+                                  ),
+                                ),
+                                const Icon(
+                                  Icons.calendar_today_outlined,
+                                  size: 18,
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 14),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  Expanded(
-                                    child: TextField(
-                                      controller: row.stock,
-                                      keyboardType: TextInputType.number,
-                                      decoration:
-                                          _decoration(hint: 'Stock'),
-                                    ),
-                                  ),
-                                  const SizedBox(width: 8),
-                                  Expanded(
-                                    child: TextField(
-                                      controller: row.order,
-                                      keyboardType: TextInputType.number,
-                                      decoration:
-                                          _decoration(hint: 'Order qty'),
-                                    ),
-                                  ),
-                                  const SizedBox(width: 8),
-                                  Expanded(
-                                    child: TextField(
-                                      controller: row.price,
-                                      keyboardType: TextInputType.number,
-                                      decoration:
-                                          _decoration(hint: 'Price'),
-                                    ),
+                                  _label('Order amount'),
+                                  TextField(
+                                    controller: _orderAmount,
+                                    keyboardType: TextInputType.number,
+                                    decoration: _decoration(),
                                   ),
                                 ],
                               ),
-                            ],
-                          ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  _label('Collection amount'),
+                                  TextField(
+                                    controller: _collectionAmount,
+                                    keyboardType: TextInputType.number,
+                                    decoration: _decoration(),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
                         ),
-                      );
-                    }),
-                    const SizedBox(height: 8),
-                    OutlinedButton.icon(
-                      onPressed: _pickPhotos,
-                      icon: const Icon(Icons.photo_library_outlined),
-                      label: Text(
-                        _photos.isEmpty
-                            ? 'Add photos'
-                            : '${_photos.length} photo(s)',
-                      ),
+                        const SizedBox(height: 14),
+                        if (_locationStatus != null) ...[
+                          Text(
+                            _locationStatus!,
+                            style: GoogleFonts.poppins(
+                              fontSize: 12,
+                              color: _resolvingLocation
+                                  ? AppColors.textHint
+                                  : AppColors.textSecondary,
+                            ),
+                          ),
+                          if (_resolvingLocation) ...[
+                            const SizedBox(height: 8),
+                            const LinearProgressIndicator(),
+                          ],
+                          const SizedBox(height: 14),
+                        ],
+                        _label('Notes'),
+                        TextField(
+                          controller: _notes,
+                          maxLines: 2,
+                          decoration: _decoration(),
+                        ),
+                      ],
                     ),
-                    if (_photos.isNotEmpty) ...[
-                      const SizedBox(height: 10),
-                      SizedBox(
-                        height: 72,
-                        child: ListView.separated(
-                          scrollDirection: Axis.horizontal,
-                          itemCount: _photos.length,
-                          separatorBuilder: (_, _) => const SizedBox(width: 8),
-                          itemBuilder: (context, i) => Stack(
-                            children: [
-                              ClipRRect(
-                                borderRadius: BorderRadius.circular(10),
-                                child: Image.file(
-                                  File(_photos[i].path),
-                                  width: 72,
-                                  height: 72,
-                                  fit: BoxFit.cover,
+                  ),
+                  const SizedBox(height: 12),
+                  SectionCard(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Row(
+                          children: [
+                            Expanded(
+                              child: _sectionTitle('Product observations'),
+                            ),
+                            if (!locked)
+                              TextButton.icon(
+                                onPressed: () => setState(
+                                  () => _products.add(_ObsRow()),
+                                ),
+                                icon: const Icon(Icons.add, size: 18),
+                                label: const Text('Add'),
+                              ),
+                          ],
+                        ),
+                        ...List.generate(_products.length, (i) {
+                          final row = _products[i];
+                          return Padding(
+                            padding: const EdgeInsets.only(bottom: 10),
+                            child: Container(
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: AppColors.background,
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: Column(
+                                children: [
+                                  TextField(
+                                    controller: row.name,
+                                    enabled: !locked,
+                                    decoration:
+                                        _decoration(hint: 'Product name'),
+                                  ),
+                                  const SizedBox(height: 8),
+                                  DropdownButtonFormField<String>(
+                                    initialValue: row.observationType,
+                                    decoration: _decoration(
+                                      hint: 'Observation type',
+                                    ),
+                                    items: _observationTypes
+                                        .map(
+                                          (t) => DropdownMenuItem(
+                                            value: t,
+                                            child: Text(t),
+                                          ),
+                                        )
+                                        .toList(),
+                                    onChanged: locked
+                                        ? null
+                                        : (v) {
+                                            if (v != null) {
+                                              setState(
+                                                () => row.observationType = v,
+                                              );
+                                            }
+                                          },
+                                  ),
+                                  const SizedBox(height: 8),
+                                  Row(
+                                    children: [
+                                      Expanded(
+                                        child: TextField(
+                                          controller: row.stock,
+                                          enabled: !locked,
+                                          keyboardType: TextInputType.number,
+                                          decoration:
+                                              _decoration(hint: 'Stock'),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Expanded(
+                                        child: TextField(
+                                          controller: row.order,
+                                          enabled: !locked,
+                                          keyboardType: TextInputType.number,
+                                          decoration:
+                                              _decoration(hint: 'Order qty'),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Expanded(
+                                        child: TextField(
+                                          controller: row.price,
+                                          enabled: !locked,
+                                          keyboardType: TextInputType.number,
+                                          decoration:
+                                              _decoration(hint: 'Price'),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                            ),
+                          );
+                        }),
+                        if (!locked) ...[
+                          const SizedBox(height: 8),
+                          OutlinedButton.icon(
+                            onPressed: _pickPhotos,
+                            icon: const Icon(Icons.photo_library_outlined),
+                            label: Text(
+                              _photos.isEmpty
+                                  ? 'Add photos'
+                                  : '${_photos.length} photo(s)',
+                            ),
+                          ),
+                        ],
+                        const SizedBox(height: 24),
+                        if (!locked)
+                          SizedBox(
+                            height: 50,
+                            child: ElevatedButton(
+                              onPressed: _submitting ? null : _submit,
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: AppColors.primary,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(14),
                                 ),
                               ),
-                              Positioned(
-                                top: 0,
-                                right: 0,
-                                child: GestureDetector(
-                                  onTap: () =>
-                                      setState(() => _photos.removeAt(i)),
-                                  child: Container(
-                                    decoration: const BoxDecoration(
-                                      color: AppColors.error,
-                                      shape: BoxShape.circle,
+                              child: _submitting
+                                  ? const SizedBox(
+                                      width: 22,
+                                      height: 22,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                        color: Colors.white,
+                                      ),
+                                    )
+                                  : Text(
+                                      'Start visit (check-in)',
+                                      style: GoogleFonts.poppins(
+                                        fontWeight: FontWeight.w600,
+                                        color: Colors.white,
+                                      ),
                                     ),
-                                    child: const Icon(
-                                      Icons.close,
-                                      size: 14,
+                            ),
+                          )
+                        else ...[
+                          SizedBox(
+                            height: 50,
+                            child: ElevatedButton.icon(
+                              onPressed:
+                                  _checkingOut ? null : _completeCheckout,
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: AppColors.success,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(14),
+                                ),
+                              ),
+                              icon: _checkingOut
+                                  ? const SizedBox(
+                                      width: 18,
+                                      height: 18,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                        color: Colors.white,
+                                      ),
+                                    )
+                                  : const Icon(
+                                      Icons.logout,
                                       color: Colors.white,
                                     ),
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ],
-                    const SizedBox(height: 24),
-                    SizedBox(
-                      height: 50,
-                      child: ElevatedButton(
-                        onPressed: _submitting ? null : _submit,
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: AppColors.primary,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(14),
-                          ),
-                        ),
-                        child: _submitting
-                            ? const SizedBox(
-                                width: 22,
-                                height: 22,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  color: Colors.white,
-                                ),
-                              )
-                            : Text(
-                                'Submit visit',
+                              label: Text(
+                                'Complete / check-out',
                                 style: GoogleFonts.poppins(
                                   fontWeight: FontWeight.w600,
                                   color: Colors.white,
                                 ),
                               ),
-                      ),
+                            ),
+                          ),
+                          const SizedBox(height: 10),
+                          TextButton(
+                            onPressed: () =>
+                                Navigator.of(context).pop(_savedVisit),
+                            child: Text(
+                              'Keep in progress & close',
+                              style: GoogleFonts.poppins(
+                                color: AppColors.textSecondary,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ],
                     ),
-                  ],
-                ),
+                  ),
+                ],
               ),
             ),
           ),

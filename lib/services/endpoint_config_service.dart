@@ -249,6 +249,11 @@ class EndpointConfigService {
           url: '$sales/api/booking-person-books',
           backend: 'sales',
         ),
+        'sales.booking.formData': EndpointDefinition(
+          method: 'GET',
+          url: '$sales/api/booking-person-books/form-data',
+          backend: 'sales',
+        ),
         'sales.allDealers': EndpointDefinition(
           method: 'GET',
           url: '$sales/api/all-dealer-lists',
@@ -269,6 +274,11 @@ class EndpointConfigService {
           '/api/v1/mobile/marketing/markets',
           'zkteco',
         ),
+        'marketing.market.create': ep(
+          'POST',
+          '/api/v1/mobile/marketing/markets',
+          'zkteco',
+        ),
         'marketing.parties': ep(
           'GET',
           '/api/v1/mobile/marketing/parties',
@@ -285,6 +295,16 @@ class EndpointConfigService {
           'zkteco',
         ),
         'marketing.visit.create': ep(
+          'POST',
+          '/api/v1/mobile/marketing/visits',
+          'zkteco',
+        ),
+        'marketing.visit.checkIn': ep(
+          'POST',
+          '/api/v1/mobile/marketing/visits',
+          'zkteco',
+        ),
+        'marketing.visit.checkOut': ep(
           'POST',
           '/api/v1/mobile/marketing/visits',
           'zkteco',

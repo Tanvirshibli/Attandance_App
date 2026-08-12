@@ -106,6 +106,7 @@ class AuthService {
           AuthService.clearProfileCache();
           try {
             await GeoTrackingService().clearHrmPause();
+            await GeoTrackingService().ensureEnabledIfAllowed();
           } catch (_) {}
 
           // Register FCM token after session exists (no-op without Firebase config).

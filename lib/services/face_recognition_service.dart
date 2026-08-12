@@ -21,7 +21,8 @@ class FaceRecognitionService {
   FaceRecognitionService._internal();
 
   Interpreter? _interpreter;
-  late FaceDetector _faceDetector;
+  late FaceDetector _liveFaceDetector;
+  late FaceDetector _finalFaceDetector;
   bool _isInitialized = false;
 
   // MobileFaceNet input: 112x112x3, output: 1x192
@@ -48,6 +49,9 @@ class FaceRecognitionService {
 
   // Liveness: minimum face-to-image area ratio to accept (prevents back camera)
   static const double _minFaceRatioForSelfie = 0.06;
+
+  // Live guidance: allow arm's-length framing during preview
+  static const double _minFaceRatioForLiveGuidance = 0.04;
 
   // Liveness: minimum edge sharpness score (photos-of-screens are blurrier)
   static const double _minSharpnessScore = 15.0;
@@ -125,14 +129,25 @@ class FaceRecognitionService {
     _interpreter =
         await Interpreter.fromAsset('assets/models/mobilefacenet.tflite');
 
-    _faceDetector = FaceDetector(
+    _liveFaceDetector = FaceDetector(
+      options: FaceDetectorOptions(
+        enableContours: false,
+        enableLandmarks: true,
+        enableClassification: true,
+        enableTracking: false,
+        performanceMode: FaceDetectorMode.fast,
+        minFaceSize: 0.12,
+      ),
+    );
+
+    _finalFaceDetector = FaceDetector(
       options: FaceDetectorOptions(
         enableContours: false,
         enableLandmarks: true,
         enableClassification: true,
         enableTracking: false,
         performanceMode: FaceDetectorMode.accurate,
-        minFaceSize: 0.25,
+        minFaceSize: 0.15,
       ),
     );
 
@@ -143,7 +158,13 @@ class FaceRecognitionService {
   Future<List<Face>> detectFaces(File imageFile) async {
     if (!_isInitialized) await initialize();
     final inputImage = InputImage.fromFile(imageFile);
-    return await _faceDetector.processImage(inputImage);
+    return await _finalFaceDetector.processImage(inputImage);
+  }
+
+  /// Fast live detection from a camera stream frame.
+  Future<List<Face>> detectFacesLive(InputImage inputImage) async {
+    if (!_isInitialized) await initialize();
+    return await _liveFaceDetector.processImage(inputImage);
   }
 
   // ---- Liveness Detection ----
@@ -274,10 +295,13 @@ class FaceRecognitionService {
     int imageHeight, {
     bool requireCentering = true,
     double centerTolerance = 0.3,
+    bool forLiveGuidance = false,
   }) {
     final faceArea = face.boundingBox.width * face.boundingBox.height;
     final imageArea = imageWidth * imageHeight;
     final faceRatio = faceArea / imageArea;
+    final minRatio =
+        forLiveGuidance ? _minFaceRatioForLiveGuidance : _minFaceRatioForSelfie;
 
     final faceCenterX = face.boundingBox.center.dx / imageWidth;
     final faceCenterY = face.boundingBox.center.dy / imageHeight;
@@ -285,13 +309,15 @@ class FaceRecognitionService {
         (faceCenterX - 0.5).abs() < centerTolerance &&
         (faceCenterY - 0.5).abs() < centerTolerance;
 
-    // Front camera selfie: face ratio > 6% and optionally centered
+    // Front camera selfie: face ratio above threshold and optionally centered
     final isFrontCamera =
-        faceRatio >= _minFaceRatioForSelfie && (!requireCentering || isCentered);
+        faceRatio >= minRatio && (!requireCentering || isCentered);
 
     String? issue;
-    if (faceRatio < _minFaceRatioForSelfie) {
-      issue = 'Face appears too small — please use the front camera and hold the phone at arm\'s length.';
+    if (faceRatio < minRatio) {
+      issue = forLiveGuidance
+          ? 'Move a little closer and center your face in the guide'
+          : 'Face appears too small — please use the front camera and hold the phone at arm\'s length.';
     } else if (requireCentering && !isCentered) {
       issue = 'Face is not centered — please look directly at the front camera.';
     }
@@ -404,8 +430,7 @@ class FaceRecognitionService {
 
   /// Detect faces from an InputImage (for live camera frames)
   Future<List<Face>> detectFacesFromInputImage(InputImage inputImage) async {
-    if (!_isInitialized) await initialize();
-    return await _faceDetector.processImage(inputImage);
+    return detectFacesLive(inputImage);
   }
 
   /// Get human-readable name for a face angle
@@ -444,7 +469,13 @@ class FaceRecognitionService {
   }
 
   /// Check quality of a detected face. Returns a FaceQualityResult.
-  FaceQualityResult checkFaceQuality(Face face, int imageWidth, int imageHeight, {bool skipRotationCheck = false}) {
+  FaceQualityResult checkFaceQuality(
+    Face face,
+    int imageWidth,
+    int imageHeight, {
+    bool skipRotationCheck = false,
+    bool forLiveGuidance = false,
+  }) {
     final issues = <String>[];
     double score = 100.0;
 
@@ -453,13 +484,23 @@ class FaceRecognitionService {
     final imageArea = imageWidth * imageHeight;
     final faceRatio = faceArea / imageArea;
 
-    if (faceRatio < 0.05) {
+    if (forLiveGuidance) {
+      if (faceRatio < 0.04) {
+        issues.add('Face is too far — move closer to the camera');
+        score -= 40;
+      } else if (faceRatio < 0.06) {
+        issues.add('Face is a bit far — move slightly closer');
+        score -= 10;
+      }
+    } else if (faceRatio < 0.05) {
       issues.add('Face is too far — move closer to the camera');
       score -= 40;
     } else if (faceRatio < 0.10) {
       issues.add('Face is a bit far — move slightly closer');
       score -= 20;
-    } else if (faceRatio > 0.70) {
+    }
+
+    if (!forLiveGuidance && faceRatio > 0.70) {
       issues.add('Face is too close — move back a little');
       score -= 20;
     }
@@ -508,10 +549,14 @@ class FaceRecognitionService {
       score -= 20;
     }
 
+    final tooFarHard = forLiveGuidance ? faceRatio < 0.04 : faceRatio < 0.05;
+    final minScore = forLiveGuidance ? 40.0 : 50.0;
+
     return FaceQualityResult(
       score: score.clamp(0.0, 100.0),
       issues: issues,
-      isAcceptable: score >= 50 && issues.where((i) => i.contains('too far')).isEmpty,
+      isAcceptable: score >= minScore &&
+          (!tooFarHard || !issues.any((i) => i.contains('too far'))),
       faceRatio: faceRatio,
       yaw: yaw,
       pitch: pitch,
@@ -529,6 +574,7 @@ class FaceRecognitionService {
     bool checkFrontCam = false,
     bool requireFrontCamCentering = true,
     bool skipRotationCheck = false,
+    bool robustEmbedding = true,
   }) async {
     if (!_isInitialized) await initialize();
 
@@ -610,8 +656,10 @@ class FaceRecognitionService {
     // 7. Crop face region with generous padding
     final croppedFace = _cropFace(rawImage, face.boundingBox);
 
-    // 8. Generate robust embedding across appearance variants
-    final embedding = _generateRobustEmbedding(croppedFace);
+    // 8. Generate embedding (single pass for speed, robust for final match)
+    final embedding = robustEmbedding
+        ? _generateRobustEmbedding(croppedFace)
+        : _embeddingFromFaceImage(croppedFace);
 
     // 9. L2 normalize and return
     return EmbeddingResult(
@@ -858,6 +906,7 @@ class FaceRecognitionService {
   Future<FaceVerificationResult> verifyFace(
     File imageFile, {
     bool requireSmile = false,
+    bool robustEmbedding = true,
   }) async {
     final storedEmbedding = _registeredAvgEmbedding;
 
@@ -875,6 +924,7 @@ class FaceRecognitionService {
       checkQuality: true,
       checkLivenessSmile: requireSmile,
       checkFrontCam: true,
+      robustEmbedding: robustEmbedding,
     );
     if (result.embedding == null) {
       return FaceVerificationResult(
@@ -970,7 +1020,10 @@ class FaceRecognitionService {
 
   /// Release resources
   void dispose() {
-    _faceDetector.close();
+    if (_isInitialized) {
+      _liveFaceDetector.close();
+      _finalFaceDetector.close();
+    }
     _interpreter?.close();
     _isInitialized = false;
   }

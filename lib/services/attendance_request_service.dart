@@ -13,10 +13,12 @@ class AttendanceSubmitResult {
   const AttendanceSubmitResult({
     required this.success,
     this.message,
+    this.record,
   });
 
   final bool success;
   final String? message;
+  final AttendanceRequestRecord? record;
 }
 
 class AttendanceRequestService {
@@ -96,6 +98,8 @@ class AttendanceRequestService {
     DateTime? to,
     int limit = 100,
   }) async {
+    final merged = <AttendanceRequestRecord>[];
+
     for (final url in await _attendanceListUrls()) {
       try {
         final queryParameters = <String, String>{
@@ -108,6 +112,8 @@ class AttendanceRequestService {
         if (from != null && to != null) {
           queryParameters['from'] = _dateStr(from);
           queryParameters['to'] = _dateStr(to);
+        } else if (from != null) {
+          queryParameters['attDate'] = _dateStr(from);
         }
 
         final response = await http
@@ -128,21 +134,20 @@ class AttendanceRequestService {
         }
 
         final data = _decodeMap(response.body);
-        final recordsRaw = data['records'];
-        if (recordsRaw is! List) {
-          return const [];
+        final recordsRaw = _extractRecordsList(data);
+        if (recordsRaw.isEmpty) {
+          continue;
         }
 
-        return recordsRaw
-            .whereType<Map<String, dynamic>>()
-            .map(AttendanceRequestRecord.fromJson)
-            .toList();
+        merged.addAll(
+          recordsRaw.map(AttendanceRequestRecord.fromJson),
+        );
       } catch (_) {
         continue;
       }
     }
 
-    return const [];
+    return merged;
   }
 
   Future<List<AttendanceRequestRecord>?> _fetchFromJwtEndpoint({
@@ -152,6 +157,9 @@ class AttendanceRequestService {
     DateTime? to,
     int limit = 100,
   }) async {
+    final merged = <AttendanceRequestRecord>[];
+    var anyReachable = false;
+
     for (final url in await _jwtAttendanceUrls()) {
       try {
         final queryParameters = <String, String>{
@@ -181,19 +189,63 @@ class AttendanceRequestService {
         if (response.statusCode == 404) continue;
         if (response.statusCode != 200) continue;
 
+        anyReachable = true;
         final data = _decodeMap(response.body);
-        final recordsRaw = data['records'];
-        if (recordsRaw is! List) return const [];
+        final recordsRaw = _extractRecordsList(data);
+        if (recordsRaw.isEmpty) continue;
 
-        return recordsRaw
-            .whereType<Map<String, dynamic>>()
-            .map(AttendanceRequestRecord.fromJson)
-            .toList();
+        merged.addAll(
+          recordsRaw.map(AttendanceRequestRecord.fromJson),
+        );
       } catch (_) {
         continue;
       }
     }
-    return null;
+
+    if (!anyReachable && merged.isEmpty) return null;
+    return merged;
+  }
+
+  /// Merged attendance for Home: today-scoped fetch plus recent history.
+  Future<List<AttendanceRequestRecord>> getHomeAttendanceRecords({
+    required int? employeeId,
+  }) async {
+    if (!await _hasLocalSession()) {
+      return const [];
+    }
+
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+
+    final results = await Future.wait([
+      getAttendanceRecords(employeeId: employeeId, from: today, to: today),
+      getAttendanceRecords(employeeId: employeeId),
+    ]);
+
+    return _mergeByCalendarDay([
+      for (final batch in results) ...batch,
+    ]);
+  }
+
+  /// Collapse same-day rows (earliest in, latest out).
+  AttendanceRequestRecord mergeRecords(List<AttendanceRequestRecord> group) {
+    if (group.isEmpty) {
+      throw ArgumentError.value(group, 'group', 'must not be empty');
+    }
+    if (group.length == 1) return group.first;
+    return _mergeDayGroup(group);
+  }
+
+  /// Best today row: all records matching [today] merged into one span.
+  AttendanceRequestRecord? resolveTodayRecord(
+    List<AttendanceRequestRecord> records,
+    DateTime today,
+  ) {
+    final todayRows =
+        records.where((record) => record.matchesCalendarDay(today)).toList();
+    if (todayRows.isEmpty) return null;
+    if (todayRows.length == 1) return todayRows.first;
+    return mergeRecords(todayRows);
   }
 
   /// One display row per calendar day: earliest in, latest out, prefer non-rejected.
@@ -204,7 +256,7 @@ class AttendanceRequestService {
 
     final byDay = <String, List<AttendanceRequestRecord>>{};
     for (final record in records) {
-      final day = record.attDateOnly;
+      final day = record.effectiveCalendarDay;
       final key = day == null
           ? 'raw:${record.attDate}|${record.id}'
           : '${day.year.toString().padLeft(4, '0')}-'
@@ -224,8 +276,8 @@ class AttendanceRequestService {
     }
 
     merged.sort((a, b) {
-      final aDay = a.attDateOnly;
-      final bDay = b.attDateOnly;
+      final aDay = a.effectiveCalendarDay;
+      final bDay = b.effectiveCalendarDay;
       if (aDay != null && bDay != null) {
         final cmp = bDay.compareTo(aDay);
         if (cmp != 0) return cmp;
@@ -301,12 +353,14 @@ class AttendanceRequestService {
       deviceType = deviceTypes.first;
     }
 
-    // Prefer a non-rejected status label from the group.
-    String status = 'requested';
+    // Best status wins: approved > requested > rejected.
+    String status = 'rejected';
+    var bestRank = -1;
     for (final r in group) {
-      if (!r.isRejected) {
+      final rank = _statusRank(r.status);
+      if (rank > bestRank) {
+        bestRank = rank;
         status = r.status;
-        break;
       }
     }
     if (anyRejected && group.every((r) => r.isRejected)) {
@@ -330,6 +384,18 @@ class AttendanceRequestService {
       faceVerified: faceVerified,
       createdAt: createdAt,
     );
+  }
+
+  int _statusRank(String status) {
+    switch (status.toLowerCase()) {
+      case 'approved':
+        return 2;
+      case 'requested':
+      case 'pending':
+        return 1;
+      default:
+        return 0;
+    }
   }
 
   String _dateStr(DateTime d) =>
@@ -364,10 +430,13 @@ class AttendanceRequestService {
     }
 
     final deviceMetadata = await _deviceIdentityService.getDeviceMetadata();
-    final now = DateTime.now().toIso8601String();
+    final token = await _authService.getToken();
+    final nowDt = DateTime.now();
+    final now = nowDt.toIso8601String();
     final body = <String, dynamic>{
       'employee_id': employeeId,
       'direction': isCheckOut ? 'out' : 'in',
+      'attDate': _dateStr(nowDt),
       if (!isCheckOut) 'requestedInTime': now,
       if (isCheckOut) 'requestedOutTime': now,
       'lat': latitude,
@@ -382,13 +451,19 @@ class AttendanceRequestService {
 
     for (final url in await _attendancePunchUrls()) {
       try {
+        final headers = <String, String>{
+          'Accept': 'application/json',
+          'Content-Type': 'application/json',
+          'User-Agent': 'PPHLAttendance/2.2 (Android; Flutter)',
+        };
+        if (token != null && token.isNotEmpty) {
+          headers['Authorization'] = 'Bearer $token';
+        }
+
         final response = await http
             .post(
               Uri.parse(url),
-              headers: {
-                'Accept': 'application/json',
-                'Content-Type': 'application/json',
-              },
+              headers: headers,
               body: jsonEncode(body),
             )
             .timeout(const Duration(seconds: 20));
@@ -403,13 +478,19 @@ class AttendanceRequestService {
             success: true,
             message: data['message']?.toString() ??
                 'Attendance request submitted successfully.',
+            record: _parsePunchRecord(
+              data,
+              postBody: body,
+              isCheckOut: isCheckOut,
+            ),
           );
         }
 
+        final serverMessage = _extractErrorMessage(data) ??
+            'Attendance request failed (${response.statusCode}).';
         return AttendanceSubmitResult(
           success: false,
-          message: data['message']?.toString() ??
-              'Attendance request failed (${response.statusCode}).',
+          message: serverMessage,
         );
       } on TimeoutException {
         networkError = 'Request timed out.';
@@ -475,5 +556,70 @@ class AttendanceRequestService {
     } catch (_) {
       return <String, dynamic>{};
     }
+  }
+
+  String? _extractErrorMessage(Map<String, dynamic> data) {
+    final error = data['error']?.toString().trim();
+    if (error != null && error.isNotEmpty) return error;
+    final message = data['message']?.toString().trim();
+    if (message != null && message.isNotEmpty) return message;
+    return null;
+  }
+
+  List<Map<String, dynamic>> _extractRecordsList(Map<String, dynamic> data) {
+    final recordsRaw = data['records'];
+    if (recordsRaw is List) {
+      return recordsRaw.whereType<Map<String, dynamic>>().toList();
+    }
+
+    final dataRaw = data['data'];
+    if (dataRaw is List) {
+      return dataRaw.whereType<Map<String, dynamic>>().toList();
+    }
+
+    if (dataRaw is Map<String, dynamic>) {
+      final nested = dataRaw['records'];
+      if (nested is List) {
+        return nested.whereType<Map<String, dynamic>>().toList();
+      }
+    }
+
+    return const [];
+  }
+
+  AttendanceRequestRecord? _parsePunchRecord(
+    Map<String, dynamic> data, {
+    required Map<String, dynamic> postBody,
+    required bool isCheckOut,
+  }) {
+    final request = data['request'];
+    if (request is Map<String, dynamic>) {
+      return AttendanceRequestRecord.fromJson(request);
+    }
+    return synthesizePunchRecord(
+      postBody: postBody,
+      isCheckOut: isCheckOut,
+    );
+  }
+
+  /// Builds a local today row when POST succeeds but omits the request wrapper.
+  AttendanceRequestRecord synthesizePunchRecord({
+    required Map<String, dynamic> postBody,
+    required bool isCheckOut,
+  }) {
+    final nowDt = DateTime.now();
+    final attDate = postBody['attDate']?.toString() ?? _dateStr(nowDt);
+    final inRaw = postBody['requestedInTime']?.toString();
+    final outRaw = postBody['requestedOutTime']?.toString();
+
+    return AttendanceRequestRecord(
+      id: 0,
+      attDate: attDate,
+      requestType: postBody['requestType']?.toString() ?? 'self_punch',
+      status: 'requested',
+      requestedInTime: isCheckOut ? null : (inRaw ?? nowDt.toIso8601String()),
+      requestedOutTime: isCheckOut ? (outRaw ?? nowDt.toIso8601String()) : null,
+      deviceType: 'android',
+    );
   }
 }

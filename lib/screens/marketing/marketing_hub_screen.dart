@@ -8,6 +8,8 @@ import '../../widgets/api_empty_state.dart';
 import '../../widgets/gradient_screen_header.dart';
 import '../../widgets/section_card.dart';
 import 'followup_form_screen.dart';
+import 'market_form_screen.dart';
+import 'market_list_screen.dart';
 import 'party_form_screen.dart';
 import 'party_list_screen.dart';
 import 'visit_list_screen.dart';
@@ -54,6 +56,20 @@ class _MarketingHubScreenState extends State<MarketingHubScreen> {
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
                 FloatingActionButton.extended(
+                  heroTag: 'new_market',
+                  onPressed: () => _open(const MarketFormScreen()),
+                  backgroundColor: AppColors.info,
+                  icon: const Icon(Icons.add_business, color: Colors.white),
+                  label: Text(
+                    'New Market',
+                    style: GoogleFonts.poppins(
+                      fontWeight: FontWeight.w600,
+                      color: Colors.white,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                FloatingActionButton.extended(
                   heroTag: 'new_farm',
                   onPressed: () => _open(
                     const PartyFormScreen(initialPartyType: 'farm'),
@@ -75,7 +91,10 @@ class _MarketingHubScreenState extends State<MarketingHubScreen> {
                     const PartyFormScreen(initialPartyType: 'dealer'),
                   ),
                   backgroundColor: AppColors.primary,
-                  icon: const Icon(Icons.storefront_outlined, color: Colors.white),
+                  icon: const Icon(
+                    Icons.storefront_outlined,
+                    color: Colors.white,
+                  ),
                   label: Text(
                     'New Dealer',
                     style: GoogleFonts.poppins(
@@ -92,7 +111,7 @@ class _MarketingHubScreenState extends State<MarketingHubScreen> {
           const SliverToBoxAdapter(
             child: GradientScreenHeader(
               title: 'Farm & Dealer',
-              subtitle: 'Field collection for dealers, farms & visits',
+              subtitle: 'Markets, dealers, farms, visits & follow-ups',
             ),
           ),
           if (_loading)
@@ -116,20 +135,31 @@ class _MarketingHubScreenState extends State<MarketingHubScreen> {
             )
           else
             SliverPadding(
-              padding: const EdgeInsets.fromLTRB(20, 16, 20, 120),
+              padding: const EdgeInsets.fromLTRB(20, 16, 20, 160),
               sliver: SliverGrid(
                 gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                   crossAxisCount: 2,
                   mainAxisSpacing: 12,
                   crossAxisSpacing: 12,
-                  childAspectRatio: 1.05,
+                  childAspectRatio: 0.95,
                 ),
                 delegate: SliverChildListDelegate([
                   FadeInUp(
                     delay: const Duration(milliseconds: 40),
                     child: _HubTile(
+                      icon: Icons.store_mall_directory_outlined,
+                      label: 'Markets',
+                      subtitle: 'List & create',
+                      color: AppColors.info,
+                      onTap: () => _open(const MarketListScreen()),
+                    ),
+                  ),
+                  FadeInUp(
+                    delay: const Duration(milliseconds: 80),
+                    child: _HubTile(
                       icon: Icons.storefront_outlined,
                       label: 'Dealers',
+                      subtitle: 'Accounts & credit',
                       color: AppColors.primary,
                       onTap: () => _open(
                         const PartyListScreen(initialPartyType: 'dealer'),
@@ -137,10 +167,11 @@ class _MarketingHubScreenState extends State<MarketingHubScreen> {
                     ),
                   ),
                   FadeInUp(
-                    delay: const Duration(milliseconds: 80),
+                    delay: const Duration(milliseconds: 120),
                     child: _HubTile(
                       icon: Icons.agriculture_outlined,
                       label: 'Farms',
+                      subtitle: 'Surveys & capacity',
                       color: AppColors.accent,
                       onTap: () => _open(
                         const PartyListScreen(initialPartyType: 'farm'),
@@ -148,19 +179,21 @@ class _MarketingHubScreenState extends State<MarketingHubScreen> {
                     ),
                   ),
                   FadeInUp(
-                    delay: const Duration(milliseconds: 120),
+                    delay: const Duration(milliseconds: 160),
                     child: _HubTile(
                       icon: Icons.route_outlined,
-                      label: 'My visits',
-                      color: AppColors.info,
+                      label: 'Visits',
+                      subtitle: 'Check-in & out',
+                      color: AppColors.primaryDark,
                       onTap: () => _open(const VisitListScreen()),
                     ),
                   ),
                   FadeInUp(
-                    delay: const Duration(milliseconds: 160),
+                    delay: const Duration(milliseconds: 200),
                     child: _HubTile(
                       icon: Icons.event_note_outlined,
                       label: 'Follow-ups',
+                      subtitle: 'Tasks & reminders',
                       color: AppColors.warning,
                       onTap: () => _open(
                         const FollowupFormScreen(showListMode: true),
@@ -182,10 +215,12 @@ class _HubTile extends StatelessWidget {
     required this.label,
     required this.color,
     required this.onTap,
+    this.subtitle,
   });
 
   final IconData icon;
   final String label;
+  final String? subtitle;
   final Color color;
   final VoidCallback onTap;
 
@@ -220,6 +255,17 @@ class _HubTile extends StatelessWidget {
                   color: AppColors.textPrimary,
                 ),
               ),
+              if (subtitle != null) ...[
+                const SizedBox(height: 4),
+                Text(
+                  subtitle!,
+                  textAlign: TextAlign.center,
+                  style: GoogleFonts.poppins(
+                    fontSize: 11,
+                    color: AppColors.textSecondary,
+                  ),
+                ),
+              ],
             ],
           ),
         ),
