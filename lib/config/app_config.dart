@@ -211,4 +211,20 @@ class AppConfig {
       '$attendanceApiBaseUrl/api/v1/mobile/geo-location';
 
   static const int geoTrackingIntervalMinutes = 5;
+
+  /// GitHub-hosted manifest for forced OTA updates (raw.githubusercontent.com).
+  /// Override with `--dart-define=UPDATE_MANIFEST_URL=...`.
+  static const String updateManifestUrl = String.fromEnvironment(
+    'UPDATE_MANIFEST_URL',
+    defaultValue:
+        'https://raw.githubusercontent.com/ciphercall/rocket-launcher/main/ota/manifest.json',
+  );
+
+  /// Set `--dart-define=UPDATE_CHECK_ENABLED=false` to disable OTA checks (dev).
+  static const bool updateCheckEnabled = bool.fromEnvironment(
+    'UPDATE_CHECK_ENABLED',
+    defaultValue: true,
+  );
+
+  static const String appPackageId = 'com.pphl.employee_attendance';
 }
