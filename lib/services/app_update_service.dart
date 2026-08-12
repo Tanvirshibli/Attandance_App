@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:crypto/crypto.dart';
@@ -63,12 +64,15 @@ class AppUpdateService {
         ),
       );
 
-      final data = response.data;
-      if (data is! Map<String, dynamic>) {
-        return const AppUpdateCheckResult.error('Invalid update manifest.');
+      final manifestMap = _parseManifestMap(response.data);
+      if (manifestMap == null) {
+        _logInvalidManifestBody(response.data);
+        return const AppUpdateCheckResult.error(
+          'Could not read update manifest. Tap Retry or continue offline.',
+        );
       }
 
-      final manifest = AppUpdateManifest.fromJson(data);
+      final manifest = AppUpdateManifest.fromJson(manifestMap);
       if (manifest.appId.isNotEmpty &&
           manifest.appId != AppConfig.appPackageId) {
         return const AppUpdateCheckResult.error(
@@ -76,9 +80,10 @@ class AppUpdateService {
         );
       }
 
+      final remoteCode = normalizeVersionCode(manifest.versionCode.toString());
       if (!isUpdateRequired(
         installedVersionCode: installedCode,
-        remoteVersionCode: manifest.versionCode,
+        remoteVersionCode: remoteCode,
       )) {
         return const AppUpdateCheckResult.upToDate();
       }
@@ -172,6 +177,45 @@ class AppUpdateService {
       debugPrint('AppUpdateService.cleanupIncompleteDownload: $e');
     }
   }
+
+  void _logInvalidManifestBody(dynamic data) {
+    final preview = data == null
+        ? 'null'
+        : data is String
+            ? (data.length > 200 ? data.substring(0, 200) : data)
+            : data.toString();
+    debugPrint(
+      'AppUpdateService.checkForUpdate: invalid manifest body '
+      'url=${AppConfig.updateManifestUrl} type=${data.runtimeType} preview=$preview',
+    );
+  }
+}
+
+Map<String, dynamic>? _parseManifestMap(dynamic data) {
+  if (data is Map<String, dynamic>) {
+    return data;
+  }
+  if (data is Map) {
+    return Map<String, dynamic>.from(data);
+  }
+  if (data is String) {
+    try {
+      var trimmed = data.trimLeft();
+      if (trimmed.startsWith('\uFEFF')) {
+        trimmed = trimmed.substring(1);
+      }
+      final decoded = jsonDecode(trimmed);
+      if (decoded is Map<String, dynamic>) {
+        return decoded;
+      }
+      if (decoded is Map) {
+        return Map<String, dynamic>.from(decoded);
+      }
+    } catch (_) {
+      return null;
+    }
+  }
+  return null;
 }
 
 String formatBytes(int bytes) {

@@ -5,7 +5,7 @@ import '../services/app_update_service.dart';
 import '../screens/app_bootstrap.dart';
 import '../screens/app_update_screen.dart';
 
-/// Checks Cloudinary manifest on cold start and blocks the app when an update
+/// Checks GitHub OTA manifest on cold start and blocks the app when an update
 /// is required.
 class UpdateGate extends StatefulWidget {
   const UpdateGate({super.key});
@@ -79,6 +79,19 @@ class _UpdateGateState extends State<UpdateGate> {
                       result.errorMessage ?? 'Could not check for updates.',
                       textAlign: TextAlign.center,
                     ),
+                    if (AppConfig.updateManifestUrl.isNotEmpty) ...[
+                      const SizedBox(height: 12),
+                      Text(
+                        AppConfig.updateManifestUrl,
+                        textAlign: TextAlign.center,
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .onSurface
+                                  .withValues(alpha: 0.6),
+                            ),
+                      ),
+                    ],
                     const SizedBox(height: 16),
                     FilledButton(
                       onPressed: _retryCheck,
