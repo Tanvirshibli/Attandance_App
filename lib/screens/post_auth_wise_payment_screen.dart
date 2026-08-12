@@ -69,9 +69,25 @@ class _PostAuthWisePaymentScreenState extends State<PostAuthWisePaymentScreen> {
       });
       return;
     }
+
+    final setup = result.data!;
+    final emptyLists = <String>[];
+    if (setup.banks.isEmpty) emptyLists.add('banks');
+    if (setup.employees.isEmpty) emptyLists.add('receivers');
+    if (setup.paymentTypes.isEmpty) emptyLists.add('payment types');
+
+    if (emptyLists.isNotEmpty) {
+      setState(() {
+        _loadingSetup = false;
+        _setupError =
+            'Payment setup returned no ${emptyLists.join(', ')}. Try again later or contact admin.';
+      });
+      return;
+    }
+
     setState(() {
       _loadingSetup = false;
-      _setup = result.data;
+      _setup = setup;
     });
   }
 
@@ -137,19 +153,24 @@ class _PostAuthWisePaymentScreenState extends State<PostAuthWisePaymentScreen> {
       return;
     }
 
+    final bankCompany = _bank!.company;
+    if (bankCompany == null || bankCompany.id <= 0) {
+      _snack('Selected bank has no company mapping. Choose another bank.');
+      return;
+    }
+
     final amount = double.tryParse(_amount.text.trim());
     if (amount == null || amount <= 0) {
       _snack('Enter a valid amount.');
       return;
     }
 
-    final companyId = _intField(_companyId, 'company ID');
+    final companyId = _intField(_companyId, 'company ID') ?? bankCompany.id;
     final recType = _intField(_recType, 'rec type');
     final paymentFor = _intField(_paymentFor, 'payment for');
     final invoiceType = _intField(_invoiceType, 'invoice type');
 
-    if (companyId == null ||
-        recType == null ||
+    if (recType == null ||
         paymentFor == null ||
         invoiceType == null) {
       return;

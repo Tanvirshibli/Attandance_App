@@ -27,6 +27,7 @@ class _GeoTrackingScreenState extends State<GeoTrackingScreen> {
       GlobalKey<LiveLocationMapState>();
 
   bool _enabled = false;
+  bool _featureEnabled = true;
   bool _isLoading = true;
   bool _capturing = false;
   bool _needsLocationPermission = false;
@@ -53,12 +54,14 @@ class _GeoTrackingScreenState extends State<GeoTrackingScreen> {
   }
 
   Future<void> _bootstrap() async {
+    await _geoService.ensureEnabledIfAllowed();
     await _refresh();
     await _startLiveLocation();
   }
 
   Future<void> _refresh() async {
     setState(() => _isLoading = true);
+    final featureOn = await _geoService.isGeoFeatureEnabled();
     final enabled = await _geoService.isEnabled();
     final permission = await _geoService.permissionSummary();
     final lastPing = await _geoService.getLastPing();
@@ -67,7 +70,8 @@ class _GeoTrackingScreenState extends State<GeoTrackingScreen> {
     final history = await _geoService.fetchHistory(limit: 15);
     if (!mounted) return;
     setState(() {
-      _enabled = enabled;
+      _enabled = featureOn && enabled;
+      _featureEnabled = featureOn;
       _permissionSummary = permission;
       _lastPing = lastPing;
       _pendingCount = pending;
@@ -122,6 +126,7 @@ class _GeoTrackingScreenState extends State<GeoTrackingScreen> {
   Future<void> _requestLivePermission() async {
     final status = await _geoService.requestPermissions();
     if (status.isGranted || status.isLimited) {
+      await _geoService.ensureEnabledIfAllowed();
       await _startLiveLocation();
       await _refresh();
     } else if (mounted) {
@@ -131,25 +136,6 @@ class _GeoTrackingScreenState extends State<GeoTrackingScreen> {
         ),
       );
     }
-  }
-
-  Future<void> _toggle(bool value) async {
-    if (value) {
-      final status = await _geoService.requestPermissions();
-      if (!status.isGranted && !status.isLimited) {
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Location permission is required for geo tracking.'),
-          ),
-        );
-        return;
-      }
-      await _startLiveLocation();
-    }
-
-    await _geoService.setEnabled(value);
-    await _refresh();
   }
 
   Future<void> _captureNow() async {
@@ -330,7 +316,7 @@ class _GeoTrackingScreenState extends State<GeoTrackingScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  _enabled ? 'Tracking on' : 'Tracking off',
+                  _statusTitle,
                   style: GoogleFonts.poppins(
                     fontSize: 16,
                     fontWeight: FontWeight.w600,
@@ -339,9 +325,7 @@ class _GeoTrackingScreenState extends State<GeoTrackingScreen> {
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  _permissionSummary.isEmpty
-                      ? 'Scheduled uploads to ZKTeco'
-                      : _permissionSummary,
+                  _statusSubtitle,
                   style: GoogleFonts.poppins(
                     fontSize: 11,
                     color: AppColors.textSecondary,
@@ -350,14 +334,24 @@ class _GeoTrackingScreenState extends State<GeoTrackingScreen> {
               ],
             ),
           ),
-          Switch.adaptive(
-            value: _enabled,
-            onChanged: _isLoading ? null : _toggle,
-            activeTrackColor: AppColors.primary,
-          ),
         ],
       ),
     );
+  }
+
+  String get _statusTitle {
+    if (!_featureEnabled) return 'Tracking unavailable';
+    return _enabled ? 'Tracking on' : 'Tracking off';
+  }
+
+  String get _statusSubtitle {
+    if (!_featureEnabled) {
+      return 'Geo tracking is disabled by server config';
+    }
+    if (_permissionSummary.isNotEmpty) return _permissionSummary;
+    return _enabled
+        ? 'Background location active · uploads to ZKTeco'
+        : 'Background location required';
   }
 
   Widget _statusChips() {

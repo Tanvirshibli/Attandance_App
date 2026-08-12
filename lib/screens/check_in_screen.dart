@@ -9,13 +9,14 @@ import 'package:geolocator/geolocator.dart';
 import 'package:geocoding/geocoding.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:google_mlkit_face_detection/google_mlkit_face_detection.dart';
-import 'package:image/image.dart' as img;
 import 'package:permission_handler/permission_handler.dart';
 
 import '../config/theme.dart';
+import '../models/attendance_request_record.dart';
 import '../services/face_recognition_service.dart';
 import '../services/attendance_request_service.dart';
 import '../services/auth_service.dart';
+import '../utils/camera_input_image.dart';
 
 // ================================================================
 // Face path helpers & progress painter
@@ -143,12 +144,10 @@ enum _BlinkPhase { waitingOpen, waitingClosed, waitingReopen, done }
 // ================================================================
 
 class CheckInScreen extends StatefulWidget {
-  final VoidCallback onCheckIn;
   final bool isCheckOut;
 
   const CheckInScreen({
     super.key,
-    required this.onCheckIn,
     this.isCheckOut = false,
   });
 
@@ -159,6 +158,7 @@ class CheckInScreen extends StatefulWidget {
 class _CheckInScreenState extends State<CheckInScreen>
     with TickerProviderStateMixin {
   static const int _minChallengesBeforeEarlyVerify = 2;
+  static bool _routeActive = false;
 
   // ---- Services & Controllers ----
   final _faceService = FaceRecognitionService();
@@ -185,7 +185,7 @@ class _CheckInScreenState extends State<CheckInScreen>
 
   // Angle hold counter
   int _angleHoldFrames = 0;
-  static const int _requiredHoldFrames = 2; // ~1.4 s at 700 ms interval
+  static const int _requiredHoldFrames = 1;
 
   // ---- Face data ----
   bool _faceDetected = false;
@@ -198,9 +198,16 @@ class _CheckInScreenState extends State<CheckInScreen>
   String _address = '';
 
   // ---- Frame analysis ----
-  Timer? _frameTimer;
   bool _processingFrame = false;
   bool _isTakingPicture = false;
+  bool _isStreamActive = false;
+  DateTime? _lastStreamProcessed;
+  int _nullInputFrameCount = 0;
+  static const int _nullInputFrameThreshold = 10;
+  bool _punchSubmitted = false;
+  AttendanceRequestRecord? _punchedRecord;
+  bool _isClosing = false;
+  bool _aborted = false;
 
   // ---- Animations ----
   late AnimationController _progressAnim;
@@ -214,6 +221,14 @@ class _CheckInScreenState extends State<CheckInScreen>
   @override
   void initState() {
     super.initState();
+    if (_routeActive) {
+      _aborted = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) Navigator.of(context).pop(null);
+      });
+      return;
+    }
+    _routeActive = true;
     _progressAnim = AnimationController(
         vsync: this, duration: const Duration(milliseconds: 400));
     _tickAnim = AnimationController(
@@ -292,6 +307,9 @@ class _CheckInScreenState extends State<CheckInScreen>
         front,
         ResolutionPreset.medium,
         enableAudio: false,
+        imageFormatGroup: Platform.isAndroid
+            ? ImageFormatGroup.nv21
+            : ImageFormatGroup.bgra8888,
       );
 
       await _cameraController!.initialize();
@@ -304,7 +322,7 @@ class _CheckInScreenState extends State<CheckInScreen>
             _challenges[_currentChallengeIndex]);
       });
 
-      _startFrameAnalysis();
+      _startImageStream();
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -314,19 +332,67 @@ class _CheckInScreenState extends State<CheckInScreen>
     }
   }
 
-  void _startFrameAnalysis() {
-    _frameTimer?.cancel();
-    _frameTimer =
-        Timer.periodic(const Duration(milliseconds: 700), (_) => _analyzeFrame());
+  Future<void> _startImageStream() async {
+    final controller = _cameraController;
+    if (controller == null || !controller.value.isInitialized || _isStreamActive) {
+      return;
+    }
+    try {
+      await controller.startImageStream(_onCameraImage);
+      _isStreamActive = true;
+    } catch (e) {
+      debugPrint('Image stream start failed: $e');
+      if (mounted) {
+        setState(() {
+          _phase = CheckInPhase.error;
+          _errorMessage =
+              'Camera stream failed. Close other camera apps and retry.';
+        });
+      }
+    }
+  }
+
+  Future<void> _stopImageStream() async {
+    final controller = _cameraController;
+    if (controller == null || !_isStreamActive) return;
+    try {
+      if (controller.value.isStreamingImages) {
+        await controller.stopImageStream();
+      }
+    } catch (e) {
+      debugPrint('Image stream stop failed: $e');
+    } finally {
+      _isStreamActive = false;
+    }
   }
 
   @override
   void dispose() {
-    _frameTimer?.cancel();
+    _routeActive = false;
+    _stopImageStream();
     _cameraController?.dispose();
     _progressAnim.dispose();
     _tickAnim.dispose();
     super.dispose();
+  }
+
+  Future<void> _releaseCamera() async {
+    await _stopImageStream();
+    final controller = _cameraController;
+    _cameraController = null;
+    if (controller != null) {
+      try {
+        await controller.dispose();
+      } catch (_) {}
+    }
+  }
+
+  Future<void> _finishWithSuccess() async {
+    if (_isClosing || !mounted) return;
+    _isClosing = true;
+    await _releaseCamera();
+    if (!mounted) return;
+    Navigator.of(context).pop(_punchedRecord);
   }
 
   // ================================================================
@@ -364,7 +430,7 @@ class _CheckInScreenState extends State<CheckInScreen>
     }
   }
 
-  Future<void> _analyzeFrame() async {
+  Future<void> _onCameraImage(CameraImage image) async {
     if (_processingFrame ||
         _phase != CheckInPhase.scanning ||
         _cameraController == null ||
@@ -372,17 +438,34 @@ class _CheckInScreenState extends State<CheckInScreen>
       return;
     }
 
+    final now = DateTime.now();
+    if (_lastStreamProcessed != null &&
+        now.difference(_lastStreamProcessed!) <
+            const Duration(milliseconds: 200)) {
+      return;
+    }
+    _lastStreamProcessed = now;
     _processingFrame = true;
-    File? tempFile;
 
     try {
-      final xFile = await _takePictureSafely();
-      if (xFile == null) {
+      final controller = _cameraController!;
+      final inputImage = CameraInputImage.fromCameraImage(image, controller);
+      if (inputImage == null) {
+        _nullInputFrameCount++;
+        if (_nullInputFrameCount >= _nullInputFrameThreshold && mounted) {
+          setState(() {
+            _faceDetected = false;
+            _facePlacedCorrectly = false;
+            _angleHoldFrames = 0;
+            _statusMessage =
+                'Camera format not supported — close and reopen check-in';
+          });
+        }
         return;
       }
-      tempFile = File(xFile.path);
-      final faces = await _faceService.detectFaces(tempFile);
+      _nullInputFrameCount = 0;
 
+      final faces = await _faceService.detectFacesLive(inputImage);
       if (!mounted) return;
 
       if (faces.isEmpty) {
@@ -401,7 +484,8 @@ class _CheckInScreenState extends State<CheckInScreen>
         });
       } else {
         final face = faces.first;
-        final frameDimensions = await _resolveFrameDimensions(tempFile);
+        final frameDimensions =
+            CameraInputImage.effectiveDimensions(image, controller);
         if (!_isFacePlacedCorrectly(face, frameDimensions)) {
           setState(() {
             _faceDetected = true;
@@ -422,9 +506,6 @@ class _CheckInScreenState extends State<CheckInScreen>
     } catch (e) {
       debugPrint('Frame analysis error: $e');
     } finally {
-      try {
-        await tempFile?.delete();
-      } catch (_) {}
       _processingFrame = false;
     }
   }
@@ -491,6 +572,7 @@ class _CheckInScreenState extends State<CheckInScreen>
       imageHeight,
       requireCentering: true,
       centerTolerance: 0.35,
+      forLiveGuidance: true,
     );
     if (placement.isFrontCamera) return true;
 
@@ -501,30 +583,12 @@ class _CheckInScreenState extends State<CheckInScreen>
         imageWidth,
         requireCentering: true,
         centerTolerance: 0.35,
+        forLiveGuidance: true,
       );
       if (swappedPlacement.isFrontCamera) return true;
     }
 
     return false;
-  }
-
-  Future<({int width, int height})?> _resolveFrameDimensions(File frameFile) async {
-    try {
-      final bytes = await frameFile.readAsBytes();
-      final decoded = img.decodeImage(bytes);
-      if (decoded != null && decoded.width > 0 && decoded.height > 0) {
-        return (width: decoded.width, height: decoded.height);
-      }
-    } catch (_) {}
-
-    final previewSize = _cameraController?.value.previewSize;
-    if (previewSize == null) return null;
-
-    final width = previewSize.width.toInt();
-    final height = previewSize.height.toInt();
-    if (width <= 0 || height <= 0) return null;
-
-    return (width: width, height: height);
   }
 
   /// Check an angle-based challenge with hold requirement.
@@ -606,7 +670,7 @@ class _CheckInScreenState extends State<CheckInScreen>
   }
 
   Future<bool> _tryEarlyVerification() async {
-    _frameTimer?.cancel();
+    await _stopImageStream();
     await _waitForCameraIdle();
 
     if (!mounted ||
@@ -621,11 +685,14 @@ class _CheckInScreenState extends State<CheckInScreen>
     });
 
     try {
-      final result = await _verifyFaceWithRetries(attempts: 2);
+      final result = await _verifyFaceWithRetries(
+        attempts: 2,
+        robustEmbedding: false,
+      );
       if (result == null) {
         if (!mounted) return false;
         setState(() => _phase = CheckInPhase.scanning);
-        _startFrameAnalysis();
+        await _startImageStream();
         return false;
       }
 
@@ -662,7 +729,7 @@ class _CheckInScreenState extends State<CheckInScreen>
         _challenges[_currentChallengeIndex],
       );
     });
-    _startFrameAnalysis();
+    await _startImageStream();
     return false;
   }
 
@@ -678,7 +745,7 @@ class _CheckInScreenState extends State<CheckInScreen>
   // ================================================================
 
   Future<void> _verifyFace() async {
-    _frameTimer?.cancel();
+    await _stopImageStream();
     await _waitForCameraIdle();
 
     if (!mounted ||
@@ -730,6 +797,7 @@ class _CheckInScreenState extends State<CheckInScreen>
 
   Future<FaceVerificationResult?> _verifyFaceWithRetries({
     int attempts = 3,
+    bool robustEmbedding = true,
   }) async {
     FaceVerificationResult? bestResult;
 
@@ -738,7 +806,11 @@ class _CheckInScreenState extends State<CheckInScreen>
       if (xFile == null) continue;
 
       final file = File(xFile.path);
-      final result = await _faceService.verifyFace(file, requireSmile: false);
+      final result = await _faceService.verifyFace(
+        file,
+        requireSmile: false,
+        robustEmbedding: robustEmbedding,
+      );
       try {
         await file.delete();
       } catch (_) {}
@@ -832,9 +904,27 @@ class _CheckInScreenState extends State<CheckInScreen>
 
       setState(() {
         _phase = CheckInPhase.success;
+        _punchSubmitted = true;
+        _punchedRecord = attendanceResult.record ??
+            _attendanceRequestService.synthesizePunchRecord(
+              postBody: {
+                'attDate': DateTime.now().toIso8601String().substring(0, 10),
+                if (!widget.isCheckOut)
+                  'requestedInTime': DateTime.now().toIso8601String(),
+                if (widget.isCheckOut)
+                  'requestedOutTime': DateTime.now().toIso8601String(),
+                'requestType': 'self_punch',
+              },
+              isCheckOut: widget.isCheckOut,
+            );
         _statusMessage = widget.isCheckOut
             ? 'Check-out request submitted!'
             : 'Check-in request submitted!';
+      });
+      Future.delayed(const Duration(milliseconds: 1500), () {
+        if (mounted && _punchSubmitted && !_isClosing) {
+          _finishWithSuccess();
+        }
       });
     } catch (e) {
       if (!mounted) return;
@@ -850,12 +940,20 @@ class _CheckInScreenState extends State<CheckInScreen>
   // ================================================================
 
   void _handleDone() {
-    widget.onCheckIn();
-    Navigator.of(context).pop();
+    if (_punchSubmitted) {
+      _finishWithSuccess();
+    }
+  }
+
+  Future<void> _handleBack() async {
+    await _releaseCamera();
+    if (mounted) {
+      Navigator.of(context).pop(_punchedRecord);
+    }
   }
 
   void _retry() {
-    _frameTimer?.cancel();
+    _stopImageStream();
     _tickAnim.reset();
     _setupChallenges();
     setState(() {
@@ -866,7 +964,7 @@ class _CheckInScreenState extends State<CheckInScreen>
       _statusMessage = FaceRecognitionService.challengeInstruction(
           _challenges[_currentChallengeIndex]);
     });
-    _startFrameAnalysis();
+    _startImageStream();
   }
 
   // ================================================================
@@ -875,18 +973,26 @@ class _CheckInScreenState extends State<CheckInScreen>
 
   @override
   Widget build(BuildContext context) {
+    if (_aborted) return const SizedBox.shrink();
+
     final sw = MediaQuery.of(context).size.width;
     final faceWidth = sw * 0.64;
     final faceHeight = faceWidth * 1.28;
 
-    return Scaffold(
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) async {
+        if (didPop) return;
+        await _handleBack();
+      },
+      child: Scaffold(
       backgroundColor: const Color(0xFF0A0E21),
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_ios, color: Colors.white),
-          onPressed: () => Navigator.pop(context),
+          onPressed: _handleBack,
         ),
         title: Text(widget.isCheckOut ? 'Check Out' : 'Check In',
             style: GoogleFonts.poppins(
@@ -924,6 +1030,7 @@ class _CheckInScreenState extends State<CheckInScreen>
           _buildBottomButton(),
         ],
       ),
+    ),
     );
   }
 

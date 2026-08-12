@@ -12,6 +12,7 @@ import '../config/theme.dart';
 import '../services/face_recognition_service.dart';
 import '../services/face_registration_api_service.dart';
 import '../services/auth_service.dart';
+import '../utils/camera_input_image.dart';
 
 /// 5-angle face registration screen with live camera preview.
 /// Automatically detects each target angle and captures when held.
@@ -41,7 +42,7 @@ class _FaceRegistrationScreenState extends State<FaceRegistrationScreen>
   // ---- Registration progress ----
   int _currentCapture = 0; // 0-based index into registrationAngles
   int _angleHoldFrames = 0;
-  static const int _requiredHoldFrames = 2; // higher clarity before capture
+  static const int _requiredHoldFrames = 1;
   double _progress = 0.0;
   double _animatedProgress = 0.0;
   double _progressAnimationStart = 0.0;
@@ -50,8 +51,13 @@ class _FaceRegistrationScreenState extends State<FaceRegistrationScreen>
       List.filled(FaceRecognitionService.registrationCaptures, false);
 
   // ---- Frame analysis ----
-  Timer? _frameTimer;
   bool _processingFrame = false;
+  bool _isStreamActive = false;
+  DateTime? _lastStreamProcessed;
+  int _nullInputFrameCount = 0;
+  static const int _nullInputFrameThreshold = 10;
+  int _streamFrameWidth = 0;
+  int _streamFrameHeight = 0;
 
   // ---- Live face info ----
   bool _faceDetected = false;
@@ -126,8 +132,11 @@ class _FaceRegistrationScreenState extends State<FaceRegistrationScreen>
 
       _cameraController = CameraController(
         front,
-        ResolutionPreset.high,
+        ResolutionPreset.medium,
         enableAudio: false,
+        imageFormatGroup: Platform.isAndroid
+            ? ImageFormatGroup.nv21
+            : ImageFormatGroup.bgra8888,
       );
 
       await _cameraController!.initialize();
@@ -139,22 +148,49 @@ class _FaceRegistrationScreenState extends State<FaceRegistrationScreen>
             FaceRecognitionService.angleInstruction(_targetAngle);
       });
 
-      _startFrameAnalysis();
+      _startImageStream();
     } catch (e) {
       if (!mounted) return;
       setState(() => _statusMessage = 'Camera error: $e');
     }
   }
 
-  void _startFrameAnalysis() {
-    _frameTimer?.cancel();
-    _frameTimer =
-        Timer.periodic(const Duration(milliseconds: 700), (_) => _analyzeFrame());
+  Future<void> _startImageStream() async {
+    final controller = _cameraController;
+    if (controller == null || !controller.value.isInitialized || _isStreamActive) {
+      return;
+    }
+    try {
+      await controller.startImageStream(_onCameraImage);
+      _isStreamActive = true;
+    } catch (e) {
+      debugPrint('Image stream start failed: $e');
+      if (mounted) {
+        setState(() {
+          _statusMessage =
+              'Camera stream failed. Close other camera apps and retry.';
+        });
+      }
+    }
+  }
+
+  Future<void> _stopImageStream() async {
+    final controller = _cameraController;
+    if (controller == null || !_isStreamActive) return;
+    try {
+      if (controller.value.isStreamingImages) {
+        await controller.stopImageStream();
+      }
+    } catch (e) {
+      debugPrint('Image stream stop failed: $e');
+    } finally {
+      _isStreamActive = false;
+    }
   }
 
   @override
   void dispose() {
-    _frameTimer?.cancel();
+    _stopImageStream();
     _cameraController?.dispose();
     _captureFlashAnim.dispose();
     _progressAnim.dispose();
@@ -166,7 +202,7 @@ class _FaceRegistrationScreenState extends State<FaceRegistrationScreen>
   // Frame analysis
   // ================================================================
 
-  Future<void> _analyzeFrame() async {
+  Future<void> _onCameraImage(CameraImage image) async {
     if (_processingFrame ||
         _isCapturing ||
         _isCompleted ||
@@ -175,14 +211,39 @@ class _FaceRegistrationScreenState extends State<FaceRegistrationScreen>
       return;
     }
 
+    final now = DateTime.now();
+    if (_lastStreamProcessed != null &&
+        now.difference(_lastStreamProcessed!) <
+            const Duration(milliseconds: 200)) {
+      return;
+    }
+    _lastStreamProcessed = now;
     _processingFrame = true;
-    File? tempFile;
 
     try {
-      final xFile = await _cameraController!.takePicture();
-      tempFile = File(xFile.path);
-      final faces = await _faceService.detectFaces(tempFile);
+      final controller = _cameraController!;
+      final frameDimensions =
+          CameraInputImage.effectiveDimensions(image, controller);
 
+      final inputImage = CameraInputImage.fromCameraImage(image, controller);
+      if (inputImage == null) {
+        _nullInputFrameCount++;
+        if (_nullInputFrameCount >= _nullInputFrameThreshold && mounted) {
+          setState(() {
+            _faceDetected = false;
+            _facePlacedCorrectly = false;
+            _angleHoldFrames = 0;
+            _statusMessage =
+                'Camera format not supported — close and reopen this screen';
+          });
+        }
+        return;
+      }
+      _nullInputFrameCount = 0;
+      _streamFrameWidth = frameDimensions.width;
+      _streamFrameHeight = frameDimensions.height;
+
+      final faces = await _faceService.detectFacesLive(inputImage);
       if (!mounted) return;
 
       if (faces.isEmpty) {
@@ -212,17 +273,6 @@ class _FaceRegistrationScreenState extends State<FaceRegistrationScreen>
           return;
         }
 
-        final qualityIssue = _liveQualityIssue(face);
-        if (qualityIssue != null) {
-          setState(() {
-            _faceDetected = true;
-            _facePlacedCorrectly = true;
-            _angleHoldFrames = 0;
-            _statusMessage = qualityIssue;
-          });
-          return;
-        }
-
         setState(() {
           _faceDetected = true;
           _facePlacedCorrectly = true;
@@ -232,8 +282,7 @@ class _FaceRegistrationScreenState extends State<FaceRegistrationScreen>
           _angleHoldFrames++;
           if (_angleHoldFrames >= _requiredHoldFrames) {
             setState(() => _statusMessage = 'Capturing...');
-            await _captureRegistration(tempFile);
-            tempFile = null; // prevent deletion — used for capture
+            await _captureFromCamera();
           } else {
             setState(() => _statusMessage = 'Hold steady...');
           }
@@ -253,15 +302,46 @@ class _FaceRegistrationScreenState extends State<FaceRegistrationScreen>
     } catch (e) {
       debugPrint('Frame analysis error: $e');
     } finally {
-      try {
-        await tempFile?.delete();
-      } catch (_) {}
       _processingFrame = false;
     }
   }
 
+  Future<void> _captureFromCamera() async {
+    await _stopImageStream();
+    _isCapturing = true;
+    _captureFlashAnim.forward().then((_) => _captureFlashAnim.reverse());
+
+    File? imageFile;
+    try {
+      final xFile = await _cameraController?.takePicture();
+      if (xFile == null) {
+        setState(() {
+          _angleHoldFrames = 0;
+          _statusMessage = 'Capture failed. Try again.';
+        });
+        return;
+      }
+      imageFile = File(xFile.path);
+      await _captureRegistration(imageFile);
+      imageFile = null;
+    } catch (e) {
+      setState(() {
+        _angleHoldFrames = 0;
+        _statusMessage = 'Capture failed. Try again.';
+      });
+    } finally {
+      _isCapturing = false;
+      if (!_isCompleted) {
+        await _startImageStream();
+      }
+      try {
+        await imageFile?.delete();
+      } catch (_) {}
+    }
+  }
+
   String? _facePlacementIssue(Face face) {
-      final dimensions = _resolvePreviewDimensions();
+      final dimensions = _streamFrameDimensions();
       if (dimensions == null) return null;
 
       final primary = _faceService.checkFrontCamera(
@@ -269,7 +349,8 @@ class _FaceRegistrationScreenState extends State<FaceRegistrationScreen>
         dimensions.width,
         dimensions.height,
         requireCentering: true,
-        centerTolerance: 0.28,
+        centerTolerance: 0.35,
+        forLiveGuidance: true,
       );
       if (primary.isFrontCamera) return null;
 
@@ -280,49 +361,28 @@ class _FaceRegistrationScreenState extends State<FaceRegistrationScreen>
           dimensions.height,
           dimensions.width,
           requireCentering: true,
-          centerTolerance: 0.28,
+          centerTolerance: 0.35,
+          forLiveGuidance: true,
         );
         if (swapped.isFrontCamera) return null;
       }
 
       final issue = swapped?.issue ?? primary.issue;
       if (issue != null && issue.contains('small')) {
-        return 'Move closer and place your face inside the guide';
+        return 'Move a little closer and place your face inside the guide';
       }
 
       return 'Place your face correctly inside the face guide';
   }
 
-  String? _liveQualityIssue(Face face) {
-      final dimensions = _resolvePreviewDimensions();
-      if (dimensions == null) return null;
+  // Live stream uses placement only; strict quality runs at capture time.
 
-      final primary = _faceService.checkFaceQuality(
-        face,
-        dimensions.width,
-        dimensions.height,
-        skipRotationCheck: _targetAngle != FaceAngle.straight,
-      );
-      if (primary.isAcceptable) return null;
-
-      FaceQualityResult? swapped;
-      if (dimensions.width != dimensions.height) {
-        swapped = _faceService.checkFaceQuality(
-          face,
-          dimensions.height,
-          dimensions.width,
-          skipRotationCheck: _targetAngle != FaceAngle.straight,
-        );
-        if (swapped.isAcceptable) return null;
+  ({int width, int height})? _streamFrameDimensions() {
+      if (_streamFrameWidth > 0 && _streamFrameHeight > 0) {
+        return (width: _streamFrameWidth, height: _streamFrameHeight);
       }
-
-      final quality =
-          swapped != null && swapped.score > primary.score ? swapped : primary;
-      if (quality.issues.isEmpty) {
-        return 'Hold still and keep your face clear in the guide';
-      }
-      return quality.issues.first;
-  }
+      return _resolvePreviewDimensions();
+    }
 
     ({int width, int height})? _resolvePreviewDimensions() {
       final previewSize = _cameraController?.value.previewSize;
@@ -340,9 +400,6 @@ class _FaceRegistrationScreenState extends State<FaceRegistrationScreen>
   // ================================================================
 
   Future<void> _captureRegistration(File imageFile) async {
-    _isCapturing = true;
-    _captureFlashAnim.forward().then((_) => _captureFlashAnim.reverse());
-
     try {
       final result = await _faceService.registerFaceCapture(
         imageFile,
@@ -380,7 +437,7 @@ class _FaceRegistrationScreenState extends State<FaceRegistrationScreen>
             );
           }
 
-          _frameTimer?.cancel();
+          await _stopImageStream();
           setState(() {
             _isCompleted = true;
             _progress = 1.0;
@@ -406,11 +463,6 @@ class _FaceRegistrationScreenState extends State<FaceRegistrationScreen>
         _angleHoldFrames = 0;
         _statusMessage = 'Capture failed. Try again.';
       });
-    } finally {
-      _isCapturing = false;
-      try {
-        await imageFile.delete();
-      } catch (_) {}
     }
   }
 

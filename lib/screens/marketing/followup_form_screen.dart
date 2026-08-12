@@ -30,11 +30,12 @@ class FollowupFormScreen extends StatefulWidget {
 class _FollowupFormScreenState extends State<FollowupFormScreen> {
   final MarketingService _service = MarketingService();
   final AuthService _authService = AuthService();
+  final _title = TextEditingController();
+  final _description = TextEditingController();
   final _action = TextEditingController();
-  final _notes = TextEditingController();
 
   DateTime? _dueDate;
-  String _priority = 'normal';
+  String _priority = 'medium';
   bool _submitting = false;
 
   bool _loadingList = false;
@@ -42,8 +43,14 @@ class _FollowupFormScreenState extends State<FollowupFormScreen> {
   List<Followup> _items = const [];
   String _statusFilter = 'All';
 
-  static const _priorities = ['low', 'normal', 'high', 'urgent'];
-  static const _statusOptions = ['All', 'open', 'done', 'cancelled'];
+  static const _priorities = ['low', 'medium', 'high', 'urgent'];
+  static const _statusOptions = [
+    'All',
+    'open',
+    'in_progress',
+    'completed',
+    'cancelled',
+  ];
 
   bool get _listMode => widget.showListMode || widget.party == null;
 
@@ -57,8 +64,9 @@ class _FollowupFormScreenState extends State<FollowupFormScreen> {
 
   @override
   void dispose() {
+    _title.dispose();
+    _description.dispose();
     _action.dispose();
-    _notes.dispose();
     super.dispose();
   }
 
@@ -98,14 +106,59 @@ class _FollowupFormScreenState extends State<FollowupFormScreen> {
     if (picked != null) setState(() => _dueDate = picked);
   }
 
+  Future<void> _markCompleted(Followup item) async {
+    final noteCtrl = TextEditingController();
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(
+          'Mark completed',
+          style: GoogleFonts.poppins(fontWeight: FontWeight.w600),
+        ),
+        content: TextField(
+          controller: noteCtrl,
+          maxLines: 3,
+          decoration: const InputDecoration(
+            hintText: 'Completion note (optional)',
+            border: OutlineInputBorder(),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Complete'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+
+    final result = await _service.updateFollowup(item.id, {
+      'status': 'completed',
+      if (noteCtrl.text.trim().isNotEmpty)
+        'completion_note': noteCtrl.text.trim(),
+    });
+    if (!mounted) return;
+    if (!result.success) {
+      _snack(result.message ?? 'Could not update follow-up.');
+      return;
+    }
+    _snack('Marked completed.');
+    _loadList();
+  }
+
   Future<void> _submit() async {
     final party = widget.party;
     if (party == null) {
       _snack('Select a party first.');
       return;
     }
-    if (_action.text.trim().isEmpty) {
-      _snack('Action is required.');
+    if (_title.text.trim().isEmpty) {
+      _snack('Title is required.');
       return;
     }
     final profile = await _authService.getCurrentUserProfile();
@@ -119,12 +172,14 @@ class _FollowupFormScreenState extends State<FollowupFormScreen> {
     final payload = <String, dynamic>{
       'party_id': party.id,
       'employee_id': employeeId,
-      'action_type': _action.text.trim(),
+      'title': _title.text.trim(),
+      if (_description.text.trim().isNotEmpty)
+        'description': _description.text.trim(),
+      if (_action.text.trim().isNotEmpty) 'action_type': _action.text.trim(),
       'priority': _priority,
       'status': 'open',
       if (_dueDate != null)
         'due_date': DateFormat('yyyy-MM-dd').format(_dueDate!),
-      if (_notes.text.trim().isNotEmpty) 'notes': _notes.text.trim(),
     };
 
     final result = await _service.createFollowup(payload);
@@ -174,6 +229,20 @@ class _FollowupFormScreenState extends State<FollowupFormScreen> {
       case 'high':
         return AppColors.error;
       case 'low':
+        return AppColors.info;
+      default:
+        return AppColors.warning;
+    }
+  }
+
+  Color _statusColor(String? s) {
+    switch ((s ?? '').toLowerCase()) {
+      case 'completed':
+      case 'done':
+        return AppColors.success;
+      case 'cancelled':
+        return AppColors.error;
+      case 'in_progress':
         return AppColors.info;
       default:
         return AppColors.warning;
@@ -250,70 +319,117 @@ class _FollowupFormScreenState extends State<FollowupFormScreen> {
                     delegate: SliverChildBuilderDelegate(
                       (context, index) {
                         final item = _items[index];
+                        final status = (item.status ?? 'open').toLowerCase();
+                        final canComplete = status != 'completed' &&
+                            status != 'done' &&
+                            status != 'cancelled';
                         return FadeInUp(
                           delay: Duration(milliseconds: 30 * index),
                           child: Padding(
                             padding: const EdgeInsets.only(bottom: 10),
                             child: SectionCard(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Row(
-                                    children: [
-                                      Expanded(
-                                        child: Text(
-                                          item.actionType ?? 'Follow-up',
-                                          style: GoogleFonts.poppins(
-                                            fontWeight: FontWeight.w600,
-                                            fontSize: 14,
+                              child: InkWell(
+                                onTap: canComplete
+                                    ? () => _markCompleted(item)
+                                    : null,
+                                borderRadius: BorderRadius.circular(12),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Row(
+                                      children: [
+                                        Expanded(
+                                          child: Text(
+                                            item.displayTitle,
+                                            style: GoogleFonts.poppins(
+                                              fontWeight: FontWeight.w600,
+                                              fontSize: 14,
+                                            ),
                                           ),
                                         ),
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 8,
+                                            vertical: 4,
+                                          ),
+                                          decoration: BoxDecoration(
+                                            color: _statusColor(item.status)
+                                                .withValues(alpha: 0.12),
+                                            borderRadius:
+                                                BorderRadius.circular(10),
+                                          ),
+                                          child: Text(
+                                            item.status ?? 'open',
+                                            style: GoogleFonts.poppins(
+                                              fontSize: 10,
+                                              fontWeight: FontWeight.w600,
+                                              color:
+                                                  _statusColor(item.status),
+                                            ),
+                                          ),
+                                        ),
+                                        const SizedBox(width: 6),
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 8,
+                                            vertical: 4,
+                                          ),
+                                          decoration: BoxDecoration(
+                                            color: _priorityColor(item.priority)
+                                                .withValues(alpha: 0.12),
+                                            borderRadius:
+                                                BorderRadius.circular(10),
+                                          ),
+                                          child: Text(
+                                            item.priority ?? 'medium',
+                                            style: GoogleFonts.poppins(
+                                              fontSize: 10,
+                                              fontWeight: FontWeight.w600,
+                                              color: _priorityColor(
+                                                item.priority,
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      [
+                                        if (item.partyName != null)
+                                          item.partyName!,
+                                        if (item.dueDate != null)
+                                          'Due ${item.dueDate}',
+                                        if (item.actionType != null)
+                                          item.actionType!,
+                                      ].where((e) => e.isNotEmpty).join(' · '),
+                                      style: GoogleFonts.poppins(
+                                        fontSize: 12,
+                                        color: AppColors.textSecondary,
                                       ),
-                                      Container(
-                                        padding: const EdgeInsets.symmetric(
-                                          horizontal: 8,
-                                          vertical: 4,
-                                        ),
-                                        decoration: BoxDecoration(
-                                          color: _priorityColor(item.priority)
-                                              .withValues(alpha: 0.12),
-                                          borderRadius:
-                                              BorderRadius.circular(10),
-                                        ),
-                                        child: Text(
-                                          item.priority ?? 'normal',
-                                          style: GoogleFonts.poppins(
-                                            fontSize: 10,
-                                            fontWeight: FontWeight.w600,
-                                            color:
-                                                _priorityColor(item.priority),
-                                          ),
+                                    ),
+                                    if (item.description != null ||
+                                        item.notes != null) ...[
+                                      const SizedBox(height: 6),
+                                      Text(
+                                        item.description ?? item.notes!,
+                                        style:
+                                            GoogleFonts.poppins(fontSize: 12),
+                                      ),
+                                    ],
+                                    if (canComplete) ...[
+                                      const SizedBox(height: 8),
+                                      Text(
+                                        'Tap to mark completed',
+                                        style: GoogleFonts.poppins(
+                                          fontSize: 11,
+                                          color: AppColors.primary,
+                                          fontWeight: FontWeight.w500,
                                         ),
                                       ),
                                     ],
-                                  ),
-                                  const SizedBox(height: 4),
-                                  Text(
-                                    [
-                                      if (item.partyName != null)
-                                        item.partyName!,
-                                      if (item.dueDate != null)
-                                        'Due ${item.dueDate}',
-                                      item.status ?? '',
-                                    ].where((e) => e.isNotEmpty).join(' · '),
-                                    style: GoogleFonts.poppins(
-                                      fontSize: 12,
-                                      color: AppColors.textSecondary,
-                                    ),
-                                  ),
-                                  if (item.notes != null) ...[
-                                    const SizedBox(height: 6),
-                                    Text(
-                                      item.notes!,
-                                      style: GoogleFonts.poppins(fontSize: 12),
-                                    ),
                                   ],
-                                ],
+                                ),
                               ),
                             ),
                           ),
@@ -344,11 +460,26 @@ class _FollowupFormScreenState extends State<FollowupFormScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    _label('Action *'),
+                    _label('Title *'),
+                    TextField(
+                      controller: _title,
+                      decoration: _decoration(
+                        hint: 'e.g. Call back next week',
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+                    _label('Description'),
+                    TextField(
+                      controller: _description,
+                      maxLines: 3,
+                      decoration: _decoration(),
+                    ),
+                    const SizedBox(height: 14),
+                    _label('Action type'),
                     TextField(
                       controller: _action,
                       decoration: _decoration(
-                        hint: 'e.g. Call back, Deliver samples',
+                        hint: 'e.g. Call, Visit, Sample',
                       ),
                     ),
                     const SizedBox(height: 14),
@@ -397,13 +528,6 @@ class _FollowupFormScreenState extends State<FollowupFormScreen> {
                       onChanged: (v) {
                         if (v != null) setState(() => _priority = v);
                       },
-                    ),
-                    const SizedBox(height: 14),
-                    _label('Notes'),
-                    TextField(
-                      controller: _notes,
-                      maxLines: 3,
-                      decoration: _decoration(),
                     ),
                     const SizedBox(height: 24),
                     SizedBox(

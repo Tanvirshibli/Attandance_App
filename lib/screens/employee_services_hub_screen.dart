@@ -5,6 +5,7 @@ import 'package:google_fonts/google_fonts.dart';
 import '../config/theme.dart';
 import 'attendance_report_screen.dart';
 import 'geo_tracking_screen.dart';
+import 'hr_benefits_hub_screen.dart';
 import 'leave_hub_screen.dart';
 import 'marketing/marketing_hub_screen.dart';
 import 'payment_hub_screen.dart';
@@ -38,6 +39,12 @@ class EmployeeServicesHubScreen extends StatelessWidget {
         label: 'Payments',
         color: AppColors.success,
         screen: const PaymentHubScreen(),
+      ),
+      _ServiceTileData(
+        icon: Icons.card_giftcard_outlined,
+        label: 'HR\nBenefits',
+        color: const Color(0xFF7C4DFF),
+        screen: const HrBenefitsHubScreen(),
       ),
       _ServiceTileData(
         icon: Icons.trending_up_outlined,

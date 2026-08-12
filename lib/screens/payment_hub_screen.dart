@@ -8,18 +8,10 @@ import '../models/auth_wise_payment_models.dart';
 import '../models/sales_models.dart' show moneyBdt;
 import '../services/auth_service.dart';
 import '../services/payment_service.dart';
-import '../widgets/api_empty_state.dart';
 import '../widgets/filter_chip_row.dart';
 import '../widgets/gradient_screen_header.dart';
 import '../widgets/section_card.dart';
-import 'compensation_screen.dart';
-import 'loan_list_screen.dart';
-import 'mess_deposit_screen.dart';
-import 'payment_report_screen.dart';
-import 'payslip_list_screen.dart';
 import 'post_auth_wise_payment_screen.dart';
-import 'post_payment_screen.dart';
-import 'provident_fund_screen.dart';
 
 class PaymentHubScreen extends StatefulWidget {
   const PaymentHubScreen({super.key});
@@ -36,7 +28,9 @@ class _PaymentHubScreenState extends State<PaymentHubScreen>
   bool _isLoading = true;
   bool _featureDisabled = false;
   String? _employeeName;
-  String? _error;
+  String? _errorHeadline;
+  String? _errorDetail;
+  bool _errorIsSetupIssue = false;
   String _period = 'This month';
   DateTime? _customFrom;
   DateTime? _customTo;
@@ -121,37 +115,36 @@ class _PaymentHubScreenState extends State<PaymentHubScreen>
   Future<void> _load() async {
     setState(() {
       _isLoading = true;
-      _error = null;
+      _errorHeadline = null;
+      _errorDetail = null;
+      _errorIsSetupIssue = false;
       _featureDisabled = false;
     });
 
     final profile = await _authService.getCurrentUserProfile();
     final employeeId = profile?.canonicalEmployeeId ?? 0;
+    final paymentEnabled = await _paymentService.isPaymentEnabled();
 
-    if (!await _paymentService.isPaymentEnabled()) {
+    setState(() {
+      _employeeName = profile?.name;
+      _featureDisabled = !paymentEnabled;
+      _employeeId = employeeId > 0 ? employeeId : null;
+    });
+
+    if (!paymentEnabled) {
       if (!mounted) return;
-      setState(() {
-        _featureDisabled = true;
-        _employeeName = profile?.name;
-        _isLoading = false;
-      });
+      setState(() => _isLoading = false);
       return;
     }
 
     if (employeeId <= 0) {
       if (!mounted) return;
       setState(() {
-        _error = 'Missing employee profile.';
-        _employeeName = profile?.name;
+        _errorHeadline = 'Please login again to load dealer payments.';
         _isLoading = false;
       });
       return;
     }
-
-    setState(() {
-      _employeeId = employeeId;
-      _employeeName = profile?.name;
-    });
 
     await _loadPayments();
   }
@@ -161,8 +154,25 @@ class _PaymentHubScreenState extends State<PaymentHubScreen>
 
     setState(() {
       _isLoading = true;
-      _error = null;
+      _errorHeadline = null;
+      _errorDetail = null;
+      _errorIsSetupIssue = false;
     });
+
+    final eligibility =
+        await _paymentService.checkAuthWiseReceiverEligibility(_employeeId!);
+    if (!mounted) return;
+
+    if (!eligibility.success) {
+      setState(() {
+        _data = null;
+        _errorHeadline = eligibility.message;
+        _errorDetail = eligibility.detail;
+        _errorIsSetupIssue = eligibility.isSetupIssue;
+        _isLoading = false;
+      });
+      return;
+    }
 
     final range = _dateRange();
     final result = await _paymentService.getAuthWisePayments(
@@ -178,7 +188,9 @@ class _PaymentHubScreenState extends State<PaymentHubScreen>
       setState(() {
         _data = null;
         _featureDisabled = msg == 'feature_disabled';
-        _error = msg == 'feature_disabled' ? null : msg;
+        _errorHeadline = msg == 'feature_disabled' ? null : msg;
+        _errorDetail = result.detail;
+        _errorIsSetupIssue = result.isSetupIssue;
         _isLoading = false;
       });
       return;
@@ -191,7 +203,9 @@ class _PaymentHubScreenState extends State<PaymentHubScreen>
       _employeeName = data.employee.employeeName?.isNotEmpty == true
           ? data.employee.employeeName
           : _employeeName;
-      _error = null;
+      _errorHeadline = null;
+      _errorDetail = null;
+      _errorIsSetupIssue = false;
       _featureDisabled = false;
       _isLoading = false;
       if (_moduleIndex >= data.modules.length) {
@@ -224,90 +238,84 @@ class _PaymentHubScreenState extends State<PaymentHubScreen>
             SliverToBoxAdapter(
               child: GradientScreenHeader(
                 title: 'Payments',
-                subtitle: _employeeName ?? 'Dealer payments & HR benefits',
+                subtitle: _employeeName ?? 'Dealer payments',
               ),
             ),
-            if (_isLoading)
+            if (_isLoading && _employeeName == null)
               const SliverFillRemaining(
                 child: Center(child: CircularProgressIndicator()),
-              )
-            else if (_featureDisabled)
-              SliverFillRemaining(
-                child: Center(
-                  child: Padding(
-                    padding: const EdgeInsets.all(20),
-                    child: ApiEmptyState(
-                      icon: Icons.payments_outlined,
-                      title: 'Payments module disabled',
-                      subtitle:
-                          'Dealer payments are turned off in mobile app settings. Ask an admin to enable the Payment module.',
-                      onRetry: _load,
-                    ),
-                  ),
-                ),
-              )
-            else if (_error != null)
-              SliverFillRemaining(
-                child: Center(
-                  child: Padding(
-                    padding: const EdgeInsets.all(20),
-                    child: ApiEmptyState(
-                      icon: Icons.error_outline,
-                      title: 'Could not load payments',
-                      subtitle: _error!,
-                      onRetry: _load,
-                    ),
-                  ),
-                ),
               )
             else
               SliverPadding(
                 padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
                 sliver: SliverList(
                   delegate: SliverChildListDelegate([
+                    if (_isLoading)
+                      const Padding(
+                        padding: EdgeInsets.only(bottom: 12),
+                        child: LinearProgressIndicator(minHeight: 3),
+                      ),
+                    if (_featureDisabled) ...[
+                      _statusBanner(
+                        icon: Icons.payments_outlined,
+                        title: 'Dealer payments disabled',
+                        subtitle:
+                            'Auth-wise payment report and receive are turned off in mobile app settings. Open Services → HR Benefits for payslips and loans.',
+                        color: AppColors.warning,
+                        onRetry: _load,
+                      ),
+                      const SizedBox(height: 16),
+                    ] else ...[
+                      if (_errorHeadline != null) ...[
+                        _paymentErrorBanner(
+                          headline: _errorHeadline!,
+                          detail: _errorDetail,
+                          isSetupIssue: _errorIsSetupIssue,
+                          onRetry: _loadPayments,
+                        ),
+                        const SizedBox(height: 16),
+                      ],
+                      SizedBox(
+                        width: double.infinity,
+                        child: OutlinedButton.icon(
+                          onPressed: () async {
+                            final saved = await Navigator.of(context).push<bool>(
+                              MaterialPageRoute(
+                                builder: (_) =>
+                                    const PostAuthWisePaymentScreen(),
+                              ),
+                            );
+                            if (saved == true && mounted) {
+                              await _loadPayments();
+                            }
+                          },
+                          icon: const Icon(Icons.add_card_outlined),
+                          label: Text(
+                            'Receive dealer payment',
+                            style: GoogleFonts.poppins(
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          style: OutlinedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                            side: BorderSide(
+                              color: AppColors.success.withValues(alpha: 0.6),
+                            ),
+                            foregroundColor: AppColors.success,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(14),
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                    ],
                     if (_data != null) ...[
                       FadeInUp(
                         child: FilterChipRow(
                           options: _periods,
                           selected: _period,
                           onSelected: _onPeriodChanged,
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      FadeInUp(
-                        delay: const Duration(milliseconds: 40),
-                        child: SizedBox(
-                          width: double.infinity,
-                          child: OutlinedButton.icon(
-                            onPressed: () async {
-                              final saved = await Navigator.of(context).push<bool>(
-                                MaterialPageRoute(
-                                  builder: (_) =>
-                                      const PostAuthWisePaymentScreen(),
-                                ),
-                              );
-                              if (saved == true && mounted) {
-                                await _loadPayments();
-                              }
-                            },
-                            icon: const Icon(Icons.add_card_outlined),
-                            label: Text(
-                              'Receive dealer payment',
-                              style: GoogleFonts.poppins(
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                            style: OutlinedButton.styleFrom(
-                              padding: const EdgeInsets.symmetric(vertical: 14),
-                              side: BorderSide(
-                                color: AppColors.success.withValues(alpha: 0.6),
-                              ),
-                              foregroundColor: AppColors.success,
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(14),
-                              ),
-                            ),
-                          ),
                         ),
                       ),
                       if (_period == 'Custom' &&
@@ -345,84 +353,7 @@ class _PaymentHubScreenState extends State<PaymentHubScreen>
                           ),
                         ),
                       ],
-                      const SizedBox(height: 28),
                     ],
-                    Text(
-                      'HR benefits',
-                      style: GoogleFonts.poppins(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      'Payslips, loans, PF and related HR records',
-                      style: GoogleFonts.poppins(
-                        fontSize: 12,
-                        color: AppColors.textSecondary,
-                      ),
-                    ),
-                    if (_paymentService.useDemoData) ...[
-                      const SizedBox(height: 10),
-                      _demoBanner(),
-                    ],
-                    const SizedBox(height: 12),
-                    _hubCard(
-                      delay: 0,
-                      icon: Icons.receipt_long_rounded,
-                      title: 'Payslips',
-                      subtitle: 'Monthly salary breakdown',
-                      color: AppColors.primary,
-                      screen: const PayslipListScreen(),
-                    ),
-                    _hubCard(
-                      delay: 40,
-                      icon: Icons.account_balance_wallet_outlined,
-                      title: 'My loans',
-                      subtitle: 'Active loans & balances',
-                      color: AppColors.warning,
-                      screen: const LoanListScreen(),
-                    ),
-                    _hubCard(
-                      delay: 80,
-                      icon: Icons.history_rounded,
-                      title: 'Loan payments',
-                      subtitle: 'Repayment history & payroll slips',
-                      color: AppColors.info,
-                      screen: const PaymentReportScreen(),
-                    ),
-                    _hubCard(
-                      delay: 120,
-                      icon: Icons.add_card_outlined,
-                      title: 'Post payment',
-                      subtitle: 'Submit a loan repayment',
-                      color: AppColors.success,
-                      screen: const PostPaymentScreen(),
-                    ),
-                    _hubCard(
-                      delay: 160,
-                      icon: Icons.savings_outlined,
-                      title: 'Provident fund',
-                      subtitle: 'PF balance & history',
-                      color: const Color(0xFF7C4DFF),
-                      screen: const ProvidentFundScreen(),
-                    ),
-                    _hubCard(
-                      delay: 200,
-                      icon: Icons.restaurant_outlined,
-                      title: 'Mess deposit',
-                      subtitle: 'Latest mess contribution',
-                      color: AppColors.error,
-                      screen: const MessDepositScreen(),
-                    ),
-                    _hubCard(
-                      delay: 240,
-                      icon: Icons.badge_outlined,
-                      title: 'Compensation',
-                      subtitle: 'Salary structure allowances',
-                      color: AppColors.accent,
-                      screen: const CompensationScreen(),
-                    ),
                   ]),
                 ),
               ),
@@ -432,92 +363,116 @@ class _PaymentHubScreenState extends State<PaymentHubScreen>
     );
   }
 
-  Widget _demoBanner() {
+  Widget _paymentErrorBanner({
+    required String headline,
+    String? detail,
+    required bool isSetupIssue,
+    VoidCallback? onRetry,
+  }) {
+    final color = isSetupIssue ? AppColors.warning : AppColors.error;
+    final icon =
+        isSetupIssue ? Icons.info_outline : Icons.error_outline;
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: AppColors.warning.withValues(alpha: 0.12),
+        color: color.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: AppColors.warning.withValues(alpha: 0.35)),
+        border: Border.all(color: color.withValues(alpha: 0.35)),
       ),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(Icons.science_outlined, size: 18, color: AppColors.warning),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Text(
-              'HR benefits below use demo payroll/loan data',
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(icon, size: 20, color: color),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  headline,
+                  style: GoogleFonts.poppins(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    height: 1.35,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          if (detail != null && detail.trim().isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Text(
+              detail,
               style: GoogleFonts.poppins(
                 fontSize: 12,
-                fontWeight: FontWeight.w500,
+                color: AppColors.textSecondary,
+                height: 1.35,
               ),
             ),
-          ),
+          ],
+          if (onRetry != null) ...[
+            const SizedBox(height: 10),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton(
+                onPressed: onRetry,
+                child: Text(
+                  'Retry',
+                  style: GoogleFonts.poppins(fontWeight: FontWeight.w600),
+                ),
+              ),
+            ),
+          ],
         ],
       ),
     );
   }
 
-  Widget _hubCard({
-    required int delay,
+  Widget _statusBanner({
     required IconData icon,
     required String title,
     required String subtitle,
     required Color color,
-    required Widget screen,
+    VoidCallback? onRetry,
   }) {
-    return FadeInUp(
-      delay: Duration(milliseconds: delay),
-      child: Padding(
-        padding: const EdgeInsets.only(bottom: 12),
-        child: SectionCard(
-          padding: EdgeInsets.zero,
-          child: InkWell(
-            onTap: () => Navigator.of(context).push(
-              MaterialPageRoute(builder: (_) => screen),
-            ),
-            borderRadius: BorderRadius.circular(20),
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Row(
-                children: [
-                  Container(
-                    width: 52,
-                    height: 52,
-                    decoration: BoxDecoration(
-                      color: color.withValues(alpha: 0.12),
-                      borderRadius: BorderRadius.circular(14),
-                    ),
-                    child: Icon(icon, color: color),
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: color.withValues(alpha: 0.35)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(icon, size: 20, color: color),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  title,
+                  style: GoogleFonts.poppins(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
                   ),
-                  const SizedBox(width: 14),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          title,
-                          style: GoogleFonts.poppins(
-                            fontSize: 15,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                        Text(
-                          subtitle,
-                          style: GoogleFonts.poppins(
-                            fontSize: 12,
-                            color: AppColors.textSecondary,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  Icon(Icons.chevron_right_rounded, color: AppColors.textHint),
-                ],
+                ),
               ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            subtitle,
+            style: GoogleFonts.poppins(
+              fontSize: 12,
+              color: AppColors.textSecondary,
             ),
           ),
-        ),
+          if (onRetry != null) ...[
+            const SizedBox(height: 10),
+            TextButton(onPressed: onRetry, child: const Text('Retry')),
+          ],
+        ],
       ),
     );
   }

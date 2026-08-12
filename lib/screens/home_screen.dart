@@ -26,11 +26,20 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   final AttendanceReportService _reportService = AttendanceReportService();
   final AuthService _authService = AuthService();
 
+  bool _canPunchIn = false;
+  bool _canPunchOut = false;
   bool _isClockedIn = false;
+  bool _isDayComplete = false;
+  bool _checkFlowOpening = false;
+  bool _awaitingCheckOutSync = false;
+  DateTime? _recentLocalPunchAt;
+  bool _todayPendingApproval = false;
+  bool _todayApproved = false;
   String _checkInTime = '--';
   String _checkOutTime = '--';
   String _todayWorkHours = '--';
   List<AttendanceRequestRecord> _requestedRecords = const [];
+  AttendanceRequestRecord? _lastLocalTodayRecord;
   AttendanceSummary _summary = const AttendanceSummary();
   List<double> _weeklyHours = List<double>.filled(7, 0);
   AuthUserProfile _profile = AuthUserProfile.fallback();
@@ -94,26 +103,115 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       }
     }
 
-    final records = await _attendanceRequestService.getAttendanceRecords(
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+
+    final records = await _attendanceRequestService.getHomeAttendanceRecords(
       employeeId: employeeId,
     );
     if (!mounted) return;
 
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
-    AttendanceRequestRecord? todayRecord;
-    for (final record in records) {
-      if (record.isSameCalendarDay(today)) {
-        todayRecord = record;
+    _applyRecordsToHomeState(records, today, preserveLocal: true);
+
+    if (employeeId != null && employeeId > 0) {
+      await _loadSummary(employeeId);
+    }
+  }
+
+  Future<void> _loadAttendanceRequestsWithRetry({
+    int attempts = 5,
+    bool requireCheckOut = false,
+  }) async {
+    for (var i = 0; i < attempts; i++) {
+      await _loadAttendanceRequests();
+      final now = DateTime.now();
+      final today = DateTime(now.year, now.month, now.day);
+      final todayRecord = _attendanceRequestService.resolveTodayRecord(
+        _requestedRecords,
+        today,
+      );
+
+      final hasRequiredIn = todayRecord != null && todayRecord.hasCheckIn;
+      final hasRequiredOut =
+          !requireCheckOut || (todayRecord != null && todayRecord.hasCheckOut);
+
+      if (hasRequiredIn && hasRequiredOut) {
+        if (requireCheckOut) {
+          _awaitingCheckOutSync = false;
+        }
         break;
+      }
+
+      if (i < attempts - 1) {
+        await Future.delayed(Duration(milliseconds: 400 + (i * 400)));
+      }
+    }
+  }
+
+  bool _isRecentLocalPunch() {
+    final punchedAt = _recentLocalPunchAt;
+    if (punchedAt == null) return false;
+    return DateTime.now().difference(punchedAt) <= const Duration(minutes: 2);
+  }
+
+  void _applyRecordsToHomeState(
+    List<AttendanceRequestRecord> records,
+    DateTime today, {
+    bool preserveLocal = false,
+  }) {
+    var todayRecord =
+        _attendanceRequestService.resolveTodayRecord(records, today);
+
+    if (preserveLocal && _lastLocalTodayRecord != null) {
+      if (todayRecord == null) {
+        todayRecord = _lastLocalTodayRecord;
+      } else if (!todayRecord.hasCheckIn && _lastLocalTodayRecord!.hasCheckIn) {
+        todayRecord = _attendanceRequestService.mergeRecords([
+          _lastLocalTodayRecord!,
+          todayRecord,
+        ]);
+      } else if (_isRecentLocalPunch() &&
+          _lastLocalTodayRecord!.hasCheckOut &&
+          todayRecord.hasCheckIn &&
+          !todayRecord.hasCheckOut) {
+        todayRecord = _attendanceRequestService.mergeRecords([
+          _lastLocalTodayRecord!,
+          todayRecord,
+        ]);
+      } else if (todayRecord.hasCheckIn &&
+          !todayRecord.hasCheckOut &&
+          _lastLocalTodayRecord!.hasCheckOut) {
+        _lastLocalTodayRecord = todayRecord;
       }
     }
 
-    // Clocked-in is today-only — never use a prior day's open punch.
-    final isClockedIn = todayRecord?.canTreatAsActiveCheckIn ?? false;
+    if (todayRecord != null &&
+        (todayRecord.hasCheckIn || todayRecord.hasCheckOut)) {
+      if (todayRecord.hasCheckIn &&
+          (!todayRecord.hasCheckOut || _isRecentLocalPunch())) {
+        _lastLocalTodayRecord = todayRecord;
+      } else if (!todayRecord.hasCheckOut) {
+        _lastLocalTodayRecord = todayRecord;
+      }
+    } else {
+      _lastLocalTodayRecord = null;
+    }
+
+    final canPunchIn = todayRecord?.canPunchCheckIn ?? false;
+    final canPunchOut = todayRecord?.canPunchCheckOut ?? false;
+    final isClockedIn = canPunchOut;
+    final isDayComplete = todayRecord?.isDayComplete ?? false;
+    final pendingApproval = todayRecord != null &&
+        todayRecord.status.toLowerCase() == 'requested' &&
+        !todayRecord.isRejected;
+    final approved = todayRecord != null &&
+        todayRecord.status.toLowerCase() == 'approved' &&
+        !todayRecord.isRejected;
 
     setState(() {
       _requestedRecords = records;
+      _todayPendingApproval = pendingApproval;
+      _todayApproved = approved;
       if (todayRecord != null && todayRecord.hasCheckIn) {
         _checkInTime = todayRecord.checkInText;
       } else {
@@ -128,12 +226,40 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
       _todayWorkHours = _computeTodayHours(todayRecord);
       _weeklyHours = _computeWeeklyHours(records);
+      _canPunchIn = canPunchIn;
+      _canPunchOut = canPunchOut;
       _isClockedIn = isClockedIn;
+      _isDayComplete = isDayComplete;
     });
+  }
 
-    if (employeeId != null && employeeId > 0) {
-      await _loadSummary(employeeId);
+  void _applyAttendanceRecord(AttendanceRequestRecord punched) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    if (!punched.matchesCalendarDay(today)) return;
+
+    _recentLocalPunchAt = now;
+    _lastLocalTodayRecord = punched;
+
+    final updated = List<AttendanceRequestRecord>.from(_requestedRecords);
+    final existingToday =
+        _attendanceRequestService.resolveTodayRecord(updated, today);
+    if (existingToday != null) {
+      final merged = _attendanceRequestService.mergeRecords([
+        existingToday,
+        punched,
+      ]);
+      final idx = updated.indexWhere((record) => record.matchesCalendarDay(today));
+      if (idx >= 0) {
+        updated[idx] = merged;
+      } else {
+        updated.insert(0, merged);
+      }
+    } else {
+      updated.insert(0, punched);
     }
+
+    _applyRecordsToHomeState(updated, today);
   }
 
   Future<void> _loadSummary(int employeeId) async {
@@ -166,7 +292,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final days = <String>{};
     for (final record in _requestedRecords) {
       if (!record.hasCheckIn || record.isRejected) continue;
-      final day = record.attDateOnly;
+      final day = record.effectiveCalendarDay;
       if (day == null) continue;
       if (day.isBefore(from) || day.isAfter(to)) continue;
       days.add(
@@ -204,7 +330,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         .subtract(Duration(days: now.weekday - 1));
 
     for (final record in records) {
-      final day = record.attDateOnly;
+      final day = record.effectiveCalendarDay;
       if (day == null) continue;
       final diff = day.difference(monday).inDays;
       if (diff < 0 || diff > 6) continue;
@@ -222,10 +348,21 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   Future<void> _openCheckFlow({required bool isCheckOut}) async {
+    if (_checkFlowOpening) return;
+
     await _loadAttendanceRequests();
     if (!mounted) return;
 
-    if (isCheckOut && !_isClockedIn) {
+    if (_isDayComplete) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Today\'s attendance is already logged.'),
+        ),
+      );
+      return;
+    }
+
+    if (isCheckOut && !_canPunchOut) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('You need to check in first before checking out.'),
@@ -234,7 +371,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       return;
     }
 
-    if (!isCheckOut && _isClockedIn) {
+    if (!isCheckOut && !_canPunchIn) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('You are already checked in. Use Check Out.'),
@@ -243,37 +380,94 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       return;
     }
 
-    await Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => CheckInScreen(
-          isCheckOut: isCheckOut,
-          onCheckIn: () {
-            setState(() {
-              if (isCheckOut) {
-                _isClockedIn = false;
-                _checkOutTime = TimeOfDay.now().format(context);
-              } else {
-                _isClockedIn = true;
-                _checkInTime = TimeOfDay.now().format(context);
-                _checkOutTime = '--';
-              }
-            });
-            _loadAttendanceRequests();
-          },
+    setState(() {
+      _checkFlowOpening = true;
+      if (isCheckOut) {
+        _awaitingCheckOutSync = true;
+      }
+    });
+    try {
+      final punched = await Navigator.of(context).push<AttendanceRequestRecord?>(
+        MaterialPageRoute(
+          builder: (_) => CheckInScreen(isCheckOut: isCheckOut),
         ),
-      ),
-    );
+      );
+      if (punched != null) {
+        _applyAttendanceRecord(punched);
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _checkFlowOpening = false);
+      }
+      await _loadAttendanceRequestsWithRetry(
+        requireCheckOut: isCheckOut || _awaitingCheckOutSync,
+      );
+    }
+  }
 
-    _loadAttendanceRequests();
+  String _attendanceActionTitle() {
+    if (_isDayComplete) {
+      return _todayApproved
+          ? 'Today\'s Attendance Approved'
+          : 'Today\'s Attendance Logged';
+    }
+    if (_canPunchOut) {
+      if (_checkOutTime != '--') {
+        return 'Update Check Out?';
+      }
+      return 'You\'re Clocked In';
+    }
+    return 'Ready to Check In?';
+  }
+
+  String _attendanceActionSubtitle() {
+    if (_isDayComplete) {
+      if (_todayApproved) {
+        return 'Today\'s attendance is complete and approved.';
+      }
+      if (_checkInTime != '--' && _checkOutTime != '--') {
+        return 'Checked in at $_checkInTime, out at $_checkOutTime. Awaiting supervisor approval.';
+      }
+      return 'Today\'s punch is pending approval.';
+    }
+    if (_todayApproved) {
+      if (_isClockedIn) {
+        return 'Checked in at $_checkInTime. Approved — you can check out when ready.';
+      }
+      if (_checkInTime != '--' || _checkOutTime != '--') {
+        return 'Today\'s attendance is approved.';
+      }
+    }
+    if (_todayPendingApproval) {
+      if (_isClockedIn) {
+        return 'Checked in at $_checkInTime. Pending approval — you can check out when ready.';
+      }
+      if (_checkInTime != '--' || _checkOutTime != '--') {
+        return 'Today\'s punch is pending approval.';
+      }
+      return 'Your attendance request is pending approval.';
+    }
+    if (_canPunchOut) {
+      if (_checkOutTime != '--') {
+        return 'Checked in at $_checkInTime, out at $_checkOutTime. Tap below to update checkout time.';
+      }
+      return 'Checked in at $_checkInTime. You can check out now.';
+    }
+    return 'Verify with face + location for check-in/check-out.';
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.background,
-      body: CustomScrollView(
-        physics: const BouncingScrollPhysics(),
-        slivers: [
+      body: RefreshIndicator(
+        onRefresh: _refreshHomeData,
+        color: AppColors.primary,
+        child: CustomScrollView(
+          physics: const AlwaysScrollableScrollPhysics(
+            parent: BouncingScrollPhysics(),
+          ),
+          slivers: [
           // Custom App Bar
           SliverToBoxAdapter(
             child: _buildHeader(context),
@@ -373,6 +567,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             child: SizedBox(height: 100),
           ),
         ],
+        ),
       ),
     );
   }
@@ -597,15 +792,21 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   Widget _buildAttendanceActionCard(BuildContext context) {
+    final gradient = _isDayComplete
+        ? (_todayApproved ? AppColors.successGradient : AppColors.primaryGradient)
+        : (_isClockedIn ? AppColors.successGradient : AppColors.primaryGradient);
+    final shadowColor = _isDayComplete
+        ? (_todayApproved ? AppColors.success : AppColors.primary)
+        : (_isClockedIn ? AppColors.success : AppColors.primary);
+
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        gradient: _isClockedIn ? AppColors.successGradient : AppColors.primaryGradient,
+        gradient: gradient,
         borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
-            color: (_isClockedIn ? AppColors.success : AppColors.primary)
-                .withValues(alpha: 0.3),
+            color: shadowColor.withValues(alpha: 0.3),
             blurRadius: 20,
             offset: const Offset(0, 8),
           ),
@@ -615,7 +816,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            _isClockedIn ? 'You\'re Clocked In' : 'Ready to Check In?',
+            _attendanceActionTitle(),
             style: GoogleFonts.poppins(
               fontSize: 18,
               fontWeight: FontWeight.w600,
@@ -624,20 +825,80 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           ),
           const SizedBox(height: 4),
           Text(
-            _isClockedIn
-                ? 'Checked in at $_checkInTime. You can check out now.'
-                : 'Verify with face + location for check-in/check-out.',
+            _attendanceActionSubtitle(),
             style: GoogleFonts.poppins(
               fontSize: 13,
               color: Colors.white70,
             ),
           ),
-          const SizedBox(height: 14),
-          Row(
-            children: [
-              Expanded(
+          if (_isDayComplete) ...[
+            const SizedBox(height: 14),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.15),
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    _todayApproved
+                        ? Icons.check_circle_outline_rounded
+                        : Icons.hourglass_top_rounded,
+                    color: Colors.white,
+                    size: 20,
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      _todayApproved
+                          ? 'No further punches needed today.'
+                          : 'Awaiting supervisor approval.',
+                      style: GoogleFonts.poppins(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w500,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ] else ...[
+            const SizedBox(height: 14),
+            if (_canPunchOut)
+              SizedBox(
+                width: double.infinity,
                 child: ElevatedButton.icon(
-                  onPressed: _isClockedIn
+                  onPressed: _checkFlowOpening
+                      ? null
+                      : () => _openCheckFlow(isCheckOut: true),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.white,
+                    foregroundColor: AppColors.success,
+                    disabledBackgroundColor: Colors.white.withValues(alpha: 0.5),
+                    disabledForegroundColor: AppColors.textHint,
+                    elevation: 0,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                  ),
+                  icon: const Icon(Icons.logout_rounded, size: 20),
+                  label: Text(
+                    _checkOutTime != '--' ? 'Update Check Out' : 'Check Out',
+                    style: GoogleFonts.poppins(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              )
+            else if (_canPunchIn)
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  onPressed: _checkFlowOpening
                       ? null
                       : () => _openCheckFlow(isCheckOut: false),
                   style: ElevatedButton.styleFrom(
@@ -661,36 +922,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   ),
                 ),
               ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: ElevatedButton.icon(
-                  onPressed: _isClockedIn
-                      ? () => _openCheckFlow(isCheckOut: true)
-                      : null,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.success,
-                    foregroundColor: Colors.white,
-                    disabledBackgroundColor:
-                        AppColors.success.withValues(alpha: 0.45),
-                    disabledForegroundColor: Colors.white70,
-                    elevation: 0,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(14),
-                    ),
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                  ),
-                  icon: const Icon(Icons.logout_rounded, size: 20),
-                  label: Text(
-                    'Check Out',
-                    style: GoogleFonts.poppins(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
+          ],
         ],
       ),
     );
