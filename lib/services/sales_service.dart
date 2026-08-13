@@ -242,6 +242,36 @@ class SalesService {
           BookingFormSector(id: 25, name: 'Sanabandha Hatchery', companyId: 3),
           BookingFormSector(id: 26, name: 'Comilla Hatchery', companyId: 3),
         ],
+        feedCategories: [BookingFormCategory(id: 1, name: 'Feed')],
+        feedSubCategories: [BookingFormSubCategory(id: 1, name: 'Starter')],
+        feedChildCategories: [
+          BookingFormChildCategory(id: 1, name: 'Broiler', subCategoryId: 1),
+        ],
+        feedSalesPoints: [
+          BookingFormSector(id: 10, name: 'Demo sales point', companyId: 2),
+        ],
+        feedProductPrices: [
+          BookingFormProductPrice(
+            productId: 1,
+            productName: 'Demo Feed',
+            tradePrice: 2100,
+            categoryId: 1,
+            subCategoryId: 1,
+            childCategoryId: 1,
+          ),
+        ],
+        chicksCategories: [BookingFormCategory(id: 2, name: 'Chicks')],
+        chicksSectors: [
+          BookingFormSector(id: 25, name: 'Sanabandha Hatchery', companyId: 3),
+        ],
+        chicksProducts: [
+          BookingFormChicksProduct(
+            sectorId: 25,
+            productId: 50,
+            productName: 'DOC',
+            closingBalance: 1000,
+          ),
+        ],
       );
       return ApiResult.ok(_cachedBookingFormData!);
     }

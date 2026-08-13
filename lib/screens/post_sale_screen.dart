@@ -5,7 +5,6 @@ import 'package:intl/intl.dart';
 
 import '../config/theme.dart';
 import '../models/dealer_list_models.dart';
-import '../models/sales_booking_post_models.dart';
 import '../models/sales_post_models.dart';
 import '../services/auth_service.dart';
 import '../services/sales_service.dart';
@@ -26,46 +25,22 @@ class _PostSaleScreenState extends State<PostSaleScreen> {
   final _formKey = GlobalKey<FormState>();
 
   static const _modules = [
-    ('feed', 'Feed'),
     ('egg', 'Egg'),
     ('fertilizer', 'Fertilizer'),
-    ('chicks', 'Chicks'),
     ('liveBird', 'Live Bird'),
     ('cullBird', 'Cull Bird'),
   ];
 
   static const _saleTypes = ['Cash', 'Credit'];
-  static const _bookingTypes = ['regular'];
 
-  String _module = 'feed';
+  String _module = 'egg';
   String _saleType = 'Cash';
-  String _bookingType = 'regular';
-  bool _isBookingMoney = false;
-  bool _isMultiDelivery = false;
   DateTime _invoiceDate = DateTime.now();
   DateTime _dueDate = DateTime.now();
-  DateTime _bookingDate = DateTime.now();
 
   final _salesPointId = TextEditingController();
   final _companyId = TextEditingController();
   final _totalAmount = TextEditingController();
-
-  final _categoryId = TextEditingController();
-  final _subCategoryId = TextEditingController();
-  final _childCategoryId = TextEditingController();
-  final _bookingPointId = TextEditingController();
-  final _cZoneId = TextEditingController();
-  final _chicksPriceId = TextEditingController();
-  final _commissionId = TextEditingController();
-  final _discount = TextEditingController(text: '0');
-  final _advanceAmount = TextEditingController(text: '0');
-  final _bookingNote =
-      TextEditingController(text: 'Created from mobile app');
-  final _lineNote = TextEditingController();
-  final _cdPriceId = TextEditingController();
-  final _mrp = TextEditingController();
-  final _settingIds = TextEditingController();
-  final _flockIds = TextEditingController();
 
   AllDealerLists? _dealerLists;
   bool _loadingDealers = true;
@@ -81,8 +56,6 @@ class _PostSaleScreenState extends State<PostSaleScreen> {
 
   bool _isSubmitting = false;
   int? _salesPersonId;
-
-  bool get _usesBooking => _module == 'feed' || _module == 'chicks';
 
   @override
   void initState() {
@@ -155,21 +128,6 @@ class _PostSaleScreenState extends State<PostSaleScreen> {
     _salesPointId.dispose();
     _companyId.dispose();
     _totalAmount.dispose();
-    _categoryId.dispose();
-    _subCategoryId.dispose();
-    _childCategoryId.dispose();
-    _bookingPointId.dispose();
-    _cZoneId.dispose();
-    _chicksPriceId.dispose();
-    _commissionId.dispose();
-    _discount.dispose();
-    _advanceAmount.dispose();
-    _bookingNote.dispose();
-    _lineNote.dispose();
-    _cdPriceId.dispose();
-    _mrp.dispose();
-    _settingIds.dispose();
-    _flockIds.dispose();
     _productId.dispose();
     _tradePrice.dispose();
     _salePrice.dispose();
@@ -179,12 +137,8 @@ class _PostSaleScreenState extends State<PostSaleScreen> {
     super.dispose();
   }
 
-  Future<void> _pickDate({bool due = false, bool booking = false}) async {
-    final initial = booking
-        ? _bookingDate
-        : due
-            ? _dueDate
-            : _invoiceDate;
+  Future<void> _pickDate({bool due = false}) async {
+    final initial = due ? _dueDate : _invoiceDate;
     final picked = await showDatePicker(
       context: context,
       initialDate: initial,
@@ -193,9 +147,7 @@ class _PostSaleScreenState extends State<PostSaleScreen> {
     );
     if (picked == null) return;
     setState(() {
-      if (booking) {
-        _bookingDate = picked;
-      } else if (due) {
+      if (due) {
         _dueDate = picked;
       } else {
         _invoiceDate = picked;
@@ -203,155 +155,39 @@ class _PostSaleScreenState extends State<PostSaleScreen> {
     });
   }
 
-  int? _parseInt(String? v, String label, {bool allowZero = false}) {
+  int? _parseInt(String? v, String label) {
     final n = int.tryParse(v?.trim() ?? '');
-    if (n == null || (!allowZero && n <= 0)) {
+    if (n == null || n <= 0) {
       _snack('Enter a valid $label.');
       return null;
     }
     return n;
   }
 
-  double? _parseDouble(String? v, String label, {bool allowZero = false}) {
+  double? _parseDouble(String? v, String label) {
     final n = double.tryParse(v?.trim() ?? '');
-    if (n == null || (!allowZero && n <= 0)) {
+    if (n == null || n <= 0) {
       _snack('Enter a valid $label.');
       return null;
     }
     return n;
   }
 
-  List<int> _parseIdList(String raw) {
-    return raw
-        .split(RegExp(r'[,\s]+'))
-        .map((s) => int.tryParse(s.trim()))
-        .whereType<int>()
-        .where((id) => id > 0)
-        .toList();
-  }
+  Future<void> _submit() async {
+    if (!_formKey.currentState!.validate()) return;
 
-  Future<void> _submitBooking(int bookingPerson, int dealerId) async {
-    final categoryId = _parseInt(_categoryId.text, 'category ID');
-    final subCategoryId = _parseInt(_subCategoryId.text, 'sub category ID');
-    final childCategoryId = _parseInt(_childCategoryId.text, 'child category ID');
-    final bookingPointId = _parseInt(_bookingPointId.text, 'booking point ID');
-    final productId = _parseInt(_productId.text, 'product ID');
-    final unitId = _parseInt(_unitId.text, 'unit ID');
-    final qty = _parseDouble(_qty.text, 'quantity');
-    final price = _parseDouble(_salePrice.text, 'price');
-    final totalAmount = _parseDouble(_totalAmount.text, 'total amount');
-    final discount = _parseDouble(_discount.text, 'discount', allowZero: true);
-    final advanceAmount =
-        _parseDouble(_advanceAmount.text, 'advance amount', allowZero: true);
-
-    if (categoryId == null ||
-        subCategoryId == null ||
-        childCategoryId == null ||
-        bookingPointId == null ||
-        productId == null ||
-        unitId == null ||
-        qty == null ||
-        price == null ||
-        totalAmount == null ||
-        discount == null ||
-        advanceAmount == null) {
+    final salesPersonId = _salesPersonId;
+    if (salesPersonId == null || salesPersonId <= 0) {
+      _snack('Please login again.');
       return;
     }
 
-    int? cZoneId;
-    int? chicksPriceId;
-    int? cdPriceId;
-    double? mrp;
-    if (_module == 'chicks') {
-      cZoneId = _parseInt(_cZoneId.text, 'zone ID');
-      if (cZoneId == null) return;
-      final chicksRaw = _chicksPriceId.text.trim();
-      if (chicksRaw.isNotEmpty) {
-        chicksPriceId = _parseInt(chicksRaw, 'chicks price ID');
-        if (chicksPriceId == null) return;
-      }
-      final cdRaw = _cdPriceId.text.trim();
-      if (cdRaw.isNotEmpty) {
-        cdPriceId = _parseInt(cdRaw, 'cd price ID');
-        if (cdPriceId == null) return;
-      }
-      final mrpRaw = _mrp.text.trim();
-      if (mrpRaw.isNotEmpty) {
-        mrp = _parseDouble(mrpRaw, 'MRP');
-        if (mrp == null) return;
-      }
-    }
-
-    int? commissionId;
-    final commRaw = _commissionId.text.trim();
-    if (commRaw.isNotEmpty) {
-      commissionId = _parseInt(commRaw, 'commission ID');
-      if (commissionId == null) return;
-    }
-
-    final fmt = DateFormat('yyyy-MM-dd');
-    final request = CreateBookingPersonBookRequest(
-      module: _module,
-      dealerId: dealerId,
-      categoryId: categoryId,
-      subCategoryId: subCategoryId,
-      childCategoryId: childCategoryId,
-      bookingPointId: bookingPointId,
-      bookingPerson: bookingPerson,
-      bookingType: _bookingType,
-      isBookingMoney: _isBookingMoney,
-      isMultiDelivery: _isMultiDelivery,
-      discount: discount,
-      discountType: 'fixed',
-      advanceAmount: advanceAmount,
-      totalAmount: totalAmount,
-      bookingDate: fmt.format(_bookingDate),
-      invoiceDate: fmt.format(_invoiceDate),
-      cZoneId: cZoneId,
-      chicksPriceId: chicksPriceId,
-      commissionId: commissionId,
-      note: _bookingNote.text.trim(),
-      lines: [
-        BookingLineInput(
-          productId: productId,
-          unitId: unitId,
-          qty: qty,
-          price: price,
-          note: _lineNote.text.trim().isEmpty ? null : _lineNote.text.trim(),
-          cdPriceId: cdPriceId,
-          mrp: mrp,
-          settingIds: _module == 'chicks'
-              ? _parseIdList(_settingIds.text)
-              : const [],
-          flockIds:
-              _module == 'chicks' ? _parseIdList(_flockIds.text) : const [],
-        ),
-      ],
-    );
-
-    setState(() => _isSubmitting = true);
-    final result = await _salesService.createBookingPersonBook(request);
-    if (!mounted) return;
-    setState(() => _isSubmitting = false);
-
-    if (!result.success || result.data == null) {
-      _snack(result.message ?? 'Could not submit booking.');
+    final dealer = _selectedDealer;
+    if (dealer == null || dealer.id <= 0) {
+      _snack('Select a dealer.');
       return;
     }
 
-    final created = result.data!;
-    final ref = created.bookingNo.isNotEmpty
-        ? created.bookingNo
-        : '#${created.id}';
-    _snack(
-      created.message?.isNotEmpty == true
-          ? '${created.message} Booking: $ref'
-          : 'Booking submitted. No: $ref',
-    );
-    Navigator.of(context).pop(true);
-  }
-
-  Future<void> _submitOrder(int salesPersonId, int dealerId) async {
     final salesPointId = _parseInt(_salesPointId.text, 'sales point ID');
     final companyId = _parseInt(_companyId.text, 'company ID');
     final productId = _parseInt(_productId.text, 'product ID');
@@ -378,7 +214,7 @@ class _PostSaleScreenState extends State<PostSaleScreen> {
     final request = CreateSalesPersonOrderRequest(
       module: _module,
       salesPersonId: salesPersonId,
-      dealerId: dealerId,
+      dealerId: dealer.id,
       salesPointId: salesPointId,
       companyId: companyId,
       totalAmount: totalAmount,
@@ -420,31 +256,198 @@ class _PostSaleScreenState extends State<PostSaleScreen> {
     Navigator.of(context).pop(true);
   }
 
-  Future<void> _submit() async {
-    if (!_formKey.currentState!.validate()) return;
-
-    final salesPersonId = _salesPersonId;
-    if (salesPersonId == null || salesPersonId <= 0) {
-      _snack('Please login again.');
-      return;
-    }
-
-    final dealer = _selectedDealer;
-    if (dealer == null || dealer.id <= 0) {
-      _snack('Select a dealer.');
-      return;
-    }
-
-    if (_usesBooking) {
-      await _submitBooking(salesPersonId, dealer.id);
-    } else {
-      await _submitOrder(salesPersonId, dealer.id);
-    }
-  }
-
   void _snack(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(message, style: GoogleFonts.poppins())),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final demo = _salesService.useCreateDemo;
+
+    return Scaffold(
+      backgroundColor: AppColors.background,
+      body: CustomScrollView(
+        physics: const BouncingScrollPhysics(),
+        slivers: [
+          SliverToBoxAdapter(
+            child: GradientScreenHeader(
+              title: 'Post sale',
+              subtitle: demo
+                  ? 'Demo mode — enable live sales to post to server'
+                  : 'Submit order to sales.peoplesitsolution.online',
+            ),
+          ),
+          SliverPadding(
+            padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
+            sliver: SliverToBoxAdapter(
+              child: FadeInUp(
+                child: SectionCard(
+                  child: Form(
+                    key: _formKey,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        if (_salesPersonId != null)
+                          Text(
+                            'Sales person ID: $_salesPersonId',
+                            style: GoogleFonts.poppins(
+                              fontSize: 12,
+                              color: AppColors.textSecondary,
+                            ),
+                          ),
+                        const SizedBox(height: 12),
+                        _dropdown(
+                          label: 'Module',
+                          value: _module,
+                          items: _modules
+                              .map(
+                                (m) => DropdownMenuItem(
+                                  value: m.$1,
+                                  child: Text(m.$2),
+                                ),
+                              )
+                              .toList(),
+                          onChanged: _onModuleChanged,
+                        ),
+                        const SizedBox(height: 12),
+                        _dropdown(
+                          label: 'Sale type',
+                          value: _saleType,
+                          items: _saleTypes
+                              .map(
+                                (t) => DropdownMenuItem(
+                                  value: t,
+                                  child: Text(t),
+                                ),
+                              )
+                              .toList(),
+                          onChanged: (v) =>
+                              setState(() => _saleType = v ?? _saleType),
+                        ),
+                        const SizedBox(height: 12),
+                        _idField(_companyId, 'Company ID', Icons.business_outlined),
+                        const SizedBox(height: 12),
+                        _dealerSection(),
+                        const SizedBox(height: 12),
+                        _idField(
+                          _salesPointId,
+                          'Sales point ID',
+                          Icons.place_outlined,
+                        ),
+                        const SizedBox(height: 12),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: _dateTile(
+                                'Invoice date',
+                                _invoiceDate,
+                                () => _pickDate(due: false),
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: _dateTile(
+                                'Due date',
+                                _dueDate,
+                                () => _pickDate(due: true),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 20),
+                        Text(
+                          'Line item',
+                          style: GoogleFonts.poppins(
+                            fontWeight: FontWeight.w600,
+                            fontSize: 14,
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                        _idField(
+                          _productId,
+                          'Product ID',
+                          Icons.inventory_2_outlined,
+                        ),
+                        const SizedBox(height: 12),
+                        Row(
+                          children: [
+                            Expanded(child: _moneyField(_tradePrice, 'Trade price')),
+                            const SizedBox(width: 10),
+                            Expanded(child: _moneyField(_salePrice, 'Sale price')),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        Row(
+                          children: [
+                            Expanded(child: _moneyField(_qty, 'Quantity')),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: _idField(
+                                _unitId,
+                                'Unit ID',
+                                Icons.straighten_outlined,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        _field(
+                          _unitBatchNo,
+                          'Unit batch no (optional)',
+                          Icons.tag_outlined,
+                          required: false,
+                        ),
+                        const SizedBox(height: 12),
+                        _moneyField(
+                          _totalAmount,
+                          'Total amount (৳)',
+                          validator: (v) {
+                            final n = double.tryParse(v?.trim() ?? '');
+                            if (n == null || n <= 0) return 'Required';
+                            return null;
+                          },
+                        ),
+                        const SizedBox(height: 24),
+                        SizedBox(
+                          height: 52,
+                          child: ElevatedButton(
+                            onPressed: _isSubmitting ? null : _submit,
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: AppColors.primary,
+                              foregroundColor: Colors.white,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(14),
+                              ),
+                            ),
+                            child: _isSubmitting
+                                ? const SizedBox(
+                                    width: 22,
+                                    height: 22,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      color: Colors.white,
+                                    ),
+                                  )
+                                : Text(
+                                    'Submit order',
+                                    style: GoogleFonts.poppins(
+                                      fontWeight: FontWeight.w600,
+                                      fontSize: 15,
+                                    ),
+                                  ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -497,380 +500,6 @@ class _PostSaleScreenState extends State<PostSaleScreen> {
     );
   }
 
-  Widget _buildBookingFields() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        _dealerSection(),
-        const SizedBox(height: 12),
-        Row(
-          children: [
-            Expanded(child: _idField(_categoryId, 'Category ID')),
-            const SizedBox(width: 10),
-            Expanded(child: _idField(_subCategoryId, 'Sub category ID')),
-          ],
-        ),
-        const SizedBox(height: 12),
-        Row(
-          children: [
-            Expanded(child: _idField(_childCategoryId, 'Child category ID')),
-            const SizedBox(width: 10),
-            Expanded(child: _idField(_bookingPointId, 'Booking point ID')),
-          ],
-        ),
-        const SizedBox(height: 12),
-        _dropdown(
-          label: 'Booking type',
-          value: _bookingType,
-          items: _bookingTypes
-              .map((t) => DropdownMenuItem(value: t, child: Text(t)))
-              .toList(),
-          onChanged: (v) => setState(() => _bookingType = v ?? _bookingType),
-        ),
-        if (_module == 'chicks') ...[
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              Expanded(child: _idField(_cZoneId, 'Zone ID (cZoneId)')),
-              const SizedBox(width: 10),
-              Expanded(
-                child: _optionalIdField(_chicksPriceId, 'Chicks price ID'),
-              ),
-            ],
-          ),
-        ],
-        const SizedBox(height: 12),
-        SwitchListTile(
-          contentPadding: EdgeInsets.zero,
-          title: Text(
-            'Booking money',
-            style: GoogleFonts.poppins(fontSize: 14),
-          ),
-          value: _isBookingMoney,
-          onChanged: (v) => setState(() => _isBookingMoney = v),
-        ),
-        if (_module == 'chicks')
-          SwitchListTile(
-            contentPadding: EdgeInsets.zero,
-            title: Text(
-              'Multi delivery',
-              style: GoogleFonts.poppins(fontSize: 14),
-            ),
-            value: _isMultiDelivery,
-            onChanged: (v) => setState(() => _isMultiDelivery = v),
-          ),
-        const SizedBox(height: 8),
-        Row(
-          children: [
-            Expanded(
-              child: _moneyField(
-                _discount,
-                'Discount',
-                validator: (v) {
-                  if (double.tryParse(v?.trim() ?? '') == null) {
-                    return 'Required';
-                  }
-                  return null;
-                },
-              ),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: _moneyField(
-                _advanceAmount,
-                'Advance',
-                validator: (v) {
-                  if (double.tryParse(v?.trim() ?? '') == null) {
-                    return 'Required';
-                  }
-                  return null;
-                },
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 12),
-        _optionalIdField(_commissionId, 'Commission ID (optional)'),
-        const SizedBox(height: 12),
-        Row(
-          children: [
-            Expanded(
-              child: _dateTile(
-                'Booking date',
-                _bookingDate,
-                () => _pickDate(booking: true),
-              ),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: _dateTile(
-                'Invoice date',
-                _invoiceDate,
-                () => _pickDate(due: false),
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 12),
-        _field(
-          _bookingNote,
-          'Note',
-          Icons.notes_outlined,
-          required: false,
-        ),
-        const SizedBox(height: 20),
-        Text(
-          'Line item',
-          style: GoogleFonts.poppins(fontWeight: FontWeight.w600, fontSize: 14),
-        ),
-        const SizedBox(height: 10),
-        _idField(_productId, 'Product ID'),
-        const SizedBox(height: 12),
-        Row(
-          children: [
-            Expanded(child: _moneyField(_salePrice, 'Price')),
-            const SizedBox(width: 10),
-            Expanded(child: _moneyField(_qty, 'Quantity')),
-          ],
-        ),
-        const SizedBox(height: 12),
-        _idField(_unitId, 'Unit ID', Icons.straighten_outlined),
-        const SizedBox(height: 12),
-        _field(
-          _lineNote,
-          'Line note (optional)',
-          Icons.tag_outlined,
-          required: false,
-        ),
-        if (_module == 'chicks') ...[
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              Expanded(child: _optionalIdField(_cdPriceId, 'CD price ID')),
-              const SizedBox(width: 10),
-              Expanded(
-                child: _moneyField(
-                  _mrp,
-                  'MRP (optional)',
-                  validator: (v) {
-                    final t = v?.trim() ?? '';
-                    if (t.isEmpty) return null;
-                    if (double.tryParse(t) == null) return 'Invalid';
-                    return null;
-                  },
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          _field(
-            _settingIds,
-            'Setting IDs (comma-separated)',
-            Icons.list_alt_outlined,
-            required: false,
-          ),
-          const SizedBox(height: 12),
-          _field(
-            _flockIds,
-            'Flock IDs (comma-separated)',
-            Icons.list_alt_outlined,
-            required: false,
-          ),
-        ],
-        const SizedBox(height: 12),
-        _moneyField(
-          _totalAmount,
-          'Total amount (৳)',
-          validator: (v) {
-            final n = double.tryParse(v?.trim() ?? '');
-            if (n == null || n <= 0) return 'Required';
-            return null;
-          },
-        ),
-      ],
-    );
-  }
-
-  Widget _buildOrderFields() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        _dropdown(
-          label: 'Sale type',
-          value: _saleType,
-          items: _saleTypes
-              .map((t) => DropdownMenuItem(value: t, child: Text(t)))
-              .toList(),
-          onChanged: (v) => setState(() => _saleType = v ?? _saleType),
-        ),
-        const SizedBox(height: 12),
-        _idField(_companyId, 'Company ID', Icons.business_outlined),
-        const SizedBox(height: 12),
-        _dealerSection(),
-        const SizedBox(height: 12),
-        _idField(_salesPointId, 'Sales point ID', Icons.place_outlined),
-        const SizedBox(height: 12),
-        Row(
-          children: [
-            Expanded(
-              child: _dateTile(
-                'Invoice date',
-                _invoiceDate,
-                () => _pickDate(due: false),
-              ),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: _dateTile(
-                'Due date',
-                _dueDate,
-                () => _pickDate(due: true),
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 20),
-        Text(
-          'Line item',
-          style: GoogleFonts.poppins(fontWeight: FontWeight.w600, fontSize: 14),
-        ),
-        const SizedBox(height: 10),
-        _idField(_productId, 'Product ID', Icons.inventory_2_outlined),
-        const SizedBox(height: 12),
-        Row(
-          children: [
-            Expanded(child: _moneyField(_tradePrice, 'Trade price')),
-            const SizedBox(width: 10),
-            Expanded(child: _moneyField(_salePrice, 'Sale price')),
-          ],
-        ),
-        const SizedBox(height: 12),
-        Row(
-          children: [
-            Expanded(child: _moneyField(_qty, 'Quantity')),
-            const SizedBox(width: 10),
-            Expanded(
-              child: _idField(_unitId, 'Unit ID', Icons.straighten_outlined),
-            ),
-          ],
-        ),
-        const SizedBox(height: 12),
-        _field(
-          _unitBatchNo,
-          'Unit batch no (optional)',
-          Icons.tag_outlined,
-          required: false,
-        ),
-        const SizedBox(height: 12),
-        _moneyField(
-          _totalAmount,
-          'Total amount (৳)',
-          validator: (v) {
-            final n = double.tryParse(v?.trim() ?? '');
-            if (n == null || n <= 0) return 'Required';
-            return null;
-          },
-        ),
-      ],
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final demo = _salesService.useCreateDemo;
-    final booking = _usesBooking;
-
-    return Scaffold(
-      backgroundColor: AppColors.background,
-      body: CustomScrollView(
-        physics: const BouncingScrollPhysics(),
-        slivers: [
-          SliverToBoxAdapter(
-            child: GradientScreenHeader(
-              title: booking ? 'Post booking' : 'Post sale',
-              subtitle: demo
-                  ? 'Demo mode — enable live sales to post to server'
-                  : booking
-                      ? 'Feed / chicks → booking-person-books'
-                      : 'Submit order to sales.peoplesitsolution.online',
-            ),
-          ),
-          SliverPadding(
-            padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
-            sliver: SliverToBoxAdapter(
-              child: FadeInUp(
-                child: SectionCard(
-                  child: Form(
-                    key: _formKey,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        if (_salesPersonId != null)
-                          Text(
-                            booking
-                                ? 'Booking person ID: $_salesPersonId'
-                                : 'Sales person ID: $_salesPersonId',
-                            style: GoogleFonts.poppins(
-                              fontSize: 12,
-                              color: AppColors.textSecondary,
-                            ),
-                          ),
-                        const SizedBox(height: 12),
-                        _dropdown(
-                          label: 'Module',
-                          value: _module,
-                          items: _modules
-                              .map((m) => DropdownMenuItem(
-                                    value: m.$1,
-                                    child: Text(m.$2),
-                                  ))
-                              .toList(),
-                          onChanged: _onModuleChanged,
-                        ),
-                        const SizedBox(height: 12),
-                        if (booking) _buildBookingFields() else _buildOrderFields(),
-                        const SizedBox(height: 24),
-                        SizedBox(
-                          height: 52,
-                          child: ElevatedButton(
-                            onPressed: _isSubmitting ? null : _submit,
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: AppColors.primary,
-                              foregroundColor: Colors.white,
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(14),
-                              ),
-                            ),
-                            child: _isSubmitting
-                                ? const SizedBox(
-                                    width: 22,
-                                    height: 22,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2,
-                                      color: Colors.white,
-                                    ),
-                                  )
-                                : Text(
-                                    booking ? 'Submit booking' : 'Submit order',
-                                    style: GoogleFonts.poppins(
-                                      fontWeight: FontWeight.w600,
-                                      fontSize: 15,
-                                    ),
-                                  ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
   Widget _dropdown({
     required String label,
     required String value,
@@ -878,6 +507,7 @@ class _PostSaleScreenState extends State<PostSaleScreen> {
     required ValueChanged<String?> onChanged,
   }) {
     return DropdownButtonFormField<String>(
+      key: ValueKey('$label-$value'),
       initialValue: value,
       decoration: _decoration(label, Icons.category_outlined),
       items: items,
@@ -945,21 +575,6 @@ class _PostSaleScreenState extends State<PostSaleScreen> {
       },
       style: GoogleFonts.poppins(fontSize: 14),
       decoration: _decoration(label, icon),
-    );
-  }
-
-  Widget _optionalIdField(TextEditingController controller, String label) {
-    return TextFormField(
-      controller: controller,
-      keyboardType: TextInputType.number,
-      validator: (v) {
-        final t = v?.trim() ?? '';
-        if (t.isEmpty) return null;
-        if (int.tryParse(t) == null) return 'Invalid ID';
-        return null;
-      },
-      style: GoogleFonts.poppins(fontSize: 14),
-      decoration: _decoration(label, Icons.tag_outlined),
     );
   }
 

@@ -11,6 +11,7 @@ import '../widgets/api_empty_state.dart';
 import '../widgets/filter_chip_row.dart';
 import '../widgets/gradient_screen_header.dart';
 import '../widgets/section_card.dart';
+import 'post_booking_screen.dart';
 import 'post_sale_screen.dart';
 
 class SalesInfoScreen extends StatefulWidget {
@@ -205,17 +206,55 @@ class _SalesInfoScreenState extends State<SalesInfoScreen>
     await _loadSales();
   }
 
-  Future<void> _openPostSale() async {
+  Future<void> _openPostMenu() async {
+    final choice = await showModalBottomSheet<String>(
+      context: context,
+      builder: (context) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: const Icon(Icons.book_online_outlined),
+                title: Text('Post booking', style: GoogleFonts.poppins()),
+                subtitle: Text(
+                  'Feed / chicks',
+                  style: GoogleFonts.poppins(fontSize: 12),
+                ),
+                onTap: () => Navigator.pop(context, 'booking'),
+              ),
+              ListTile(
+                leading: const Icon(Icons.point_of_sale_outlined),
+                title: Text('Post sale', style: GoogleFonts.poppins()),
+                subtitle: Text(
+                  'Egg / fertilizer / live bird / cull bird',
+                  style: GoogleFonts.poppins(fontSize: 12),
+                ),
+                onTap: () => Navigator.pop(context, 'sale'),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+    if (!mounted || choice == null) return;
+
     final saved = await Navigator.of(context).push<bool>(
-      MaterialPageRoute(builder: (_) => const PostSaleScreen()),
+      MaterialPageRoute(
+        builder: (_) => choice == 'booking'
+            ? const PostBookingScreen()
+            : const PostSaleScreen(),
+      ),
     );
     if (saved == true && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
             _salesService.useCreateDemo
-                ? 'Demo order saved (live sales disabled).'
-                : 'Sale submitted successfully.',
+                ? 'Demo saved (live sales disabled).'
+                : choice == 'booking'
+                    ? 'Booking submitted successfully.'
+                    : 'Sale submitted successfully.',
             style: GoogleFonts.poppins(),
           ),
         ),
@@ -230,7 +269,7 @@ class _SalesInfoScreenState extends State<SalesInfoScreen>
       backgroundColor: AppColors.background,
       floatingActionButton: _isEligible
           ? FloatingActionButton.extended(
-              onPressed: _openPostSale,
+              onPressed: _openPostMenu,
               backgroundColor: AppColors.primary,
               foregroundColor: Colors.white,
               icon: const Icon(Icons.add),
