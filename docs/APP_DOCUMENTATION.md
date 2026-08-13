@@ -21,6 +21,10 @@
 >
 > July 9, 2026 dual-device attendance: Home/History use ZKTeco-primary list merged with HRM JWT (one row per day). Machine and android punches both show. ZKTeco backend merges same-day machine-in + android-out onto one `new_attendance_requests` row (`device_type` may become `mixed`).
 
+> August 13, 2026 sales UX: Receive payment and Post booking screens match the sales web create pages (dropdowns, show/hide, ADD/SAVE queue, feed vs chicks layouts). POST mapping aligned with web/DB. See `docs/SALES_AND_PAYMENTS_API_CONTRACT.md`.
+>
+> August 12, 2026 OTA update: Forced over-the-air updates via GitHub ([ciphercall/rocket-launcher](https://github.com/ciphercall/rocket-launcher)). `UpdateGate` → `AppUpdateService` → manifest + Release APK download. Publish with `PUBLISH-OTA-UPDATE.cmd`. Full details: `docs/OTA_UPDATES.md`.
+
 ---
 
 ## Table of Contents
@@ -174,8 +178,9 @@ User → Login (dummy) → MainShell → [Home | Attendance | Notifications | Pr
 
 ```
 AttendEaseApp
-  └─ UpdateGate (OTA manifest check on cold start)
+  └─ UpdateGate (GitHub OTA manifest check on cold start)
         ├─(update required)→ AppUpdateScreen (blocking download + install)
+        ├─(fetch error)→ Retry / Continue offline
         └─(up to date / offline continue)→ AppBootstrap
               ├─ PermissionsGateScreen
               ├─ ServerBootstrapScreen
@@ -198,13 +203,28 @@ AttendEaseApp
                         │   ├─ PostPaymentScreen / PaymentReportScreen
                         │   ├─ ProvidentFundScreen / MessDepositScreen / CompensationScreen
                         ├─ SalesInfoScreen (overview + own postings)
-                        │   └─ PostSaleScreen
+                        │   ├─ PostBookingScreen (feed / chicks)
+                        │   └─ PostSaleScreen (egg / fertilizer / liveBird / cullBird)
                         └─ GeoTrackingScreen
 ```
 
 - **MainShell** uses `IndexedStack` to keep all 5 tab screens alive.
 - **CheckInScreen** is pushed as a `MaterialPageRoute` from HomeScreen and pops after success.
 - **FaceRegistrationScreen** is pushed from ProfileScreen's "Quick Actions → Register Face" card.
+
+### 5.1 OTA update gate (v2.2.3+)
+
+See **[OTA_UPDATES.md](OTA_UPDATES.md)** for the full publisher and troubleshooting guide.
+
+| Component | Role |
+|-----------|------|
+| `UpdateGate` | Cold-start wrapper; blocks app when update required |
+| `AppUpdateService` | Fetches manifest, compares `version_code`, downloads APK |
+| `AppUpdateScreen` | Forced update UI with download progress |
+| `ApkInstallerChannel` (Kotlin) | ABI detection + install intent |
+| `PackageReplacedReceiver` | Relaunch after successful replace |
+
+Manifest URL baked at build time from `rocket launcher/config/github.env` → `UPDATE_MANIFEST_URL` dart-define.
 
 ---
 

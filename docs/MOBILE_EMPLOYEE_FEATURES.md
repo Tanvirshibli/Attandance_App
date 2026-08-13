@@ -1,6 +1,6 @@
 # Mobile Employee Features (v2.2.0)
 
-Last updated: August 11, 2026
+Last updated: August 12, 2026
 
 This document describes the employee self-service modules in **Attandance_App**. HRM/ZKTeco APIs are wired where available. **Sales Info reporting and Post Sale create are live** when demo flags are off. **Auth-wise payment report and receive** use the sales host when `payment.enabled` is on. HRM loan/payslip screens still demo by default (see [SALES_AND_PAYMENTS_API_CONTRACT.md](SALES_AND_PAYMENTS_API_CONTRACT.md)).
 
@@ -65,8 +65,8 @@ Geo tracking turns on automatically once these are granted (`GeoTrackingService.
 | Vehicles list | Transport `GET /api/get-vehicle-active-list` (no auth) | **Live** (requires ZKTeco `vehicle.enabled=true`) |
 | Vehicle maintenance | Transport `GET /api/get-vehicle-m-history/{id}` (no auth) | **Live** |
 | Farm & Dealer (marketing) | ZKTeco `/api/v1/mobile/marketing/*` (no JWT; `employee_id` = `canonicalEmployeeId`) | **Wired** (requires `marketing.enabled=true`) |
-| Post sale / booking | Sales `POST /api/sales-person-sales` (egg, fertilizer, liveBird, cullBird) or `POST /api/booking-person-books` (feed, chicks) | **Live** when `USE_SALES_DEMO_DATA=false`; dealers from `GET /api/all-dealer-lists` |
-| Auth-wise payment post | Sales `POST /api/auth-wise-payments` (form-data) | **Live** when `payment.enabled=true`; setup from `GET /api/payment-setup-data` |
+| Post sale / booking | Sales `POST /api/sales-person-sales` (egg, fertilizer, liveBird, cullBird) or `POST /api/booking-person-books` (feed, chicks) | **Live** when `USE_SALES_DEMO_DATA=false`; dealers from `GET /api/all-dealer-lists`; booking masters from `GET /api/booking-person-books/form-data` |
+| Auth-wise payment post | Sales `POST /api/auth-wise-payments` (form-data, `payments[]` ADD/SAVE queue) | **Live** when `payment.enabled=true`; setup from `GET /api/payment-setup-data`; dealers from `GET /api/all-dealer-lists` |
 | Payment setup lists | Sales `GET /api/payment-setup-data` | **Live** (banks, receivers, payment types) |
 | All dealer lists | Sales `GET /api/all-dealer-lists` | **Live** (module-filtered searchable dropdown on Post sale) |
 | Geo location upload | ZKTeco `POST /api/v1/mobile/geo-location` | **Wired** |
@@ -86,7 +86,10 @@ Handoff for backend teams: **[SALES_AND_PAYMENTS_API_CONTRACT.md](SALES_AND_PAYM
 - Overall KPIs: orders, returns, net/gross sales, net qty
 - Module tabs: Egg | Feed | Fertilizer | Chicks | Live Bird | Cull Bird
 - Per module: summary, Products / Dealers / Sectors, line details
-- **Post sale / booking** FAB → feed/chicks use booking form (`booking-person-books`); other modules use sale order form (`sales-person-sales`); dealer lists loaded once per session; type-to-search dealer by name/code/phone; module switches list (Chicks/Cull Bird use live bird list for now)
+- **Post sale / booking** FAB opens a sheet:
+  - **Post booking** (`PostBookingScreen`) — Feed vs Chicks layouts matching sales web create pages: booking point, feed category cascade, Sale/Sample, dealer (feed list), booking-money + advance, multi-line products, Discount / Flat Discount, chicks zone + multi-delivery. POST `booking-person-books` with `Sale`/`Sample` and `Discount`/`Flat Discount`.
+  - **Post sale** (`PostSaleScreen`) — egg / fertilizer / live bird / cull bird order form (`sales-person-sales`).
+- Receive payment (`PostAuthWisePaymentScreen`) matches the sales web create page: Payment For, rec type, cascading dealer/employee receiver, invoice type, payment mode extras, ADD queue, SAVE. POST maps `paymentMode` 1–8, `paymentType` = bank id, `paymentFor` = type list, dealer vs `employeeId` receivers.
 - Force reporting demo: `--dart-define=USE_SALES_DEMO_DATA=true`
 - Override sales host: `--dart-define=SALES_API_BASE_URL=...`
 
@@ -104,6 +107,12 @@ Handoff for backend teams: **[SALES_AND_PAYMENTS_API_CONTRACT.md](SALES_AND_PAYM
 - Create forms **auto-fill GPS + address** (no Capture GPS / Check-in GPS buttons); visits start `in_progress` with auto check-in; check-out completes visit; farm survey + follow-ups from party detail
 - ZKTeco `/api/v1/mobile/marketing/*` including `visits/{id}/check-in|check-out` (no JWT); flag `marketing.enabled`
 - See [FARM_DEALER_MOBILE.md](FARM_DEALER_MOBILE.md) for endpoint keys and payloads
+
+### Receive payment & Post booking UX (v2.2.3+43)
+
+- Receive payment follows the sales web create page (not the Quick Setting modal): labeled Payment For / rec type / receiver / invoice type / payment mode extras, ADD then SAVE
+- POST fields aligned with web/DB: `paymentMode` 1–8, `paymentType` = bank id, `paymentFor` = type list; dealer vs employee `receiverId`
+- Post booking is a separate screen (Feed vs Chicks); Post sale is egg/fertilizer/liveBird/cullBird only
 
 ### Face check-in & registration (v2.2.3+33)
 
@@ -148,13 +157,17 @@ Handoff for backend teams: **[SALES_AND_PAYMENTS_API_CONTRACT.md](SALES_AND_PAYM
 
 ### Forced OTA updates (v2.2.3+)
 
-- On cold start, app checks `UPDATE_MANIFEST_URL` (GitHub raw `ota/manifest.json`)
-- APKs download from GitHub Release asset URLs in the manifest
-- When `version_code` is newer than installed build: blocking **Update required** screen (no skip)
-- Download shows progress bar with size and percentage; interrupted downloads restart on next launch
-- After download: system install dialog opens; app relaunches via `MY_PACKAGE_REPLACED` after successful replace
-- Publish updates with **Rocket Launcher** — double-click `Attandance_App/PUBLISH-OTA-UPDATE.cmd` (or `rocket launcher/PUBLISH-OTA-UPDATE.cmd`), enter release notes, wait for build + GitHub publish
+Full reference: [OTA_UPDATES.md](OTA_UPDATES.md)
+
+- On cold start, `UpdateGate` checks `UPDATE_MANIFEST_URL` (GitHub raw `ota/manifest.json` on [ciphercall/rocket-launcher](https://github.com/ciphercall/rocket-launcher))
+- APKs download from GitHub Release asset URLs in the manifest (public, no auth)
+- When remote `version_code` > installed build: blocking **Update required** screen (`force_update: true` — no skip except offline on fetch errors)
+- Download shows progress bar with size and percentage; interrupted downloads restart on next launch (no resume)
+- After download: SHA-256 verified → system install dialog → relaunch via `MY_PACKAGE_REPLACED`
+- **Publish:** double-click `Attandance_App/PUBLISH-OTA-UPDATE.cmd` (or `rocket launcher/PUBLISH-OTA-UPDATE.cmd`), enter release notes, wait ~3–5 min
+- **First install** on each device: manual APK once (OTA-enabled baseline); all later releases are OTA-only
 - Disable checks in dev: `--dart-define=UPDATE_CHECK_ENABLED=false`
+- **Verified** on real device: v40 → v41 OTA, August 2026
 
 ### Endpoint configuration
 

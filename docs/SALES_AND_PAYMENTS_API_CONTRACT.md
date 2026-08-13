@@ -204,16 +204,15 @@ When `USE_SALES_DEMO_DATA=true`, Post Sale stays on-device demo only.
 | ----- | ----- |
 | `module` | `feed` or `chicks` |
 | `dealerId`, `categoryId`, `subCategoryId`, `childCategoryId`, `bookingPointId` | IDs |
-| `bookingPerson` | App sends logged-in `canonicalEmployeeId` |
-| `bookingType` | e.g. `regular` |
+| `bookingPerson` | Feed: logged-in `canonicalEmployeeId` (intended `users.id` — often a mismatch). Chicks: matched `employeeList[].id` when setup-data lists the user |
+| `bookingType` | `Sale` or `Sample` (web labels; not `regular`) |
 | `isBookingMoney` | `0` / `1` |
-| `discount`, `discountType` | e.g. `fixed` |
-| `advanceAmount`, `totalAmount` | numbers |
-| `bookingDate`, `invoiceDate` | `YYYY-MM-DD` |
+| `discount`, `discountType` | `Discount` (percent) or `Flat Discount` |
+| `advanceAmount`, `totalAmount` | numbers; advance only when booking money is on |
+| `bookingDate`, `invoiceDate` | `YYYY-MM-DD` (invoice ≥ booking) |
 | `note` | optional header note |
-| `details[i][productId]`, `unitId`, `qty`, `price`, `note` | line item |
-| **Chicks only** | `cZoneId`, `isMultiDelivery` (`0`/`1`), optional `chicksPriceId`; line `cdPriceId`, `mrp`, `details[i][settingIds][j]`, `details[i][flockIds][j]` |
-| **Optional** | `commissionId` |
+| `details[i][productId]`, `unitId`, `qty`, `price`, `note` | one or more lines (`unitId` defaults to `1`) |
+| **Chicks only** | required `cZoneId`, `isMultiDelivery` (`0`/`1`); optional `deliveryDetails[i][name|phone|roadNo|address|productDetails]`; line `mrp` (defaults to sale price) |
 
 **Success (example):**
 
@@ -233,6 +232,21 @@ When `USE_SALES_DEMO_DATA=true`, Post Sale stays on-device demo only.
 
 App config key: `sales.booking.create` (POST, full URL or path).
 
+### A.2c Booking form-data (Post booking dropdowns)
+
+`GET {SALES_API_BASE_URL}/api/booking-person-books/form-data`
+
+App config key: `sales.booking.formData`.
+
+The app now parses the full payload (not only companies/sectors used by Farm create):
+
+| Module | Lists used on Post booking |
+| --- | --- |
+| `feed` | `categoryList`, `subCategoryList`, `childCategoryList` (filter by `subCategoryId`), `salesPointList` (booking point), `productDailyPriceList` (product + category/sub/child + `tradePrice`) |
+| `chicks` | `sectorList` (hatchery booking point), `productList` (`sectorId`, `productId`, names, `closingBalance`); `zoneList` / `cZoneList` if present |
+
+Subcategory rows have no parent category id — products are filtered using ids on `productDailyPriceList`. Chicks create UI has no category cascade; the POST still requires `categoryId` / `subCategoryId` / `childCategoryId`, which the app auto-fills from form-data (prefer a category named like Chicks). Zones and chicks-price quotations are not on this endpoint; zone is a required numeric field when no zone list is returned.
+
 ### A.3 Errors
 
 ```json
@@ -247,8 +261,10 @@ App config key: `sales.booking.create` (POST, full URL or path).
 | `sales.eligibility` | GET    | HRM `/api/get-sales-employee-list` |
 | `sales.personSales` | GET    | `{salesBase}/api/sales-person-sales` (app appends `/{id}`) |
 | `sales.overview` / `sales.list` | GET | Legacy aliases → same person-sales base (unused by UI) |
-| `sales.create`      | POST   | `{salesBase}/api/sales-person-sales` (form-data; non feed/chicks) |
+| `sales.create`      | POST   | `{salesBase}/api/sales-person-sales` (form-data; egg, fertilizer, liveBird, cullBird) |
 | `sales.booking.create` | POST | `{salesBase}/api/booking-person-books` (form-data; feed & chicks) |
+| `sales.booking.formData` | GET | `{salesBase}/api/booking-person-books/form-data` |
+| `sales.allDealers` | GET | `{salesBase}/api/all-dealer-lists` |
 
 Enable `feature.sales.enabled` (default true in app fallback).
 
@@ -454,21 +470,24 @@ HRM payslip/loan/PF screens are under **Services → HR Benefits** (`HrBenefitsH
 
 **Content-Type:** `multipart/form-data`.
 
-| Field | Example |
+| Field | Send (web/DB aligned from v2.2.3+43) |
 | ----- | ------- |
-| `employeeId` | `27` |
-| `payments[0][companyId]` | `3` |
-| `payments[0][recType]` | `1` |
-| `payments[0][receiverId]` | `235` (auth-wise receiver — use **`employeeList[].id`**, not `employeeId`) |
+| `employeeId` | logged-in `canonicalEmployeeId` (`exists:users,employeeId`) |
+| `payments[0][companyId]` | selected company (from `bank.company`) |
+| `payments[0][recType]` | `1` Dealer or `2` Employee (Vendor not allowed) |
+| `payments[0][receiverId]` | recType 1: dealer `id`; recType 2: `employeeList[].employeeId` (HRM id, stored as `chartOfHeadId`) |
 | `payments[0][amount]` | `1000` |
 | `payments[0][recDate]` | `YYYY-MM-DD` |
-| `payments[0][paymentType]` | payment type id from setup (`paymentTypeList[].id`) |
-| `payments[0][paymentMode]` | bank id from setup (`bankList[].id`) |
-| `payments[0][paymentFor]` | `2` |
-| `payments[0][invoiceType]` | `2` |
+| `payments[0][paymentType]` | **bank** id (`bankList[].id`) |
+| `payments[0][paymentMode]` | instrument **1–8** (Cash … TT) |
+| `payments[0][paymentFor]` | `paymentTypeList[].id` (Feed, Chicks, Egg, …) |
+| `payments[0][invoiceType]` | `1` With voucher or `2` Without voucher |
 | `payments[0][note]` | optional |
-| `payments[0][trxId]` | optional |
-| `payments[0][ref]` | optional |
+| `payments[0][trxId]` | Online / Mobile / Pay Order / DD / TT |
+| `payments[0][ref]` | typically Cash (default `0` if empty) |
+| `payments[0][checkNo]` / `[checkDate]` | Check only |
+
+UI matches the sales web create page (Payment For → rec type → receiver cascade → invoice type → payment mode extras → ADD queue → SAVE). Multiple lines post as `payments[i]`. Pre-+43 app rows may still have swapped `paymentType`/`paymentMode`. Invoice allocation / `sale_order` is not sent (auth-wise store ignores it). Server mints `PRI…` voucher numbers.
 
 App config key: `payment.authWisePost` (POST; falls back to `payment.authWise` URL).
 
@@ -493,7 +512,7 @@ App config key: `payment.setupData`.
 }
 ```
 
-**App mapping:** Bank → `paymentMode` + auto `companyId` from `company.id`; Receiver → `receiverId` = `employeeList[].id`; Payment type → `paymentType`.
+**App mapping (v2.2.3+43):** Payment For → `paymentFor`; Payment Mode enum → `paymentMode` 1–8; Payment Type (bank) → `paymentType`; Dealer receiver → dealer id; Employee receiver → `employeeList[].employeeId`. Banks cannot be split cash/mobile (setup-data has no `isCash` / `isMobileBanking`).
 
 ### C.3 All dealer lists (Post sale dropdown)
 
@@ -503,7 +522,7 @@ App config key: `sales.allDealers`.
 
 **Success shape:** `data.eggDealList`, `feedDealList`, `fertilizerDealList`, `liveBirdDealList`, `wastageDealList` — each item includes `id`, `tradeName`, `dealerCode`, `zoneName`, etc.
 
-**Module → list (app):** `feed` → feed; `egg` → egg; `fertilizer` → fertilizer; `liveBird` / `chicks` / `cullBird` → liveBird (temporary). Post sale uses selected dealer `id` as `dealerId`.
+**Module → list (app):** Post sale: `egg` → egg; `fertilizer` → fertilizer; `liveBird` / `cullBird` → liveBird. Post booking (feed and chicks): **feed** list (`feedDealList` already includes Feed / Feed And Chicks / Chicks). Receive payment dealers cascade from Payment For the same way (Egg, Feed/Chicks, Fertilizer, Live/Cull Bird, Wastage).
 
 ---
 

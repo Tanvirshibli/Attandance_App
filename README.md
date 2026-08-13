@@ -7,13 +7,13 @@ Flutter Android app for PPHL attendance.
 - Login/auth session: JWT on `pphl_erp`
 - Face registration: JWT on `pphl_erp` → `face_registration_android`
 - Check-in/check-out + attendance history: public API on `zkteco-Automation-management-PPHL` (no JWT; `employee_id` required) with HRM JWT mobile attendance preferred when logged in
-- **Employee services (v2.2.0):** footer **Services** tab (Attendance Report, Leave, Payments hub, Sales Info with live person-sales report + Post sale/booking (feed/chicks → booking API; other modules → sales-person-sales) with dealer dropdowns, Vehicles, **Farm & Dealer** field collection, Geo Tracking). Auth-wise receive uses live setup lists; HRM payments remain demo by default; see [docs/SALES_AND_PAYMENTS_API_CONTRACT.md](docs/SALES_AND_PAYMENTS_API_CONTRACT.md) and [docs/FARM_DEALER_MOBILE.md](docs/FARM_DEALER_MOBILE.md)
+- **Employee services (v2.2.0):** footer **Services** tab (Attendance Report, Leave, Payments hub with web-aligned Receive payment ADD/SAVE, Sales Info with live person-sales report + Post booking (feed/chicks) / Post sale (egg, fertilizer, live bird, cull bird) with dealer dropdowns, Vehicles, **Farm & Dealer** field collection, Geo Tracking). Auth-wise receive uses live setup + dealer lists; HRM payments remain demo by default; see [docs/SALES_AND_PAYMENTS_API_CONTRACT.md](docs/SALES_AND_PAYMENTS_API_CONTRACT.md) and [docs/FARM_DEALER_MOBILE.md](docs/FARM_DEALER_MOBILE.md)
 - Home / Attendance KPIs driven from live punches + HRM summary (Alerts empty until a notifications API exists)
 - JWT refresh on 401 (single-flight); profile cache for geo; 429 pauses geo HRM work — see [docs/AUTH_AND_RATE_LIMITS.md](docs/AUTH_AND_RATE_LIMITS.md)
 - Geo: live OpenStreetMap window, 5-min foreground timer, WorkManager, ongoing notification; FCM wake registers tokens and handles `geo_wake` data pushes when `android/app/google-services.json` is present (see `.example`)
 - Persistent per-install device identity sent with attendance and face-registration requests
 
-See [docs/MOBILE_EMPLOYEE_FEATURES.md](docs/MOBILE_EMPLOYEE_FEATURES.md) for API wiring status per feature. Farm & Dealer mobile API: [docs/FARM_DEALER_MOBILE.md](docs/FARM_DEALER_MOBILE.md). Backend handoff for Sales/Payments: [docs/SALES_AND_PAYMENTS_API_CONTRACT.md](docs/SALES_AND_PAYMENTS_API_CONTRACT.md). Emulator workflow: [docs/EMULATOR_TESTING.md](docs/EMULATOR_TESTING.md). Rate limits / forced logout: [docs/AUTH_AND_RATE_LIMITS.md](docs/AUTH_AND_RATE_LIMITS.md).
+See [docs/MOBILE_EMPLOYEE_FEATURES.md](docs/MOBILE_EMPLOYEE_FEATURES.md) for API wiring status per feature. **OTA updates:** [docs/OTA_UPDATES.md](docs/OTA_UPDATES.md). Farm & Dealer mobile API: [docs/FARM_DEALER_MOBILE.md](docs/FARM_DEALER_MOBILE.md). Backend handoff for Sales/Payments: [docs/SALES_AND_PAYMENTS_API_CONTRACT.md](docs/SALES_AND_PAYMENTS_API_CONTRACT.md). Emulator workflow: [docs/EMULATOR_TESTING.md](docs/EMULATOR_TESTING.md). Rate limits / forced logout: [docs/AUTH_AND_RATE_LIMITS.md](docs/AUTH_AND_RATE_LIMITS.md).
 
 ## Backend split
 
@@ -107,6 +107,20 @@ flutter build apk --release --split-per-abi --target-platform android-arm,androi
 
 Install the ABI that matches the device (prefer `app-arm64-v8a-release.apk`). Do **not** ship a fat multi-ABI APK for phones.
 
+### OTA updates (GitHub — production releases)
+
+Forced over-the-air updates via [Rocket Launcher](../rocket%20launcher/) and public repo [ciphercall/rocket-launcher](https://github.com/ciphercall/rocket-launcher).
+
+**Publish a release (double-click):**
+
+```text
+Attandance_App\PUBLISH-OTA-UPDATE.cmd
+```
+
+Enter release notes → wait for build + GitHub publish → users on older builds update on next cold start.
+
+Full documentation: [docs/OTA_UPDATES.md](docs/OTA_UPDATES.md)
+
 ### Dev APK (tunnel backends — local PC / Cloudflare only)
 
 Use this only when testing against Docker stacks on this PC via Cloudflare tunnel. **Not** for production distribution.
@@ -153,6 +167,8 @@ Install the ABI that matches the device (prefer `app-arm64-v8a-release.apk`). Do
 | `USE_SALES_DEMO_DATA` | `false` (default) → live person-sales report; `true` → demo reporting |
 | `SALES_API_BASE_URL` | Sales host (default `https://sales.peoplesitsolution.online`) |
 | `USE_PAYMENT_DEMO_DATA` | `true` (default) → Payments demo UI; `false` → live HRM payment APIs |
+| `UPDATE_MANIFEST_URL` | GitHub raw manifest URL (default: ciphercall/rocket-launcher); set via `github.env` at build time |
+| `UPDATE_CHECK_ENABLED` | `true` (default) → OTA gate on cold start; `false` to skip (dev) |
 
 `backendApiBaseUrl` is an alias for the HRM/ERP base (leaves, holidays, sales, payments, etc.).
 
