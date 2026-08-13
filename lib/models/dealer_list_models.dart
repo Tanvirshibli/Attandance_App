@@ -26,17 +26,55 @@ class AllDealerLists {
   List<DealerListItem> listForModule(String moduleKey) {
     switch (moduleKey) {
       case 'feed':
+      case 'chicks':
         return feed;
       case 'egg':
         return egg;
       case 'fertilizer':
         return fertilizer;
       case 'liveBird':
-      case 'chicks':
       case 'cullBird':
         return liveBird;
       default:
         return const [];
+    }
+  }
+
+  List<DealerListItem> get allUnique {
+    final byId = <int, DealerListItem>{};
+    for (final list in [egg, feed, fertilizer, liveBird, wastage]) {
+      for (final dealer in list) {
+        if (dealer.id > 0) byId[dealer.id] = dealer;
+      }
+    }
+    return byId.values.toList();
+  }
+
+  /// Dealer bucket for Receive Payment "Payment For" (web create-page cascade).
+  List<DealerListItem> listForPaymentFor({int? id, String? name}) {
+    final lower = (name ?? '').toLowerCase();
+    if (lower.contains('cull') && lower.contains('bird')) return liveBird;
+    if (lower.contains('live') && lower.contains('bird')) return liveBird;
+    if (lower.contains('wastage')) return wastage;
+    if (lower.contains('fertilizer')) return fertilizer;
+    if (lower.contains('egg')) return egg;
+    if (lower.contains('chick') || lower.contains('feed')) return feed;
+
+    switch (id) {
+      case 1:
+      case 2:
+        return feed;
+      case 3:
+      case 4:
+        return liveBird;
+      case 5:
+        return egg;
+      case 7:
+        return fertilizer;
+      case 11:
+        return wastage;
+      default:
+        return allUnique;
     }
   }
 
@@ -90,6 +128,12 @@ class DealerListItem {
       zoneName: json['zoneName']?.toString(),
     );
   }
+
+  @override
+  bool operator ==(Object other) => other is DealerListItem && other.id == id;
+
+  @override
+  int get hashCode => id.hashCode;
 }
 
 int _toInt(Object? value) {

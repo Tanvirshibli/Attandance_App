@@ -20,6 +20,23 @@ class PaymentSetupData {
     );
   }
 
+  List<SetupCompany> get uniqueCompanies {
+    final byId = <int, SetupCompany>{};
+    for (final bank in banks) {
+      final company = bank.company;
+      if (company != null && company.id > 0) {
+        byId[company.id] = company;
+      }
+    }
+    final list = byId.values.toList()
+      ..sort(
+        (a, b) => a.displayLabel.toLowerCase().compareTo(
+              b.displayLabel.toLowerCase(),
+            ),
+      );
+    return list;
+  }
+
   static List<Map<String, dynamic>> _mapList(Object? value) {
     if (value is! List) return const [];
     return value
@@ -35,12 +52,26 @@ class SetupCompany {
   final int id;
   final String? nameEn;
 
+  String get displayLabel {
+    final name = nameEn?.trim();
+    if (name != null && name.isNotEmpty) return name;
+    return 'Company $id';
+  }
+
+  String get searchText => displayLabel.toLowerCase();
+
   factory SetupCompany.fromJson(Map<String, dynamic> json) {
     return SetupCompany(
       id: _toInt(json['id']),
       nameEn: json['nameEn']?.toString(),
     );
   }
+
+  @override
+  bool operator ==(Object other) => other is SetupCompany && other.id == id;
+
+  @override
+  int get hashCode => id.hashCode;
 }
 
 class SetupBank {
@@ -81,6 +112,12 @@ class SetupBank {
               : null,
     );
   }
+
+  @override
+  bool operator ==(Object other) => other is SetupBank && other.id == id;
+
+  @override
+  int get hashCode => id.hashCode;
 }
 
 class SetupEmployee {
@@ -90,18 +127,34 @@ class SetupEmployee {
     required this.employeeName,
     this.phoneNumber,
     this.companyName,
+    this.currentBalance,
+    this.ledgerName,
   });
 
-  /// Auth-wise receiver id (POST `receiverId`).
+  /// `sales_employees_flat.id` — chicks `bookingPerson`.
   final int id;
+
+  /// HRM / `users.employeeId` — auth-wise `receiverId` when recType is employee.
   final int employeeId;
   final String employeeName;
   final String? phoneNumber;
   final String? companyName;
+  final double? currentBalance;
+  final String? ledgerName;
 
   String get searchText =>
       '${employeeName.toLowerCase()} $employeeId ${phoneNumber ?? ''} '
-      '${companyName?.toLowerCase() ?? ''}';
+      '${companyName?.toLowerCase() ?? ''} ${ledgerName?.toLowerCase() ?? ''}';
+
+  String get subtitle {
+    final parts = <String>[
+      'Emp $employeeId',
+      if (ledgerName != null && ledgerName!.trim().isNotEmpty) ledgerName!.trim(),
+      if (currentBalance != null)
+        'Bal ৳${currentBalance == currentBalance!.roundToDouble() ? currentBalance!.round() : currentBalance!.toStringAsFixed(2)}',
+    ];
+    return parts.join(' · ');
+  }
 
   factory SetupEmployee.fromJson(Map<String, dynamic> json) {
     return SetupEmployee(
@@ -110,8 +163,18 @@ class SetupEmployee {
       employeeName: json['employeeName']?.toString() ?? 'Employee',
       phoneNumber: json['phone_number']?.toString(),
       companyName: json['companyName']?.toString(),
+      currentBalance: _toDouble(
+        json['current_balance'] ?? json['currentBalance'],
+      ),
+      ledgerName: json['ledger_name']?.toString() ?? json['ledgerName']?.toString(),
     );
   }
+
+  @override
+  bool operator ==(Object other) => other is SetupEmployee && other.id == id;
+
+  @override
+  int get hashCode => id.hashCode;
 }
 
 class SetupPaymentType {
@@ -128,9 +191,22 @@ class SetupPaymentType {
       name: json['name']?.toString() ?? 'Type',
     );
   }
+
+  @override
+  bool operator ==(Object other) =>
+      other is SetupPaymentType && other.id == id;
+
+  @override
+  int get hashCode => id.hashCode;
 }
 
 int _toInt(Object? value) {
   if (value is int) return value;
   return int.tryParse(value?.toString() ?? '') ?? 0;
+}
+
+double? _toDouble(Object? value) {
+  if (value == null) return null;
+  if (value is num) return value.toDouble();
+  return double.tryParse(value.toString());
 }

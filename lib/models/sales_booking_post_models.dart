@@ -1,3 +1,35 @@
+class DeliveryDetailInput {
+  const DeliveryDetailInput({
+    this.name,
+    this.phone,
+    this.roadNo,
+    this.address,
+    this.productDetails,
+  });
+
+  final String? name;
+  final String? phone;
+  final String? roadNo;
+  final String? address;
+  final String? productDetails;
+
+  void applyTo(Map<String, String> fields, int index) {
+    final prefix = 'deliveryDetails[$index]';
+    _put(fields, '$prefix[name]', name);
+    _put(fields, '$prefix[phone]', phone);
+    _put(fields, '$prefix[roadNo]', roadNo);
+    _put(fields, '$prefix[address]', address);
+    _put(fields, '$prefix[productDetails]', productDetails);
+  }
+
+  static void _put(Map<String, String> fields, String key, String? value) {
+    final trimmed = value?.trim();
+    if (trimmed != null && trimmed.isNotEmpty) {
+      fields[key] = trimmed;
+    }
+  }
+}
+
 class BookingLineInput {
   const BookingLineInput({
     required this.productId,
@@ -34,7 +66,7 @@ class BookingLineInput {
     if (cdPriceId != null && cdPriceId! > 0) {
       fields['$prefix[cdPriceId]'] = '$cdPriceId';
     }
-    if (mrp != null && mrp! > 0) {
+    if (mrp != null) {
       fields['$prefix[mrp]'] = _num(mrp!);
     }
     for (var j = 0; j < settingIds.length; j++) {
@@ -76,6 +108,7 @@ class CreateBookingPersonBookRequest {
     this.chicksPriceId,
     this.commissionId,
     this.note,
+    this.deliveryDetails = const [],
   });
 
   final String module;
@@ -99,6 +132,7 @@ class CreateBookingPersonBookRequest {
   final int? chicksPriceId;
   final int? commissionId;
   final String? note;
+  final List<DeliveryDetailInput> deliveryDetails;
 
   Map<String, String> toFormFields() {
     final fields = <String, String>{
@@ -136,6 +170,12 @@ class CreateBookingPersonBookRequest {
 
     for (var i = 0; i < lines.length; i++) {
       lines[i].applyTo(fields, i);
+    }
+
+    if (module == 'chicks') {
+      for (var i = 0; i < deliveryDetails.length; i++) {
+        deliveryDetails[i].applyTo(fields, i);
+      }
     }
 
     return fields;
