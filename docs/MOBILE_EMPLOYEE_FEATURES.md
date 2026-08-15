@@ -120,6 +120,12 @@ Handoff for backend teams: **[SALES_AND_PAYMENTS_API_CONTRACT.md](SALES_AND_PAYM
 - POST fields aligned with web/DB: `paymentMode` 1–8, `paymentType` = bank id, `paymentFor` = type list; dealer vs employee `receiverId`
 - Post booking is a separate screen (Feed vs Chicks); Post sale is egg/fertilizer/liveBird/cullBird only
 
+### Home Hours same-day duration (v2.2.3+46)
+
+- Home **Hours** and weekly bars use `workedHoursOnDay`: if in/out timestamps fall on different calendar days, wall-clock times are rebased onto that day (10:43–14:21 → **3.6h**, not 27.6h)
+- `mergeRecords` / `resolveTodayRecord` prefer in/out punches on the target calendar day over adjacent-day leftovers
+- Pending **Update Check Out** with a checkout time already shown is unchanged (requested days can still update out)
+
 ### Face capture timing (v2.2.3+45)
 
 - Registration and check-in ignore auto-capture for **2 seconds** after the camera opens so the user can aim (`Position your face in the oval/guide`)

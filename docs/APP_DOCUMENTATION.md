@@ -21,6 +21,8 @@
 >
 > July 9, 2026 dual-device attendance: Home/History use ZKTeco-primary list merged with HRM JWT (one row per day). Machine and android punches both show. ZKTeco backend merges same-day machine-in + android-out onto one `new_attendance_requests` row (`device_type` may become `mixed`).
 
+> August 15, 2026 Home Hours: today/weekly duration uses same-calendar-day wall-clock times (`workedHoursOnDay`). A leftover yesterday in-punch plus today’s out no longer adds 24 hours (e.g. 10:43–14:21 shows **3.6** not **27.6**). Merge prefers punches on the target day.
+>
 > August 15, 2026 face capture timing: Registration and check-in wait **2 seconds** for the user to position the camera, then require a **~1 s (5-frame)** hold before auto-capture. Missing Euler pose is not treated as looking straight. See `docs/MOBILE_EMPLOYEE_FEATURES.md`.
 >
 > August 15, 2026 chicks Zone: Post Booking → Chicks uses a searchable Zone dropdown from `GET /api/all-dealer-lists` `data.zoneList` and POSTs `cZoneId`. No numeric fallback. See `docs/SALES_AND_PAYMENTS_API_CONTRACT.md`.
