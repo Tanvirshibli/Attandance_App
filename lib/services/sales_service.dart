@@ -173,6 +173,10 @@ class SalesService {
         fertilizer: [],
         liveBird: [],
         wastage: [],
+        zones: [
+          DealerZone(id: 1, zoneName: 'Zone A'),
+          DealerZone(id: 4, zoneName: 'Zone D'),
+        ],
       );
       return ApiResult.ok(_cachedDealerLists!);
     }

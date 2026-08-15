@@ -390,20 +390,21 @@ class FaceRecognitionService {
 
   /// Check if face matches a target angle with tolerance
   bool isTargetAngle(Face face, FaceAngle target) {
-    final yaw = face.headEulerAngleY ?? 0;
-    final pitch = face.headEulerAngleX ?? 0;
+    final yaw = face.headEulerAngleY;
+    final pitch = face.headEulerAngleX;
 
     switch (target) {
       case FaceAngle.straight:
+        if (yaw == null || pitch == null) return false;
         return yaw.abs() < 14 && pitch.abs() < 14;
       case FaceAngle.left:
-        return yaw > 15 && yaw < 55;
+        return (yaw ?? 0) > 15 && (yaw ?? 0) < 55;
       case FaceAngle.right:
-        return yaw < -15 && yaw > -55;
+        return (yaw ?? 0) < -15 && (yaw ?? 0) > -55;
       case FaceAngle.up:
-        return pitch > 9 && pitch < 45;
+        return (pitch ?? 0) > 9 && (pitch ?? 0) < 45;
       case FaceAngle.down:
-        return pitch < -6 && pitch > -70;
+        return (pitch ?? 0) < -6 && (pitch ?? 0) > -70;
       case FaceAngle.unknown:
         return false;
     }

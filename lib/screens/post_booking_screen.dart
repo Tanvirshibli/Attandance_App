@@ -108,8 +108,7 @@ class _PostBookingScreenState extends State<PostBookingScreen> {
   BookingFormSubCategory? _subCategory;
   BookingFormChildCategory? _childCategory;
   DealerListItem? _dealer;
-  BookingFormZone? _zone;
-  final _zoneId = TextEditingController();
+  DealerZone? _zone;
   final _discount = TextEditingController(text: '0');
   final _advance = TextEditingController(text: '0');
   final _note = TextEditingController(text: 'Created from mobile app');
@@ -211,7 +210,6 @@ class _PostBookingScreenState extends State<PostBookingScreen> {
   void dispose() {
     _discount.removeListener(_onTotalsChanged);
     _advance.removeListener(_onTotalsChanged);
-    _zoneId.dispose();
     _discount.dispose();
     _advance.dispose();
     _note.dispose();
@@ -234,7 +232,6 @@ class _PostBookingScreenState extends State<PostBookingScreen> {
       _childCategory = null;
       _dealer = null;
       _zone = null;
-      _zoneId.clear();
       _isMultiDelivery = false;
       for (final line in _lines) {
         line.dispose();
@@ -349,11 +346,7 @@ class _PostBookingScreenState extends State<PostBookingScreen> {
 
     int? cZoneId;
     if (!_isFeed) {
-      if (data.chicksZones.isNotEmpty) {
-        cZoneId = _zone?.id;
-      } else {
-        cZoneId = int.tryParse(_zoneId.text.trim());
-      }
+      cZoneId = _zone?.id;
       if (cZoneId == null || cZoneId <= 0) {
         _snack('Please select Zone first!');
         return;
@@ -753,34 +746,25 @@ class _PostBookingScreenState extends State<PostBookingScreen> {
         const SizedBox(height: 12),
         _bookingTypeAndDates(),
         const SizedBox(height: 12),
-        if (data.chicksZones.isNotEmpty)
-          SearchableSelectField<BookingFormZone>(
-            label: 'Zone',
-            icon: Icons.map_outlined,
-            options: data.chicksZones,
-            selected: _zone,
-            displayString: (z) => z.name,
-            searchText: (z) => z.searchText,
-            onSelected: (v) => setState(() => _zone = v),
-            validator: (v) => v == null ? 'Please select Zone first!' : null,
-          )
-        else
-          TextFormField(
-            controller: _zoneId,
-            keyboardType: TextInputType.number,
-            validator: (v) {
-              final n = int.tryParse(v?.trim() ?? '');
-              if (n == null || n <= 0) return 'Zone ID is required';
-              return null;
-            },
-            style: GoogleFonts.poppins(fontSize: 14),
-            decoration: _decoration(
-              'Zone ID (cZoneId)',
-              Icons.map_outlined,
-            ).copyWith(
-              helperText:
-                  'Chicks zone list is not on the mobile form-data API.',
-              helperMaxLines: 2,
+        SearchableSelectField<DealerZone>(
+          label: 'Zone',
+          icon: Icons.map_outlined,
+          options: _dealerLists?.zones ?? const [],
+          selected: _zone,
+          displayString: (z) => z.zoneName,
+          searchText: (z) => z.searchText,
+          onSelected: (v) => setState(() => _zone = v),
+          validator: (v) => v == null ? 'Please select Zone first!' : null,
+        ),
+        if ((_dealerLists?.zones ?? const []).isEmpty)
+          Padding(
+            padding: const EdgeInsets.only(top: 4),
+            child: Text(
+              'Zone list is not on the server yet.',
+              style: GoogleFonts.poppins(
+                fontSize: 12,
+                color: AppColors.textSecondary,
+              ),
             ),
           ),
         SwitchListTile(
@@ -956,10 +940,7 @@ class _PostBookingScreenState extends State<PostBookingScreen> {
                 displayString: (p) => p.displayLabel,
                 searchText: (p) => p.searchText,
                 onSelected: (p) {
-                  final hasZone = (_formData?.chicksZones.isNotEmpty ?? false)
-                      ? _zone != null
-                      : int.tryParse(_zoneId.text.trim()) != null;
-                  if (!hasZone) {
+                  if (_zone == null) {
                     _snack('Please select Zone first!');
                     return;
                   }
