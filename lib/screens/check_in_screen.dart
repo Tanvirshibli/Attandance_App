@@ -185,7 +185,15 @@ class _CheckInScreenState extends State<CheckInScreen>
 
   // Angle hold counter
   int _angleHoldFrames = 0;
-  static const int _requiredHoldFrames = 1;
+  int _smileHoldFrames = 0;
+  static const int _requiredHoldFrames = 5;
+  static const int _requiredSmileHoldFrames = 3;
+  static const Duration _firstPositioningWindow = Duration(seconds: 2);
+  static const Duration _postCaptureSettle = Duration(milliseconds: 600);
+  static const String _positioningMessage =
+      'Position your face in the guide';
+  DateTime? _analysisArmedAt;
+  bool _isFirstStreamStart = true;
 
   // ---- Face data ----
   bool _faceDetected = false;
@@ -265,6 +273,7 @@ class _CheckInScreenState extends State<CheckInScreen>
     _progressAnimationStart = 0;
     _blinkPhase = _BlinkPhase.waitingOpen;
     _angleHoldFrames = 0;
+    _smileHoldFrames = 0;
   }
 
   Future<void> _init() async {
@@ -340,6 +349,16 @@ class _CheckInScreenState extends State<CheckInScreen>
     try {
       await controller.startImageStream(_onCameraImage);
       _isStreamActive = true;
+      final isFirst = _isFirstStreamStart;
+      _isFirstStreamStart = false;
+      _analysisArmedAt = DateTime.now().add(
+        isFirst ? _firstPositioningWindow : _postCaptureSettle,
+      );
+      _angleHoldFrames = 0;
+      _smileHoldFrames = 0;
+      if (isFirst && mounted) {
+        setState(() => _statusMessage = _positioningMessage);
+      }
     } catch (e) {
       debugPrint('Image stream start failed: $e');
       if (mounted) {
@@ -448,6 +467,20 @@ class _CheckInScreenState extends State<CheckInScreen>
     _processingFrame = true;
 
     try {
+      final armedAt = _analysisArmedAt;
+      if (armedAt != null && now.isBefore(armedAt)) {
+        if (mounted) {
+          setState(() {
+            _angleHoldFrames = 0;
+            _smileHoldFrames = 0;
+            if (_currentChallengeIndex == 0 && !_challengeResults[0]) {
+              _statusMessage = _positioningMessage;
+            }
+          });
+        }
+        return;
+      }
+
       final controller = _cameraController!;
       final inputImage = CameraInputImage.fromCameraImage(image, controller);
       if (inputImage == null) {
@@ -457,6 +490,7 @@ class _CheckInScreenState extends State<CheckInScreen>
             _faceDetected = false;
             _facePlacedCorrectly = false;
             _angleHoldFrames = 0;
+            _smileHoldFrames = 0;
             _statusMessage =
                 'Camera format not supported — close and reopen check-in';
           });
@@ -473,6 +507,7 @@ class _CheckInScreenState extends State<CheckInScreen>
           _faceDetected = false;
           _facePlacedCorrectly = false;
           _angleHoldFrames = 0;
+          _smileHoldFrames = 0;
           _statusMessage = 'Position your face in the guide';
         });
       } else if (faces.length > 1) {
@@ -480,6 +515,7 @@ class _CheckInScreenState extends State<CheckInScreen>
           _faceDetected = false;
           _facePlacedCorrectly = false;
           _angleHoldFrames = 0;
+          _smileHoldFrames = 0;
           _statusMessage = 'Only one face should be visible';
         });
       } else {
@@ -492,6 +528,7 @@ class _CheckInScreenState extends State<CheckInScreen>
             _facePlacedCorrectly = false;
             _angleHoldFrames = 0;
             _blinkPhase = _BlinkPhase.waitingOpen;
+            _smileHoldFrames = 0;
             _statusMessage =
                 'Place your face correctly inside the face guide';
           });
@@ -526,8 +563,17 @@ class _CheckInScreenState extends State<CheckInScreen>
             'Look straight at the camera');
         break;
       case ChallengeType.smile:
-        passed = _faceService.isSmiling(face);
-        if (!passed) setState(() => _statusMessage = 'Smile! 😄');
+        if (_faceService.isSmiling(face)) {
+          _smileHoldFrames++;
+          if (_smileHoldFrames >= _requiredSmileHoldFrames) {
+            passed = true;
+          } else {
+            setState(() => _statusMessage = 'Hold that smile...');
+          }
+        } else {
+          _smileHoldFrames = 0;
+          setState(() => _statusMessage = 'Smile! 😄');
+        }
         break;
       case ChallengeType.blink:
         _handleBlinkChallenge(face);
@@ -634,9 +680,11 @@ class _CheckInScreenState extends State<CheckInScreen>
       _currentChallengeIndex++;
       _progress = _currentChallengeIndex / _challenges.length;
       _angleHoldFrames = 0;
+      _smileHoldFrames = 0;
       _blinkPhase = _BlinkPhase.waitingOpen;
       _statusMessage = 'Checking identity...';
     });
+    _analysisArmedAt = DateTime.now().add(_postCaptureSettle);
 
     _progressAnimationStart = _animatedProgress;
     _progressAnim.forward(from: 0);

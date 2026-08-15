@@ -5,6 +5,7 @@ class AllDealerLists {
     required this.fertilizer,
     required this.liveBird,
     required this.wastage,
+    this.zones = const [],
   });
 
   final List<DealerListItem> egg;
@@ -12,6 +13,7 @@ class AllDealerLists {
   final List<DealerListItem> fertilizer;
   final List<DealerListItem> liveBird;
   final List<DealerListItem> wastage;
+  final List<DealerZone> zones;
 
   factory AllDealerLists.fromJson(Map<String, dynamic> json) {
     return AllDealerLists(
@@ -20,6 +22,7 @@ class AllDealerLists {
       fertilizer: _parse(json['fertilizerDealList']),
       liveBird: _parse(json['liveBirdDealList']),
       wastage: _parse(json['wastageDealList']),
+      zones: _parseZones(json['zoneList']),
     );
   }
 
@@ -85,6 +88,39 @@ class AllDealerLists {
         .map((e) => DealerListItem.fromJson(Map<String, dynamic>.from(e)))
         .toList();
   }
+
+  static List<DealerZone> _parseZones(Object? value) {
+    if (value is! List) return const [];
+    return value
+        .whereType<Map>()
+        .map((e) => DealerZone.fromJson(Map<String, dynamic>.from(e)))
+        .where((z) => z.id > 0)
+        .toList();
+  }
+}
+
+class DealerZone {
+  const DealerZone({required this.id, required this.zoneName});
+
+  final int id;
+  final String zoneName;
+
+  String get searchText => '$id ${zoneName.toLowerCase()}';
+
+  factory DealerZone.fromJson(Map<String, dynamic> json) {
+    return DealerZone(
+      id: _toInt(json['id']),
+      zoneName: json['zoneName']?.toString() ??
+          json['name']?.toString() ??
+          'Zone ${json['id']}',
+    );
+  }
+
+  @override
+  bool operator ==(Object other) => other is DealerZone && other.id == id;
+
+  @override
+  int get hashCode => id.hashCode;
 }
 
 class DealerListItem {

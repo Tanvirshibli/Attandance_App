@@ -42,7 +42,13 @@ class _FaceRegistrationScreenState extends State<FaceRegistrationScreen>
   // ---- Registration progress ----
   int _currentCapture = 0; // 0-based index into registrationAngles
   int _angleHoldFrames = 0;
-  static const int _requiredHoldFrames = 1;
+  static const int _requiredHoldFrames = 5;
+  static const Duration _firstPositioningWindow = Duration(seconds: 2);
+  static const Duration _postCaptureSettle = Duration(milliseconds: 600);
+  static const String _positioningMessage =
+      'Position your face in the oval…';
+  DateTime? _analysisArmedAt;
+  bool _isFirstStreamStart = true;
   double _progress = 0.0;
   double _animatedProgress = 0.0;
   double _progressAnimationStart = 0.0;
@@ -163,6 +169,15 @@ class _FaceRegistrationScreenState extends State<FaceRegistrationScreen>
     try {
       await controller.startImageStream(_onCameraImage);
       _isStreamActive = true;
+      final isFirst = _isFirstStreamStart;
+      _isFirstStreamStart = false;
+      _analysisArmedAt = DateTime.now().add(
+        isFirst ? _firstPositioningWindow : _postCaptureSettle,
+      );
+      _angleHoldFrames = 0;
+      if (isFirst && mounted) {
+        setState(() => _statusMessage = _positioningMessage);
+      }
     } catch (e) {
       debugPrint('Image stream start failed: $e');
       if (mounted) {
@@ -221,6 +236,19 @@ class _FaceRegistrationScreenState extends State<FaceRegistrationScreen>
     _processingFrame = true;
 
     try {
+      final armedAt = _analysisArmedAt;
+      if (armedAt != null && now.isBefore(armedAt)) {
+        if (mounted) {
+          setState(() {
+            _angleHoldFrames = 0;
+            if (_currentCapture == 0 && !_captureResults[0]) {
+              _statusMessage = _positioningMessage;
+            }
+          });
+        }
+        return;
+      }
+
       final controller = _cameraController!;
       final frameDimensions =
           CameraInputImage.effectiveDimensions(image, controller);
@@ -306,10 +334,28 @@ class _FaceRegistrationScreenState extends State<FaceRegistrationScreen>
     }
   }
 
+  Future<void> _waitForCameraIdle({
+    Duration timeout = const Duration(seconds: 2),
+  }) async {
+    final controller = _cameraController;
+    if (controller == null || !controller.value.isInitialized) return;
+
+    final end = DateTime.now().add(timeout);
+    while (DateTime.now().isBefore(end)) {
+      if (!controller.value.isStreamingImages &&
+          !controller.value.isTakingPicture) {
+        await Future.delayed(const Duration(milliseconds: 200));
+        return;
+      }
+      await Future.delayed(const Duration(milliseconds: 40));
+    }
+  }
+
   Future<void> _captureFromCamera() async {
     await _stopImageStream();
     _isCapturing = true;
     _captureFlashAnim.forward().then((_) => _captureFlashAnim.reverse());
+    await _waitForCameraIdle();
 
     File? imageFile;
     try {
