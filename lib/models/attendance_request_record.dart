@@ -131,6 +131,63 @@ class AttendanceRequestRecord {
   String get checkInText => _formatTime(requestedInTime) ?? '--';
   String get checkOutText => _formatTime(requestedOutTime) ?? '--';
 
+  static bool datesOnSameCalendarDay(DateTime a, DateTime b) {
+    return a.year == b.year && a.month == b.month && a.day == b.day;
+  }
+
+  /// Hours worked on [onDay]. If in/out fall on different calendar days,
+  /// wall-clock times are rebased onto [onDay] so a leftover yesterday in-punch
+  /// plus today's out does not add 24 hours. Open shift uses [now] as end.
+  double? workedHoursOnDay(DateTime onDay, {DateTime? now}) {
+    return hoursWorkedOnDay(
+      inRaw: requestedInTime,
+      outRaw: requestedOutTime,
+      onDay: onDay,
+      now: now,
+    );
+  }
+
+  static double? hoursWorkedOnDay({
+    required String? inRaw,
+    String? outRaw,
+    required DateTime onDay,
+    DateTime? now,
+  }) {
+    final inTime = parseFlexibleDateTime(inRaw);
+    if (inTime == null) return null;
+    final outTime = parseFlexibleDateTime(outRaw) ?? now;
+    if (outTime == null) return null;
+
+    var start = inTime;
+    var end = outTime;
+    final day = DateTime(onDay.year, onDay.month, onDay.day);
+    final startDay = DateTime(start.year, start.month, start.day);
+    final endDay = DateTime(end.year, end.month, end.day);
+    if (!datesOnSameCalendarDay(startDay, endDay)) {
+      start = DateTime(
+        day.year,
+        day.month,
+        day.day,
+        start.hour,
+        start.minute,
+        start.second,
+      );
+      end = DateTime(
+        day.year,
+        day.month,
+        day.day,
+        end.hour,
+        end.minute,
+        end.second,
+      );
+      if (!end.isAfter(start)) {
+        end = end.add(const Duration(days: 1));
+      }
+    }
+    if (end.isBefore(start)) return null;
+    return end.difference(start).inMinutes / 60.0;
+  }
+
   Map<String, dynamic> toTileRecord() {
     return {
       'id': id,

@@ -228,12 +228,17 @@ class AttendanceRequestService {
   }
 
   /// Collapse same-day rows (earliest in, latest out).
-  AttendanceRequestRecord mergeRecords(List<AttendanceRequestRecord> group) {
+  /// When [preferDay] is set, in/out timestamps on that calendar day win
+  /// over punches from adjacent days that also matched the group.
+  AttendanceRequestRecord mergeRecords(
+    List<AttendanceRequestRecord> group, {
+    DateTime? preferDay,
+  }) {
     if (group.isEmpty) {
       throw ArgumentError.value(group, 'group', 'must not be empty');
     }
     if (group.length == 1) return group.first;
-    return _mergeDayGroup(group);
+    return _mergeDayGroup(group, preferDay: preferDay);
   }
 
   /// Best today row: all records matching [today] merged into one span.
@@ -245,7 +250,7 @@ class AttendanceRequestService {
         records.where((record) => record.matchesCalendarDay(today)).toList();
     if (todayRows.isEmpty) return null;
     if (todayRows.length == 1) return todayRows.first;
-    return mergeRecords(todayRows);
+    return mergeRecords(todayRows, preferDay: today);
   }
 
   /// One display row per calendar day: earliest in, latest out, prefer non-rejected.
@@ -272,7 +277,7 @@ class AttendanceRequestService {
         merged.add(group.first);
         continue;
       }
-      merged.add(_mergeDayGroup(group));
+      merged.add(_mergeDayGroup(group, preferDay: group.first.effectiveCalendarDay));
     }
 
     merged.sort((a, b) {
@@ -288,11 +293,18 @@ class AttendanceRequestService {
     return merged;
   }
 
-  AttendanceRequestRecord _mergeDayGroup(List<AttendanceRequestRecord> group) {
+  AttendanceRequestRecord _mergeDayGroup(
+    List<AttendanceRequestRecord> group, {
+    DateTime? preferDay,
+  }) {
     DateTime? earliestIn;
     String? earliestInRaw;
+    DateTime? earliestInOnDay;
+    String? earliestInOnDayRaw;
     DateTime? latestOut;
     String? latestOutRaw;
+    DateTime? latestOutOnDay;
+    String? latestOutOnDayRaw;
     var anyRejected = true;
     var maxId = 0;
     String attDate = group.first.attDate;
@@ -307,6 +319,11 @@ class AttendanceRequestService {
     String? createdAt;
     final deviceTypes = <String>{};
 
+    bool onPreferredDay(DateTime parsed) {
+      if (preferDay == null) return false;
+      return AttendanceRequestRecord.datesOnSameCalendarDay(parsed, preferDay);
+    }
+
     for (final r in group) {
       if (r.id > maxId) maxId = r.id;
       if (r.attDate.isNotEmpty) attDate = r.attDate;
@@ -317,18 +334,30 @@ class AttendanceRequestService {
 
       final inParsed =
           AttendanceRequestRecord.parseFlexibleDateTime(r.requestedInTime);
-      if (inParsed != null &&
-          (earliestIn == null || inParsed.isBefore(earliestIn))) {
-        earliestIn = inParsed;
-        earliestInRaw = r.requestedInTime;
+      if (inParsed != null) {
+        if (earliestIn == null || inParsed.isBefore(earliestIn)) {
+          earliestIn = inParsed;
+          earliestInRaw = r.requestedInTime;
+        }
+        if (onPreferredDay(inParsed) &&
+            (earliestInOnDay == null || inParsed.isBefore(earliestInOnDay))) {
+          earliestInOnDay = inParsed;
+          earliestInOnDayRaw = r.requestedInTime;
+        }
       }
 
       final outParsed =
           AttendanceRequestRecord.parseFlexibleDateTime(r.requestedOutTime);
-      if (outParsed != null &&
-          (latestOut == null || outParsed.isAfter(latestOut))) {
-        latestOut = outParsed;
-        latestOutRaw = r.requestedOutTime;
+      if (outParsed != null) {
+        if (latestOut == null || outParsed.isAfter(latestOut)) {
+          latestOut = outParsed;
+          latestOutRaw = r.requestedOutTime;
+        }
+        if (onPreferredDay(outParsed) &&
+            (latestOutOnDay == null || outParsed.isAfter(latestOutOnDay))) {
+          latestOutOnDay = outParsed;
+          latestOutOnDayRaw = r.requestedOutTime;
+        }
       }
 
       workflowStage ??= r.workflowStage;
@@ -372,8 +401,8 @@ class AttendanceRequestService {
       attDate: attDate,
       requestType: requestType,
       status: status,
-      requestedInTime: earliestInRaw,
-      requestedOutTime: latestOutRaw,
+      requestedInTime: earliestInOnDayRaw ?? earliestInRaw,
+      requestedOutTime: latestOutOnDayRaw ?? latestOutRaw,
       deviceType: deviceType,
       workflowStage: workflowStage,
       supervisorStatus: supervisorStatus,

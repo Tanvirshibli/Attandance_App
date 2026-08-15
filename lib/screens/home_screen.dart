@@ -166,18 +166,24 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       if (todayRecord == null) {
         todayRecord = _lastLocalTodayRecord;
       } else if (!todayRecord.hasCheckIn && _lastLocalTodayRecord!.hasCheckIn) {
-        todayRecord = _attendanceRequestService.mergeRecords([
-          _lastLocalTodayRecord!,
-          todayRecord,
-        ]);
+        todayRecord = _attendanceRequestService.mergeRecords(
+          [
+            _lastLocalTodayRecord!,
+            todayRecord,
+          ],
+          preferDay: today,
+        );
       } else if (_isRecentLocalPunch() &&
           _lastLocalTodayRecord!.hasCheckOut &&
           todayRecord.hasCheckIn &&
           !todayRecord.hasCheckOut) {
-        todayRecord = _attendanceRequestService.mergeRecords([
-          _lastLocalTodayRecord!,
-          todayRecord,
-        ]);
+        todayRecord = _attendanceRequestService.mergeRecords(
+          [
+            _lastLocalTodayRecord!,
+            todayRecord,
+          ],
+          preferDay: today,
+        );
       } else if (todayRecord.hasCheckIn &&
           !todayRecord.hasCheckOut &&
           _lastLocalTodayRecord!.hasCheckOut) {
@@ -245,10 +251,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final existingToday =
         _attendanceRequestService.resolveTodayRecord(updated, today);
     if (existingToday != null) {
-      final merged = _attendanceRequestService.mergeRecords([
-        existingToday,
-        punched,
-      ]);
+      final merged = _attendanceRequestService.mergeRecords(
+        [
+          existingToday,
+          punched,
+        ],
+        preferDay: today,
+      );
       final idx = updated.indexWhere((record) => record.matchesCalendarDay(today));
       if (idx >= 0) {
         updated[idx] = merged;
@@ -312,14 +321,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   String _computeTodayHours(AttendanceRequestRecord? todayRecord) {
     if (todayRecord == null) return '--';
-    final inTime =
-        AttendanceRequestRecord.parseFlexibleDateTime(todayRecord.requestedInTime);
-    final outTime =
-        AttendanceRequestRecord.parseFlexibleDateTime(todayRecord.requestedOutTime);
-    if (inTime == null) return '--';
-    final end = outTime ?? DateTime.now();
-    if (end.isBefore(inTime)) return '--';
-    final hours = end.difference(inTime).inMinutes / 60.0;
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final hours = todayRecord.workedHoursOnDay(today, now: now);
+    if (hours == null) return '--';
     return hours.toStringAsFixed(1);
   }
 
@@ -335,14 +340,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       final diff = day.difference(monday).inDays;
       if (diff < 0 || diff > 6) continue;
 
-      final inTime =
-          AttendanceRequestRecord.parseFlexibleDateTime(record.requestedInTime);
-      final outTime =
-          AttendanceRequestRecord.parseFlexibleDateTime(record.requestedOutTime);
-      if (inTime == null) continue;
-      final end = outTime ?? now;
-      if (end.isBefore(inTime)) continue;
-      hours[diff] += end.difference(inTime).inMinutes / 60.0;
+      final dayHours = record.workedHoursOnDay(day, now: now);
+      if (dayHours == null) continue;
+      hours[diff] += dayHours;
     }
     return hours;
   }

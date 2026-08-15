@@ -118,4 +118,36 @@ void main() {
       expect(record.canPunchCheckOut, isFalse);
     });
   });
+
+  group('AttendanceRequestRecord workedHoursOnDay', () {
+    test('rebases cross-day in/out onto the target day (not 27.6h)', () {
+      const record = AttendanceRequestRecord(
+        id: 9,
+        attDate: '2026-08-15',
+        requestType: 'self_punch',
+        status: 'requested',
+        requestedInTime: '2026-08-14 10:43:00',
+        requestedOutTime: '2026-08-15 14:21:00',
+      );
+
+      final hours = record.workedHoursOnDay(DateTime(2026, 8, 15));
+      expect(hours, isNotNull);
+      expect(hours!.toStringAsFixed(1), '3.6');
+    });
+
+    test('same-day 10:43 to 14:21 is 3.6h', () {
+      const record = AttendanceRequestRecord(
+        id: 10,
+        attDate: '2026-08-15',
+        requestType: 'self_punch',
+        status: 'requested',
+        requestedInTime: '2026-08-15 10:43:00',
+        requestedOutTime: '2026-08-15 14:21:00',
+      );
+
+      final hours = record.workedHoursOnDay(DateTime(2026, 8, 15));
+      expect(hours, isNotNull);
+      expect(hours!.toStringAsFixed(1), '3.6');
+    });
+  });
 }

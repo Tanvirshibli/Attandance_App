@@ -134,5 +134,38 @@ void main() {
       expect(apiInOnly.canPunchCheckOut, isTrue);
       expect(apiInOnly.isDayComplete, isFalse);
     });
+
+    test('merge prefers in/out timestamps on the target calendar day', () {
+      final today = DateTime(2026, 8, 15);
+      const yesterdayIn = AttendanceRequestRecord(
+        id: 50,
+        attDate: '2026-08-15',
+        requestType: 'zkteco_daily_span',
+        status: 'requested',
+        requestedInTime: '2026-08-14 10:43:00',
+        deviceType: 'zkteco',
+      );
+      const todaySpan = AttendanceRequestRecord(
+        id: 51,
+        attDate: '2026-08-15',
+        requestType: 'self_punch',
+        status: 'requested',
+        requestedInTime: '2026-08-15 10:43:00',
+        requestedOutTime: '2026-08-15 14:21:00',
+        deviceType: 'android',
+      );
+
+      final merged = service.mergeRecords(
+        [yesterdayIn, todaySpan],
+        preferDay: today,
+      );
+
+      expect(merged.requestedInTime, '2026-08-15 10:43:00');
+      expect(merged.requestedOutTime, '2026-08-15 14:21:00');
+      expect(
+        merged.workedHoursOnDay(today)!.toStringAsFixed(1),
+        '3.6',
+      );
+    });
   });
 }
