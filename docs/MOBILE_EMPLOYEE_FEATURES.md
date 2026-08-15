@@ -1,6 +1,6 @@
 # Mobile Employee Features (v2.2.0)
 
-Last updated: August 12, 2026
+Last updated: August 15, 2026
 
 This document describes the employee self-service modules in **Attandance_App**. HRM/ZKTeco APIs are wired where available. **Sales Info reporting and Post Sale create are live** when demo flags are off. **Auth-wise payment report and receive** use the sales host when `payment.enabled` is on. HRM loan/payslip screens still demo by default (see [SALES_AND_PAYMENTS_API_CONTRACT.md](SALES_AND_PAYMENTS_API_CONTRACT.md)).
 
@@ -87,7 +87,7 @@ Handoff for backend teams: **[SALES_AND_PAYMENTS_API_CONTRACT.md](SALES_AND_PAYM
 - Module tabs: Egg | Feed | Fertilizer | Chicks | Live Bird | Cull Bird
 - Per module: summary, Products / Dealers / Sectors, line details
 - **Post sale / booking** FAB opens a sheet:
-  - **Post booking** (`PostBookingScreen`) — Feed vs Chicks layouts matching sales web create pages: booking point, feed category cascade, Sale/Sample, dealer (feed list), booking-money + advance, multi-line products, Discount / Flat Discount, chicks zone + multi-delivery. POST `booking-person-books` with `Sale`/`Sample` and `Discount`/`Flat Discount`.
+  - **Post booking** (`PostBookingScreen`) — Feed vs Chicks layouts matching sales web create pages: booking point, feed category cascade, Sale/Sample, dealer (feed list), booking-money + advance, multi-line products, Discount / Flat Discount, chicks **Zone** dropdown from `GET /api/all-dealer-lists` `data.zoneList` (POSTs `cZoneId`) + multi-delivery. POST `booking-person-books` with `Sale`/`Sample` and `Discount`/`Flat Discount`.
   - **Post sale** (`PostSaleScreen`) — egg / fertilizer / live bird / cull bird order form (`sales-person-sales`).
 - Receive payment (`PostAuthWisePaymentScreen`) matches the sales web create page: Payment For, rec type, cascading dealer/employee receiver, invoice type, payment mode extras, ADD queue, SAVE. POST maps `paymentMode` 1–8, `paymentType` = bank id, `paymentFor` = type list, dealer vs `employeeId` receivers.
 - Force reporting demo: `--dart-define=USE_SALES_DEMO_DATA=true`
@@ -108,11 +108,24 @@ Handoff for backend teams: **[SALES_AND_PAYMENTS_API_CONTRACT.md](SALES_AND_PAYM
 - ZKTeco `/api/v1/mobile/marketing/*` including `visits/{id}/check-in|check-out` (no JWT); flag `marketing.enabled`
 - See [FARM_DEALER_MOBILE.md](FARM_DEALER_MOBILE.md) for endpoint keys and payloads
 
+### Post booking Zone dropdown (v2.2.3+44)
+
+- Chicks **Zone** is a searchable dropdown from `GET /api/all-dealer-lists` `data.zoneList` (`id`, `zoneName`); selected `id` is posted as `cZoneId`
+- No numeric Zone ID field. Product pick and submit stay blocked until a zone is selected (`Please select Zone first!`)
+- Empty `zoneList` (server not deployed yet) shows a one-line helper; chicks booking cannot be posted until the list is live
+
 ### Receive payment & Post booking UX (v2.2.3+43)
 
 - Receive payment follows the sales web create page (not the Quick Setting modal): labeled Payment For / rec type / receiver / invoice type / payment mode extras, ADD then SAVE
 - POST fields aligned with web/DB: `paymentMode` 1–8, `paymentType` = bank id, `paymentFor` = type list; dealer vs employee `receiverId`
 - Post booking is a separate screen (Feed vs Chicks); Post sale is egg/fertilizer/liveBird/cullBird only
+
+### Face capture timing (v2.2.3+45)
+
+- Registration and check-in ignore auto-capture for **2 seconds** after the camera opens so the user can aim (`Position your face in the oval/guide`)
+- Target angles must be held for **5 frames (~1 s)**; smile needs **3 consecutive** smiling frames
+- Missing ML Kit Euler angles are not treated as looking straight
+- 0.6 s settle after each registration capture / check-in challenge before the next auto-capture can fire
 
 ### Face check-in & registration (v2.2.3+33)
 

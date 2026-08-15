@@ -21,6 +21,10 @@
 >
 > July 9, 2026 dual-device attendance: Home/History use ZKTeco-primary list merged with HRM JWT (one row per day). Machine and android punches both show. ZKTeco backend merges same-day machine-in + android-out onto one `new_attendance_requests` row (`device_type` may become `mixed`).
 
+> August 15, 2026 face capture timing: Registration and check-in wait **2 seconds** for the user to position the camera, then require a **~1 s (5-frame)** hold before auto-capture. Missing Euler pose is not treated as looking straight. See `docs/MOBILE_EMPLOYEE_FEATURES.md`.
+>
+> August 15, 2026 chicks Zone: Post Booking → Chicks uses a searchable Zone dropdown from `GET /api/all-dealer-lists` `data.zoneList` and POSTs `cZoneId`. No numeric fallback. See `docs/SALES_AND_PAYMENTS_API_CONTRACT.md`.
+>
 > August 13, 2026 sales UX: Receive payment and Post booking screens match the sales web create pages (dropdowns, show/hide, ADD/SAVE queue, feed vs chicks layouts). POST mapping aligned with web/DB. See `docs/SALES_AND_PAYMENTS_API_CONTRACT.md`.
 >
 > August 12, 2026 OTA update: Forced over-the-air updates via GitHub ([ciphercall/rocket-launcher](https://github.com/ciphercall/rocket-launcher)). `UpdateGate` → `AppUpdateService` → manifest + Release APK download. Publish with `PUBLISH-OTA-UPDATE.cmd`. Full details: `docs/OTA_UPDATES.md`.
@@ -288,11 +292,11 @@ Manifest URL baked at build time from `rocket launcher/config/github.env` → `U
 
 | Challenge | Detection Method | Criteria |
 |---|---|---|
-| **Look Straight** | `isTargetAngle(face, FaceAngle.straight)` | \|yaw\| < 14° AND \|pitch\| < 14°, held for 2 frames (~1.4s) |
-| **Smile** | `isSmiling(face)` | `smilingProbability ≥ 55%` |
+| **Look Straight** | `isTargetAngle(face, FaceAngle.straight)` | Non-null yaw/pitch, \|yaw\| < 14° AND \|pitch\| < 14°, held for 5 frames (~1 s). First challenge waits 2 s for positioning. |
+| **Smile** | `isSmiling(face)` | `smilingProbability ≥ 55%` for **3 consecutive** frames |
 | **Blink** | State machine: eyes open → eyes closed → eyes open | `leftEyeOpenProbability` + `rightEyeOpenProbability` thresholds |
-| **Turn Left** | `isTargetAngle(face, FaceAngle.left)` | yaw in [15°, 55°], held for 2 frames |
-| **Turn Right** | `isTargetAngle(face, FaceAngle.right)` | yaw in [-55°, -15°], held for 2 frames |
+| **Turn Left** | `isTargetAngle(face, FaceAngle.left)` | yaw in [15°, 55°], held for 5 frames (~1 s) |
+| **Turn Right** | `isTargetAngle(face, FaceAngle.right)` | yaw in [-55°, -15°], held for 5 frames (~1 s) |
 
 #### Face-Path Progress Animation
 
@@ -308,8 +312,8 @@ Manifest URL baked at build time from `rocket launcher/config/github.env` → `U
 |---|---|
 | **State** | `StatefulWidget` with `TickerProviderStateMixin` |
 | **Camera** | Live front-camera preview using `camera` package in normal non-mirrored orientation, with face-shaped guide and progress ring |
-| **Flow** | Delete old registration → Auto-detect angle 1 (straight) → Auto-capture → Angle 2 (left) → ... → Angle 5 (down) → Done |
-| **Angle Detection** | Live `startImageStream` (~4–5 FPS, Android NV21) → placement gate (rotation-aware frame dimensions + ±35% centering) → `isTargetAngle(face, targetAngle)`. Strict quality only on final `takePicture()` capture. When target angle is held for 1 frame, auto-captures. Preview uses `ResolutionPreset.medium`. |
+| **Flow** | Delete old registration → **2 s positioning window** → Auto-detect angle 1 (straight) with ~1 s hold → Auto-capture → Angle 2 (left) → ... → Angle 5 (down) → Done |
+| **Angle Detection** | Live `startImageStream` (~4–5 FPS, Android NV21) → 2 s first-open positioning (0.6 s after each capture) → placement gate (rotation-aware frame dimensions + ±35% centering) → `isTargetAngle(face, targetAngle)` (straight requires non-null Euler). Strict quality only on final `takePicture()` capture. Target angle held for **5 frames (~1 s)**, then camera-idle wait before JPEG. Preview uses `ResolutionPreset.medium`. |
 | **5 Angles** | Straight (\|yaw\|<14, \|pitch\|<14), Left (yaw 15–55°), Right (yaw -55– -15°), Up (pitch 9–45°), Down (pitch -70– -6°) |
 | **Same-Person** | Each new embedding checked against all previous captures via cosine similarity ≥ 65% |
 | **Quality** | Every step is pre-validated in live analysis (`checkFrontCamera` placement + `checkFaceQuality`) before angle hold/capture. Capture-time validation still runs via `registerFaceCapture()` pipeline. |
@@ -425,12 +429,12 @@ The face recognition pipeline is implemented entirely on-device in `FaceRecognit
 
 ```
 Live Camera Preview (front, non-mirrored, startImageStream ~4–5 FPS)
+  → 2 s positioning window on first open (0.6 s settle after each capture)
   → ML Kit Face Detection — live: fast mode, minFaceSize 0.12; final still: accurate mode, minFaceSize 0.15
     → Placement Gate: face must be centered and correctly sized in guide (orientation-aware width/height fallback)
-    → Live Quality Gate: quality checks must pass before step progression
-    → Angle Detection: isTargetAngle(face, targetAngle)
-    → Must hold target angle for 2 frames (~1.4s)
-    → Auto-capture when angle matches
+    → Angle Detection: isTargetAngle(face, targetAngle); straight requires non-null yaw and pitch
+    → Must hold target angle for 5 frames (~1 s)
+    → Camera-idle wait, then auto-capture JPEG
     → Reject if 0 faces or >1 face
     → Front Camera Validation (face ratio ≥ 6%; centering required for straight capture, relaxed for non-straight captures)
     → Face Quality Check (size, centering, eyes open; rotation checks SKIPPED for non-straight angles)
@@ -449,13 +453,14 @@ Live Camera Preview (front, non-mirrored, startImageStream ~4–5 FPS)
 ```
 Live Camera Preview (front, face-shaped container, non-mirrored display)
   → Live stream frame analysis (~4–5 FPS; fast detector for guidance)
+  → 2 s positioning window on first open (0.6 s settle after each challenge / stream restart)
   → Placement Gate: face must be centered and correctly sized in face guide (orientation-aware width/height fallback)
   → Randomized Liveness Challenges (dynamic, up to 5):
-    1. Look Straight — isTargetAngle(straight), hold 2 frames
-    2. Smile — smilingProbability ≥ 55%
+    1. Look Straight — isTargetAngle(straight), non-null Euler, hold 5 frames (~1 s)
+    2. Smile — smilingProbability ≥ 55% for 3 consecutive frames
     3. Blink — state machine: eyes open → closed → open
-    4. Turn Left — isTargetAngle(left), hold 2 frames
-    5. Turn Right — isTargetAngle(right), hold 2 frames
+    4. Turn Left — isTargetAngle(left), hold 5 frames
+    5. Turn Right — isTargetAngle(right), hold 5 frames
   → Clockwise face-path progress ring fills as accepted steps complete
   → After at least 2 completed challenges: early `verifyFace()` attempt (up to 2 image captures)
     → If matched: skip remaining challenges, show completion tick, continue to GPS
@@ -938,7 +943,7 @@ The current stack uses **ML Kit for detection** and **MobileFaceNet for identity
 - Front camera preview with face-shaped overlay (`_FaceOvalOverlayPainter`) plus animated face-path progress ring (`_FaceRegistrationProgressPainter`).
 - Live `startImageStream` (~4–5 FPS, NV21 on Android) for angle detection; `takePicture()` only on auto-capture.
 - Each step is gated by placement before angle hold; strict quality runs at capture time only.
-- Auto-captures when target angle is held for 2 frames (~1.4s) for improved capture clarity.
+- Auto-captures when target angle is held for **5 frames (~1 s)** after a **2 s** first-open positioning window (0.6 s settle between captures). Straight pose requires non-null Euler angles.
 - Step indicator dots (5), capture flash animation, completion overlay.
 - Same-person validation between captures (cosine similarity ≥ 65%).
 - Different-person alert dialog.

@@ -199,7 +199,7 @@ After publishing build **N**:
 3. Phone on build **N−1**: cold start → update screen → download → install → Profile shows **N**
 4. Phone on build **N**: cold start → app enters normally
 
-**Verified on real device:** August 12, 2026 — v40 → v41 OTA test successful. Later builds: v41 → v42. **v2.2.3+43** = Receive payment + Post booking UX (sales web create-page layouts).
+**Verified on real device:** August 12, 2026 — v40 → v41 OTA test successful. Later builds: v41 → v42. **v2.2.3+43** = Receive payment + Post booking UX (sales web create-page layouts). **v2.2.3+44** = Post Booking chicks Zone dropdown from `all-dealer-lists` `zoneList`. **v2.2.3+45** = Face registration/check-in 2 s positioning window + ~1 s hold before auto-capture.
 
 ---
 

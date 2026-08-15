@@ -1,6 +1,6 @@
 # Sales & Payments API Contract (Android Attandance_App)
 
-**Last updated:** July 28, 2026  
+**Last updated:** August 15, 2026  
 **Audience:** External sales backend team · pphl_erp (HRM) · ZKTeco Mobile App API admins  
 **App:** `Attandance_App` (Flutter)  
 **Status:** **Sales Info reporting and Post Sale create are live** against `https://sales.peoplesitsolution.online` when `USE_SALES_DEMO_DATA=false` (default). **Auth-wise payment POST** is live when `payment.enabled` is on. HRM loan/payslip screens still demo by default (`USE_PAYMENT_DEMO_DATA=true`).
@@ -243,9 +243,9 @@ The app now parses the full payload (not only companies/sectors used by Farm cre
 | Module | Lists used on Post booking |
 | --- | --- |
 | `feed` | `categoryList`, `subCategoryList`, `childCategoryList` (filter by `subCategoryId`), `salesPointList` (booking point), `productDailyPriceList` (product + category/sub/child + `tradePrice`) |
-| `chicks` | `sectorList` (hatchery booking point), `productList` (`sectorId`, `productId`, names, `closingBalance`); `zoneList` / `cZoneList` if present |
+| `chicks` | `sectorList` (hatchery booking point), `productList` (`sectorId`, `productId`, names, `closingBalance`) |
 
-Subcategory rows have no parent category id — products are filtered using ids on `productDailyPriceList`. Chicks create UI has no category cascade; the POST still requires `categoryId` / `subCategoryId` / `childCategoryId`, which the app auto-fills from form-data (prefer a category named like Chicks). Zones and chicks-price quotations are not on this endpoint; zone is a required numeric field when no zone list is returned.
+Subcategory rows have no parent category id — products are filtered using ids on `productDailyPriceList`. Chicks create UI has no category cascade; the POST still requires `categoryId` / `subCategoryId` / `childCategoryId`, which the app auto-fills from form-data (prefer a category named like Chicks). Chicks **Zone** is not taken from this endpoint — see `data.zoneList` on `GET /api/all-dealer-lists` (section C.3). Product pick and submit stay blocked until a zone is selected (`Please select Zone first!`).
 
 ### A.3 Errors
 
@@ -514,13 +514,15 @@ App config key: `payment.setupData`.
 
 **App mapping (v2.2.3+43):** Payment For → `paymentFor`; Payment Mode enum → `paymentMode` 1–8; Payment Type (bank) → `paymentType`; Dealer receiver → dealer id; Employee receiver → `employeeList[].employeeId`. Banks cannot be split cash/mobile (setup-data has no `isCash` / `isMobileBanking`).
 
-### C.3 All dealer lists (Post sale dropdown)
+### C.3 All dealer lists (Post sale / Post booking Zone)
 
 `GET {SALES_API_BASE_URL}/api/all-dealer-lists` — **no auth**.
 
 App config key: `sales.allDealers`.
 
-**Success shape:** `data.eggDealList`, `feedDealList`, `fertilizerDealList`, `liveBirdDealList`, `wastageDealList` — each item includes `id`, `tradeName`, `dealerCode`, `zoneName`, etc.
+**Success shape:** `data.eggDealList`, `feedDealList`, `fertilizerDealList`, `liveBirdDealList`, `wastageDealList` — each item includes `id`, `tradeName`, `dealerCode`, `zoneName`, etc. Dealer rows may also include nested `zone: { id, zoneName }`; the app does not use that nested object.
+
+**`data.zoneList` (v2.2.3+44):** array of `{ "id": 11, "zoneName": "Live Bird (Dhaka)" }`. Post Booking → Chicks shows a searchable **Zone** dropdown from this list and POSTs the selected `id` as `cZoneId`. There is no numeric Zone ID fallback. Until the sales server deploys `zoneList`, the dropdown is empty and chicks booking cannot be posted.
 
 **Module → list (app):** Post sale: `egg` → egg; `fertilizer` → fertilizer; `liveBird` / `cullBird` → liveBird. Post booking (feed and chicks): **feed** list (`feedDealList` already includes Feed / Feed And Chicks / Chicks). Receive payment dealers cascade from Payment For the same way (Egg, Feed/Chicks, Fertilizer, Live/Cull Bird, Wastage).
 
