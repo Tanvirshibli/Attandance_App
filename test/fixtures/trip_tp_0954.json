@@ -1,0 +1,139 @@
+{
+  "success": true,
+  "message": "App trip data loaded successfully.",
+  "data": [
+    {
+      "id": 954,
+      "tripCode": "TP-0954",
+      "tripType": "company",
+      "tripTitle": "Mono Feedmill to Hazigong",
+      "startDateTime": "2026-07-10T08:04:05.000000Z",
+      "unloadDateTime": null,
+      "loadPoints": [
+        { "id": 134, "area_name_en": "Mono Feedmill" }
+      ],
+      "unloadPoints": [
+        { "id": 259, "area_name_en": "Hazigong" }
+      ],
+      "vehicle": {
+        "vehicleArrangement": "ownVehicle",
+        "vehicle": {
+          "id": 78,
+          "tVehicleNo": "DM-U-11-6231",
+          "numberPlate": "DM-U-11-6231"
+        },
+        "odometerStart": "46351.000",
+        "odometerEnd": null,
+        "tank_capacity": "248.00",
+        "opening_fuel_qty": "248.00",
+        "opening_fuel_is_full": true,
+        "driver": {
+          "id": 253,
+          "employeeId": 1896,
+          "employeeName": "Md. Mursalin Mursalin (emp-1896)"
+        },
+        "helper": {
+          "id": 254,
+          "employeeId": 1924,
+          "employeeName": "Md. Hasan (emp-1924)"
+        }
+      },
+      "cargo": {
+        "goods": "feed",
+        "qty": "14000.000",
+        "unit": { "id": 1, "name": "Pcs" }
+      },
+      "customer": {
+        "customerName": "Modina Po:",
+        "referencePhone": "01705304573",
+        "customerBillSummary": { "totalAmount": 14500 }
+      },
+      "suppliers": [
+        {
+          "id": 986,
+          "tradeName": "Peoples PPHL (Mahabubur Rahman",
+          "amount": "1500.00",
+          "status": "pending",
+          "date": "2026-07-10"
+        }
+      ],
+      "tripPoints": [
+        {
+          "id": 970,
+          "area": { "id": 134, "area_name_en": "Mono Feedmill" },
+          "point_type": "load",
+          "loadUnloadSequence": 1,
+          "reach_time": "2026-07-10 14:04:05",
+          "leave_time": "2026-07-10 14:34:05",
+          "note": "Loaded goods from Area 134",
+          "status": "active"
+        }
+      ],
+      "expenses": [],
+      "tripFuelDetails": [
+        {
+          "id": 238,
+          "voucher_no": "OFD2607238",
+          "fuel_date": "2026-07-12",
+          "fuel_qty": 2,
+          "unit_price": 144,
+          "total_amount": 288,
+          "source_type": "external_pump",
+          "status": "pending",
+          "fuel": { "id": 2, "fuel_name": "Diesel" }
+        }
+      ],
+      "fuelCalculation": {
+        "trip_fuel_consumed_qty": "0.00",
+        "trip_fuel_total_cost": "0.00",
+        "trip_km": "0.00",
+        "avg_mileage": "0.0000",
+        "fuel_calc_method": "full_to_full"
+      },
+      "suspenseIssues": [
+        {
+          "id": 921,
+          "voucher_number": "TSI26070921",
+          "issue_date": "2026-07-10",
+          "advance_amount": "1.00",
+          "payment_method": "cash",
+          "purpose": "trip advance",
+          "status": "pending"
+        }
+      ],
+      "totals": {
+        "supplierAmount": 1500,
+        "incomeAmount": 0,
+        "customerBillAmount": 14500,
+        "expenseAmount": 0,
+        "advanceAmount": 1,
+        "outSidefuelQty": 2,
+        "outSidefuelAmount": 288
+      },
+      "note": "commercial feed",
+      "status": "draft"
+    }
+  ],
+  "links": {
+    "first": "https://transport.peoplesitsolution.online/api/get-trips-list?page=1",
+    "last": "https://transport.peoplesitsolution.online/api/get-trips-list?page=5",
+    "prev": null,
+    "next": "https://transport.peoplesitsolution.online/api/get-trips-list?page=2"
+  },
+  "meta": {
+    "current_page": 1,
+    "from": 1,
+    "last_page": 5,
+    "per_page": 200,
+    "to": 200,
+    "total": 897,
+    "totalStatus": {
+      "all": 897,
+      "archived": 12,
+      "draft": 40,
+      "inTransit": 3,
+      "cancelled": 2,
+      "delivered": 840
+    }
+  }
+}
