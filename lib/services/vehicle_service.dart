@@ -114,4 +114,69 @@ class VehicleService {
       return ApiResult.fail('Network error: $error');
     }
   }
+
+  Future<ApiResult<TripListPage>> getTrips({
+    int page = 1,
+    int? vehicleId,
+  }) async {
+    if (!await isVehicleEnabled()) {
+      return ApiResult.fail('feature_disabled');
+    }
+
+    final base = (await _configService.resolveUrl('vehicle.trips')) ??
+        '${AppConfig.transportApiBaseUrl.trim().replaceAll(RegExp(r'/+$'), '')}/api/get-trips-list';
+
+    final params = <String, String>{'page': '$page'};
+    if (vehicleId != null && vehicleId > 0) {
+      params['vehicle_id'] = '$vehicleId';
+    }
+
+    final uri = Uri.parse(base).replace(queryParameters: params);
+
+    try {
+      final response = await http
+          .get(
+            uri,
+            headers: {
+              'Accept': 'application/json',
+              'User-Agent': 'PPHLAttendance/2.2 (Android; Flutter)',
+            },
+          )
+          .timeout(const Duration(seconds: 45));
+
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        return ApiResult.fail(
+          'Could not load trips (${response.statusCode}).',
+        );
+      }
+
+      final decoded = jsonDecode(response.body);
+      if (decoded is! Map) {
+        return ApiResult.fail('Invalid trips response.');
+      }
+      final map = Map<String, dynamic>.from(decoded);
+      if (map['success'] == false) {
+        return ApiResult.fail(
+          map['message']?.toString() ?? 'Could not load trips.',
+        );
+      }
+
+      var pageData = TripListPage.fromJson(map);
+      if (vehicleId != null && vehicleId > 0) {
+        pageData = TripListPage(
+          trips: pageData.trips
+              .where((t) => t.involvesVehicle(vehicleId))
+              .toList(),
+          currentPage: pageData.currentPage,
+          lastPage: pageData.lastPage,
+          total: pageData.total,
+          message: pageData.message,
+          statusCounts: pageData.statusCounts,
+        );
+      }
+      return ApiResult.ok(pageData);
+    } catch (error) {
+      return ApiResult.fail('Network error: $error');
+    }
+  }
 }

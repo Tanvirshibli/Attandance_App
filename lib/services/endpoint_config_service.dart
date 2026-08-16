@@ -269,6 +269,11 @@ class EndpointConfigService {
           url: '$transport/api/get-vehicle-m-history',
           backend: 'transport',
         ),
+        'vehicle.trips': EndpointDefinition(
+          method: 'GET',
+          url: '$transport/api/get-trips-list',
+          backend: 'transport',
+        ),
         'marketing.markets': ep(
           'GET',
           '/api/v1/mobile/marketing/markets',
