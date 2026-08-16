@@ -8,7 +8,7 @@ import '../services/vehicle_service.dart';
 import '../widgets/api_empty_state.dart';
 import '../widgets/gradient_screen_header.dart';
 import '../widgets/section_card.dart';
-import 'vehicle_detail_screen.dart';
+import 'vehicle_hub_screen.dart';
 
 class VehicleListScreen extends StatefulWidget {
   const VehicleListScreen({super.key});
@@ -75,7 +75,7 @@ class _VehicleListScreenState extends State<VehicleListScreen> {
             const SliverToBoxAdapter(
               child: GradientScreenHeader(
                 title: 'Vehicles',
-                subtitle: 'Active fleet & maintenance',
+                subtitle: 'Active fleet',
               ),
             ),
             if (_isLoading)
@@ -119,7 +119,8 @@ class _VehicleListScreenState extends State<VehicleListScreen> {
                     child: ApiEmptyState(
                       icon: Icons.directions_car_outlined,
                       title: 'No active vehicles',
-                      subtitle: 'Active vehicles will appear here when available.',
+                      subtitle:
+                          'Active vehicles will appear here when available.',
                     ),
                   ),
                 ),
@@ -140,9 +141,8 @@ class _VehicleListScreenState extends State<VehicleListScreen> {
                             child: InkWell(
                               onTap: () => Navigator.of(context).push(
                                 MaterialPageRoute(
-                                  builder: (_) => VehicleDetailScreen(
-                                    vehicle: vehicle,
-                                  ),
+                                  builder: (_) =>
+                                      VehicleHubScreen(vehicle: vehicle),
                                 ),
                               ),
                               borderRadius: BorderRadius.circular(20),
@@ -184,7 +184,9 @@ class _VehicleListScreenState extends State<VehicleListScreen> {
                                               color: AppColors.textSecondary,
                                             ),
                                           ),
-                                          if (vehicle.tVehicleNo.trim().isNotEmpty &&
+                                          if (vehicle.tVehicleNo
+                                                  .trim()
+                                                  .isNotEmpty &&
                                               vehicle.tVehicleNo.trim() !=
                                                   vehicle.displayPlate)
                                             Text(
@@ -197,7 +199,7 @@ class _VehicleListScreenState extends State<VehicleListScreen> {
                                         ],
                                       ),
                                     ),
-                                    Icon(
+                                    const Icon(
                                       Icons.chevron_right_rounded,
                                       color: AppColors.textHint,
                                     ),
