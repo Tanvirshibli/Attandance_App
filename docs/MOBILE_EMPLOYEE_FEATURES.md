@@ -1,6 +1,6 @@
 # Mobile Employee Features (v2.2.0)
 
-Last updated: August 15, 2026
+Last updated: August 16, 2026
 
 This document describes the employee self-service modules in **Attandance_App**. HRM/ZKTeco APIs are wired where available. **Sales Info reporting and Post Sale create are live** when demo flags are off. **Auth-wise payment report and receive** use the sales host when `payment.enabled` is on. HRM loan/payslip screens still demo by default (see [SALES_AND_PAYMENTS_API_CONTRACT.md](SALES_AND_PAYMENTS_API_CONTRACT.md)).
 
@@ -25,7 +25,7 @@ On **every cold start and when returning from background**, the app checks notif
 - Payments (dealer auth-wise report + receive payment — live when `payment.enabled`)
 - HR Benefits (payslips, loans, PF, mess, compensation, post payment — demo by default)
 - Sales Info (live overall + module breakdown; Post sale with searchable dealer list)
-- Vehicles (active fleet list + maintenance history)
+- Vehicles (fleet list → Maintenance / Trips per vehicle; unfiltered)
 - Farm & Dealer (field collection: dealers, farms, visits, surveys, follow-ups)
 - Geo Tracking (status only — no on/off toggle; auto-enabled after first-launch permissions)
 
@@ -64,6 +64,7 @@ Geo tracking turns on automatically once these are granted (`GeoTrackingService.
 | Auth-wise payments | Sales host `GET /api/auth-wise-payments/{employeeId}?from_date=&to_date=` (no auth) | **Live** (requires ZKTeco `payment.enabled=true`) |
 | Vehicles list | Transport `GET /api/get-vehicle-active-list` (no auth) | **Live** (requires ZKTeco `vehicle.enabled=true`) |
 | Vehicle maintenance | Transport `GET /api/get-vehicle-m-history/{id}` (no auth) | **Live** |
+| Vehicle trips | Transport `GET /api/get-trips-list` (no auth; `vehicle_id` query + client filter) | **Live** |
 | Farm & Dealer (marketing) | ZKTeco `/api/v1/mobile/marketing/*` (no JWT; `employee_id` = `canonicalEmployeeId`) | **Wired** (requires `marketing.enabled=true`) |
 | Post sale / booking | Sales `POST /api/sales-person-sales` (egg, fertilizer, liveBird, cullBird) or `POST /api/booking-person-books` (feed, chicks) | **Live** when `USE_SALES_DEMO_DATA=false`; dealers from `GET /api/all-dealer-lists`; booking masters from `GET /api/booking-person-books/form-data` |
 | Auth-wise payment post | Sales `POST /api/auth-wise-payments` (form-data, `payments[]` ADD/SAVE queue) | **Live** when `payment.enabled=true`; setup from `GET /api/payment-setup-data`; dealers from `GET /api/all-dealer-lists` |
@@ -95,10 +96,12 @@ Handoff for backend teams: **[SALES_AND_PAYMENTS_API_CONTRACT.md](SALES_AND_PAYM
 
 ### Vehicles (live)
 
-- Services tile → active vehicle list (`numberPlate` / `tVehicleNo`, purchase date)
-- Tap vehicle → maintenance history (job title, status, costs, workshop, expandable parts)
+- Services tile **Vehicles** → full active fleet (`GET /api/get-vehicle-active-list`); header **Vehicles** / “Active fleet”
+- Tap a vehicle → hub with **Maintenance** and **Trips** (no employee filter)
+- Maintenance: `GET /api/get-vehicle-m-history/{id}` (jobs, parts, costs)
+- Trips: `GET /api/get-trips-list` paginated, filtered to this vehicle (`vehicle_id` query + client-side). Chips: All, In transit, Delivered, Draft, Cancelled, Archived. Tap a trip → detail from the same object
 - Host: `https://transport.peoplesitsolution.online` (override `--dart-define=TRANSPORT_API_BASE_URL=...`)
-- Requires ZKTeco `vehicle.enabled=true`
+- Requires ZKTeco `vehicle.enabled=true`. See [VEHICLES_API.md](VEHICLES_API.md)
 
 ### Farm & Dealer (marketing)
 
@@ -119,6 +122,15 @@ Handoff for backend teams: **[SALES_AND_PAYMENTS_API_CONTRACT.md](SALES_AND_PAYM
 - Receive payment follows the sales web create page (not the Quick Setting modal): labeled Payment For / rec type / receiver / invoice type / payment mode extras, ADD then SAVE
 - POST fields aligned with web/DB: `paymentMode` 1–8, `paymentType` = bank id, `paymentFor` = type list; dealer vs employee `receiverId`
 - Post booking is a separate screen (Feed vs Chicks); Post sale is egg/fertilizer/liveBird/cullBird only
+
+### Vehicles fleet hub (v2.2.3+48)
+
+- Services → **Vehicles** is the full active fleet again. Tap a vehicle → **Maintenance** or **Trips** (unfiltered by logged-in user)
+- Trips for that vehicle still come from `GET /api/get-trips-list` (client-filter by vehicle id)
+
+### Vehicles trip list (v2.2.3+47)
+
+- Services → **Vehicles** was briefly a trip list from Transport `GET /api/get-trips-list` (driver/helper = me). Replaced in **+48** by the fleet hub.
 
 ### Home Hours same-day duration (v2.2.3+46)
 
