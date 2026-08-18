@@ -1,6 +1,6 @@
 # Mobile Employee Features (v2.2.0)
 
-Last updated: August 16, 2026
+Last updated: August 18, 2026
 
 This document describes the employee self-service modules in **Attandance_App**. HRM/ZKTeco APIs are wired where available. **Sales Info reporting and Post Sale create are live** when demo flags are off. **Auth-wise payment report and receive** use the sales host when `payment.enabled` is on. HRM loan/payslip screens still demo by default (see [SALES_AND_PAYMENTS_API_CONTRACT.md](SALES_AND_PAYMENTS_API_CONTRACT.md)).
 
@@ -27,7 +27,7 @@ On **every cold start and when returning from background**, the app checks notif
 - Sales Info (live overall + module breakdown; Post sale with searchable dealer list)
 - Vehicles (fleet list → Maintenance / Trips per vehicle; unfiltered)
 - Farm & Dealer (field collection: dealers, farms, visits, surveys, follow-ups)
-- Geo Tracking (status only — no on/off toggle; auto-enabled after first-launch permissions)
+- Geo Tracking (status only — no on/off toggle; auto-enabled after first-launch permissions, richer map layers)
 
 ---
 
@@ -166,10 +166,12 @@ Handoff for backend teams: **[SALES_AND_PAYMENTS_API_CONTRACT.md](SALES_AND_PAYM
 - Arm's-length framing accepted during live guidance; strict quality only on final verify/register still
 - Early check-in verify uses single embedding pass; final match keeps robust 4-variant embedding
 
-### Geo map (v2.2.3+25)
+### Geo map (v2.2.3+50)
 
-- **Carto Voyager** tiles (street/place labels) with default zoom **17** live / **15** history
-- Zoom **+ / −** controls beside recenter on Geo Tracking map
+- Geo Tracking now includes a layer switcher inside the mini map
+- **Standard** = OpenStreetMap DE, **Detailed** = CyclOSM, **Satellite** = Esri World Imagery
+- Default zoom remains **17** live / **15** history
+- Zoom **+ / −** controls and recenter are still available beside the map
 
 ### Payments hub (v2.3)
 

@@ -21,6 +21,8 @@
 >
 > July 9, 2026 dual-device attendance: Home/History use ZKTeco-primary list merged with HRM JWT (one row per day). Machine and android punches both show. ZKTeco backend merges same-day machine-in + android-out onto one `new_attendance_requests` row (`device_type` may become `mixed`).
 
+> August 18, 2026 geo map refresh: Geo Tracking keeps `flutter_map` but now offers **Standard**, **Detailed**, and **Satellite** layers from public tile providers, giving users a richer Google-Maps-like view without requiring a Google Maps API key.
+>
 > August 16, 2026 Vehicles: Services → Vehicles lists the full active fleet. Tap a vehicle for **Maintenance** or **Trips** (unfiltered by logged-in user). See `docs/VEHICLES_API.md`.
 >
 > August 15, 2026 Home Hours: today/weekly duration uses same-calendar-day wall-clock times (`workedHoursOnDay`). A leftover yesterday in-punch plus today’s out no longer adds 24 hours (e.g. 10:43–14:21 shows **3.6** not **27.6**). Merge prefers punches on the target day.
@@ -748,7 +750,7 @@ android:label="PPHL Attendance"
 | `camera` | ^0.11.1 | Live camera preview for face scanning & registration |
 | `geolocator` | ^14.0.2 | GPS coordinates |
 | `geocoding` | ^4.0.0 | Reverse geocoding (coords → address) |
-| `flutter_map` | ^8.1.1 | Live OpenStreetMap on Geo Tracking |
+| `flutter_map` | ^8.1.1 | Live geo map with switchable Standard / Detailed / Satellite tile layers |
 | `latlong2` | ^0.9.1 | Map coordinates |
 | `permission_handler` | ^12.0.1 | Runtime permission requests |
 | `google_mlkit_face_detection` | ^0.13.2 | On-device face detection with landmarks + classification |
@@ -922,7 +924,7 @@ The current stack uses **ML Kit for detection** and **MobileFaceNet for identity
 ### Auth / geo reliability
 - `AuthService.refreshToken()` + `HrmApiClient` 401 retry.
 - Geo ongoing notification via `GeoNotificationService`; FCM wake is active in `FcmWakeHandler` when Firebase is configured (`google-services.json`).
-- `GeoTrackingScreen` uses `LiveLocationMap` (Carto Voyager / `flutter_map`, zoom 17/15, +/- controls) for a live GPS view with history pins; status card only (no on/off toggle) — tracking auto-enables after first-launch permissions / login.
+- `GeoTrackingScreen` uses `LiveLocationMap` (`flutter_map`, zoom 17/15, +/- controls, map-style switcher) for a live GPS view with history pins. Users can switch between Standard, Detailed, and Satellite layers; status card only (no on/off toggle) — tracking auto-enables after first-launch permissions / login.
 
 ### `lib/screens/home_screen.dart` (545 lines)
 - Dashboard with gradient header, stats row (4 StatCards), clock-in card (navigates to CheckInScreen), weekly bar chart, recent attendance list.

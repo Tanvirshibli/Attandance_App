@@ -1,6 +1,6 @@
 # OTA (Over-The-Air) Updates — PPHL Attendance App
 
-Last updated: August 16, 2026
+Last updated: August 18, 2026
 
 Production OTA uses **GitHub** (public repo + GitHub Releases). There is **no Cloudinary** or HRM server involved in APK hosting.
 
@@ -199,7 +199,7 @@ After publishing build **N**:
 3. Phone on build **N−1**: cold start → update screen → download → install → Profile shows **N**
 4. Phone on build **N**: cold start → app enters normally
 
-**Verified on real device:** August 12, 2026 — v40 → v41 OTA test successful. Later builds: v41 → v42. **v2.2.3+43** = Receive payment + Post booking UX (sales web create-page layouts). **v2.2.3+44** = Post Booking chicks Zone dropdown from `all-dealer-lists` `zoneList`. **v2.2.3+45** = Face registration/check-in 2 s positioning window + ~1 s hold before auto-capture. **v2.2.3+46** = Home Hours same-day duration (fix 24h extra). **v2.2.3+47** = Vehicles trip list from `get-trips-list`. **v2.2.3+48** = Vehicles fleet list, then Maintenance and Trips per vehicle.
+**Verified on real device:** August 12, 2026 — v40 → v41 OTA test successful. Later builds: v41 → v42. **v2.2.3+43** = Receive payment + Post booking UX (sales web create-page layouts). **v2.2.3+44** = Post Booking chicks Zone dropdown from `all-dealer-lists` `zoneList`. **v2.2.3+45** = Face registration/check-in 2 s positioning window + ~1 s hold before auto-capture. **v2.2.3+46** = Home Hours same-day duration (fix 24h extra). **v2.2.3+47** = Vehicles trip list from `get-trips-list`. **v2.2.3+48** = Vehicles fleet list, then Maintenance and Trips per vehicle. **v2.2.3+50** = Geo Tracking map layer switcher with richer Standard / Detailed / Satellite tiles.
 
 ---
 

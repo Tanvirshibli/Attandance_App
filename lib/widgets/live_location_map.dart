@@ -5,6 +5,41 @@ import 'package:latlong2/latlong.dart';
 import '../config/theme.dart';
 import '../models/geo_ping.dart';
 
+enum MapTileStyle {
+  standard(
+    label: 'Standard',
+    icon: Icons.map_outlined,
+    urlTemplate: 'https://tile.openstreetmap.de/tiles/osmde/{z}/{x}/{y}.png',
+    attribution: '© OpenStreetMap contributors · OSM DE',
+  ),
+  detailed(
+    label: 'Detailed',
+    icon: Icons.terrain_rounded,
+    urlTemplate:
+        'https://c.tile-cyclosm.openstreetmap.fr/cyclosm/{z}/{x}/{y}.png',
+    attribution: '© OpenStreetMap contributors · CyclOSM',
+  ),
+  satellite(
+    label: 'Satellite',
+    icon: Icons.satellite_alt_outlined,
+    urlTemplate:
+        'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+    attribution: 'Source: Esri, Maxar, Earthstar Geographics',
+  );
+
+  const MapTileStyle({
+    required this.label,
+    required this.icon,
+    required this.urlTemplate,
+    required this.attribution,
+  });
+
+  final String label;
+  final IconData icon;
+  final String urlTemplate;
+  final String attribution;
+}
+
 /// OpenStreetMap live location panel used by Geo Tracking.
 class LiveLocationMap extends StatefulWidget {
   const LiveLocationMap({
@@ -34,6 +69,7 @@ class LiveLocationMapState extends State<LiveLocationMap> {
   final MapController _controller = MapController();
   bool _followLive = true;
   bool _hasCenteredOnce = false;
+  MapTileStyle _tileStyle = MapTileStyle.standard;
 
   @override
   void dispose() {
@@ -127,9 +163,7 @@ class LiveLocationMapState extends State<LiveLocationMap> {
                 ),
                 children: [
                   TileLayer(
-                    urlTemplate:
-                        'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png',
-                    subdomains: const ['a', 'b', 'c', 'd'],
+                    urlTemplate: _tileStyle.urlTemplate,
                     userAgentPackageName: 'com.pphl.employee_attendance',
                     maxNativeZoom: 19,
                   ),
@@ -201,6 +235,78 @@ class LiveLocationMapState extends State<LiveLocationMap> {
                 ],
               ),
               Positioned(
+                left: 12,
+                top: 12,
+                child: Material(
+                  color: Colors.white.withValues(alpha: 0.96),
+                  elevation: 4,
+                  shadowColor: AppColors.shadow.withValues(alpha: 0.18),
+                  borderRadius: BorderRadius.circular(16),
+                  child: PopupMenuButton<MapTileStyle>(
+                    tooltip: 'Map style',
+                    initialValue: _tileStyle,
+                    onSelected: (style) {
+                      if (style == _tileStyle) return;
+                      setState(() => _tileStyle = style);
+                    },
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    itemBuilder: (context) {
+                      return MapTileStyle.values.map((style) {
+                        return PopupMenuItem<MapTileStyle>(
+                          value: style,
+                          child: Row(
+                            children: [
+                              Icon(
+                                style.icon,
+                                size: 18,
+                                color: style == _tileStyle
+                                    ? AppColors.primary
+                                    : AppColors.textSecondary,
+                              ),
+                              const SizedBox(width: 10),
+                              Text(style.label),
+                            ],
+                          ),
+                        );
+                      }).toList();
+                    },
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 10,
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            _tileStyle.icon,
+                            color: AppColors.primary,
+                            size: 18,
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            _tileStyle.label,
+                            style: const TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: AppColors.textPrimary,
+                            ),
+                          ),
+                          const SizedBox(width: 4),
+                          const Icon(
+                            Icons.expand_more_rounded,
+                            color: AppColors.textSecondary,
+                            size: 18,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              Positioned(
                 left: 0,
                 right: 0,
                 bottom: 0,
@@ -220,7 +326,7 @@ class LiveLocationMapState extends State<LiveLocationMap> {
                       ),
                     ),
                     child: Text(
-                      '© OpenStreetMap · © CARTO',
+                      _tileStyle.attribution,
                       style: TextStyle(
                         fontSize: 10,
                         color: Colors.white.withValues(alpha: 0.9),
@@ -299,7 +405,7 @@ class LiveLocationMapState extends State<LiveLocationMap> {
               if (live == null)
                 Positioned(
                   left: 12,
-                  top: 12,
+                  top: 60,
                   right: 56,
                   child: Container(
                     padding: const EdgeInsets.symmetric(
