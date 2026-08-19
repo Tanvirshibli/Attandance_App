@@ -47,12 +47,18 @@ class LiveLocationMap extends StatefulWidget {
     this.accuracyMeters,
     this.history = const [],
     this.height = 300,
+    this.expand = false,
+    this.isFullscreen = false,
+    this.onToggleFullscreen,
   });
 
   final LatLng? livePosition;
   final double? accuracyMeters;
   final List<GeoPing> history;
   final double height;
+  final bool expand;
+  final bool isFullscreen;
+  final VoidCallback? onToggleFullscreen;
 
   /// Dhaka fallback when no GPS / last ping is available.
   static const LatLng fallbackCenter = LatLng(23.8103, 90.4125);
@@ -225,9 +231,9 @@ class LiveLocationMapState extends State<LiveLocationMap> {
     final live = widget.livePosition;
 
     return ClipRRect(
-      borderRadius: BorderRadius.circular(24),
+      borderRadius: BorderRadius.circular(widget.isFullscreen ? 0 : 24),
       child: SizedBox(
-        height: widget.height,
+        height: widget.expand ? double.infinity : widget.height,
         width: double.infinity,
         child: DecoratedBox(
           decoration: BoxDecoration(
@@ -376,6 +382,29 @@ class LiveLocationMapState extends State<LiveLocationMap> {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
+                    if (widget.onToggleFullscreen != null) ...[
+                      Material(
+                        color: Colors.white,
+                        elevation: 4,
+                        shadowColor: AppColors.shadow.withValues(alpha: 0.25),
+                        borderRadius: BorderRadius.circular(14),
+                        child: InkWell(
+                          onTap: widget.onToggleFullscreen,
+                          borderRadius: BorderRadius.circular(14),
+                          child: Padding(
+                            padding: const EdgeInsets.all(12),
+                            child: Icon(
+                              widget.isFullscreen
+                                  ? Icons.fullscreen_exit_rounded
+                                  : Icons.fullscreen_rounded,
+                              color: AppColors.textSecondary,
+                              size: 22,
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                    ],
                     Material(
                       color: Colors.white,
                       elevation: 4,

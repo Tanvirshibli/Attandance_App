@@ -40,6 +40,7 @@ class _GeoTrackingScreenState extends State<GeoTrackingScreen> {
   LatLng? _livePosition;
   double? _accuracyMeters;
   StreamSubscription<Position>? _positionSub;
+  bool _mapFullscreen = false;
 
   @override
   void initState() {
@@ -155,9 +156,42 @@ class _GeoTrackingScreenState extends State<GeoTrackingScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppColors.background,
-      body: CustomScrollView(
+    return PopScope(
+      canPop: !_mapFullscreen,
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop || !_mapFullscreen) return;
+        setState(() => _mapFullscreen = false);
+      },
+      child: Scaffold(
+        backgroundColor: AppColors.background,
+        body: _mapFullscreen ? _fullscreenMap() : _scrollBody(),
+      ),
+    );
+  }
+
+  Widget _mapPanel({required bool expand}) {
+    return LiveLocationMap(
+      key: _mapKey,
+      livePosition: _livePosition,
+      accuracyMeters: _accuracyMeters,
+      history: _history,
+      height: 300,
+      expand: expand,
+      isFullscreen: _mapFullscreen,
+      onToggleFullscreen: () {
+        setState(() => _mapFullscreen = !_mapFullscreen);
+      },
+    );
+  }
+
+  Widget _fullscreenMap() {
+    return SafeArea(
+      child: SizedBox.expand(child: _mapPanel(expand: true)),
+    );
+  }
+
+  Widget _scrollBody() {
+    return CustomScrollView(
         physics: const BouncingScrollPhysics(),
         slivers: [
           SliverToBoxAdapter(
@@ -171,13 +205,7 @@ class _GeoTrackingScreenState extends State<GeoTrackingScreen> {
             sliver: SliverList(
               delegate: SliverChildListDelegate([
                 if (_needsLocationPermission) _permissionBanner(),
-                LiveLocationMap(
-                  key: _mapKey,
-                  livePosition: _livePosition,
-                  accuracyMeters: _accuracyMeters,
-                  history: _history,
-                  height: 300,
-                ),
+                _mapPanel(expand: false),
                 const SizedBox(height: 14),
                 _trackingCard(),
                 const SizedBox(height: 12),
@@ -212,8 +240,7 @@ class _GeoTrackingScreenState extends State<GeoTrackingScreen> {
             ),
           ),
         ],
-      ),
-    );
+      );
   }
 
   Widget _permissionBanner() {
