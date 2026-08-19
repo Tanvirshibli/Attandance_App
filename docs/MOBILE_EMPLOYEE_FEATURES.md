@@ -138,6 +138,11 @@ Handoff for backend teams: **[SALES_AND_PAYMENTS_API_CONTRACT.md](SALES_AND_PAYM
 - `mergeRecords` / `resolveTodayRecord` prefer in/out punches on the target calendar day over adjacent-day leftovers
 - Pending **Update Check Out** with a checkout time already shown is unchanged (requested days can still update out)
 
+### Face rounded frame (v2.2.3+54)
+
+- Guide is a **rounded square** with L-corners on the same rect (no oval). Fill is judged against that frame
+- Auto-capture still requires mapped height ≥ 70% of the guide and center inside a 12% inset
+
 ### Face oval fill (v2.2.3+53)
 
 - Auto-capture waits until the live face **fills the oval** (mapped height ≥ 70% of the guide, center inside a 12% inset). Front-camera preview is X-mirrored to match the box.
@@ -150,12 +155,12 @@ Handoff for backend teams: **[SALES_AND_PAYMENTS_API_CONTRACT.md](SALES_AND_PAYM
 - Live and still captures share an **8%** minimum face-area ratio; faces under **10%** are not acceptable; live faces over **55%** are too close
 - Missing camera frame size **fails closed** (no auto-capture)
 - Check-in smile/blink require a **straight** pose before JPEG verify
-- Shared `FaceCaptureStage`: full camera preview with a dimmed oval (check-in no longer clips the preview to the face path)
+- Shared `FaceCaptureStage`: full camera preview with a dimmed rounded-square frame (check-in no longer clips the preview to a face path)
 - Missing or corrupt 192-dim templates prompt re-registration on Home, Check-in, and Profile (login is not blocked)
 
 ### Face capture timing (v2.2.3+45)
 
-- Registration and check-in ignore auto-capture for **2 seconds** after the camera opens so the user can aim (`Position your face in the oval/guide`)
+- Registration and check-in ignore auto-capture for **2 seconds** after the camera opens so the user can aim (`Position your face in the guide`)
 - Target angles must be held for **5 frames (~1 s)**; smile needs **3 consecutive** smiling frames
 - Missing ML Kit Euler angles are not treated as looking straight
 - 0.6 s settle after each registration capture / check-in challenge before the next auto-capture can fire
@@ -178,7 +183,7 @@ Handoff for backend teams: **[SALES_AND_PAYMENTS_API_CONTRACT.md](SALES_AND_PAYM
 - Successful punch auto-returns to Home after ~1.5s (or **Done**) with the punched record; Home refreshes from API after optimistic merge
 - Live camera uses **image stream** (~5 FPS) with **NV21** on Android and **device-orientation-aware** ML Kit rotation
 - Registration live path matches check-in: **placement + angle hold only**; strict quality runs on final `takePicture()` capture
-- Live framing must **fill the oval** (≥ 70% of guide height, plus ≥ 16% of the camera image); a distant face cannot look “in frame” because the preview is no longer clipped
+- Live framing must **fill the rounded-square frame** (≥ 70% of guide height, plus ≥ 16% of the camera image); a distant face cannot look “in frame” because the preview is no longer clipped
 - Early check-in verify uses single embedding pass; final match keeps robust 4-variant embedding
 
 ### Geo map (v2.2.3+51)
