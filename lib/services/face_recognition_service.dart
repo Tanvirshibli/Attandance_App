@@ -48,13 +48,20 @@ class FaceRecognitionService {
   static const double _smileThreshold = 0.55;
 
   // Minimum face-to-image area ratio for live preview and still capture.
-  static const double minAcceptableFaceRatio = 0.08;
+  static const double minAcceptableFaceRatio = 0.16;
 
   // Faces below this ratio are not acceptable even if the quality score passes.
-  static const double minPreferredFaceRatio = 0.10;
+  static const double minPreferredFaceRatio = 0.20;
 
   // Live too-close ceiling so the face is not cropped by the guide.
   static const double maxLiveFaceRatio = 0.55;
+
+  // Live centering vs full frame (oval half-width is ~0.31).
+  static const double liveCenterTolerance = 0.20;
+
+  // Still JPEG centering. Angled poses may sit slightly off-axis.
+  static const double stillCenterTolerance = 0.25;
+  static const double stillAngledCenterTolerance = 0.28;
 
   // Liveness: minimum edge sharpness score (photos-of-screens are blurrier)
   static const double _minSharpnessScore = 15.0;
@@ -356,7 +363,7 @@ class FaceRecognitionService {
         null;
   }
 
-  /// Live placement with a width/height swap fallback for rotated frames.
+  /// Live placement with a width/height swap fallback for inverted frames.
   FrontCameraCheckResult evaluateLivePlacement(
     Face face,
     int imageWidth,
@@ -367,10 +374,19 @@ class FaceRecognitionService {
       imageWidth,
       imageHeight,
       requireCentering: true,
-      centerTolerance: 0.35,
+      centerTolerance: liveCenterTolerance,
       forLiveGuidance: true,
     );
     if (primary.isFrontCamera || imageWidth == imageHeight) {
+      return primary;
+    }
+
+    final box = face.boundingBox;
+    final primaryFits =
+        box.right <= imageWidth + 1 && box.bottom <= imageHeight + 1;
+    final swappedFits =
+        box.right <= imageHeight + 1 && box.bottom <= imageWidth + 1;
+    if (primaryFits || !swappedFits) {
       return primary;
     }
 
@@ -379,7 +395,7 @@ class FaceRecognitionService {
       imageHeight,
       imageWidth,
       requireCentering: true,
-      centerTolerance: 0.35,
+      centerTolerance: liveCenterTolerance,
       forLiveGuidance: true,
     );
     return swapped.isFrontCamera ? swapped : primary;
@@ -625,6 +641,7 @@ class FaceRecognitionService {
     bool checkLivenessSmile = false,
     bool checkFrontCam = false,
     bool requireFrontCamCentering = true,
+    double? frontCamCenterTolerance,
     bool skipRotationCheck = false,
     bool robustEmbedding = true,
   }) async {
@@ -660,6 +677,7 @@ class FaceRecognitionService {
         rawImage.width,
         rawImage.height,
         requireCentering: requireFrontCamCentering,
+        centerTolerance: frontCamCenterTolerance ?? stillCenterTolerance,
       );
       if (!camCheck.isFrontCamera) {
         return EmbeddingResult(
@@ -835,13 +853,15 @@ class FaceRecognitionService {
     FaceAngle? targetAngle,
   }) async {
     // Generate embedding with quality + front camera checks (no smile required for registration)
+    final angled = targetAngle != null && targetAngle != FaceAngle.straight;
     final result = await generateEmbedding(
       imageFile,
       checkQuality: true,
       checkFrontCam: true,
-      requireFrontCamCentering:
-          targetAngle == null || targetAngle == FaceAngle.straight,
-      skipRotationCheck: targetAngle != null && targetAngle != FaceAngle.straight,
+      requireFrontCamCentering: true,
+      frontCamCenterTolerance:
+          angled ? stillAngledCenterTolerance : stillCenterTolerance,
+      skipRotationCheck: angled,
     );
 
     if (result.embedding == null) {

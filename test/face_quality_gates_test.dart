@@ -1,44 +1,48 @@
+import 'dart:math' as math;
+
 import 'package:employee_attendance/models/face_registration_data.dart';
 import 'package:employee_attendance/services/face_recognition_service.dart';
+import 'package:employee_attendance/utils/face_guide_placement.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   group('face ratio gates', () {
-    test('0.04 is too far for live and still', () {
+    test('0.08 is too far for live and still', () {
       expect(
         FaceRecognitionService.isFaceRatioAcceptable(
-          0.04,
+          0.08,
           forLiveGuidance: true,
         ),
         isFalse,
       );
       expect(
         FaceRecognitionService.isFaceRatioAcceptable(
-          0.04,
+          0.08,
           forLiveGuidance: false,
         ),
         isFalse,
       );
       expect(
         FaceRecognitionService.faceFramingIssue(
-          0.04,
+          0.08,
           forLiveGuidance: true,
         ),
         contains('closer'),
       );
     });
 
-    test('0.09 passes the live size floor', () {
+    test('0.18 passes the live size floor', () {
       expect(
         FaceRecognitionService.isFaceRatioAcceptable(
-          0.09,
+          0.18,
           forLiveGuidance: true,
         ),
         isTrue,
       );
       expect(
         FaceRecognitionService.isFaceRatioAcceptable(
-          0.09,
+          0.18,
           forLiveGuidance: false,
         ),
         isTrue,
@@ -59,6 +63,68 @@ void main() {
           forLiveGuidance: true,
         ),
         contains('too close'),
+      );
+    });
+  });
+
+  group('oval fill', () {
+    const imageSize = Size(480, 640);
+    const previewSize = Size(360, 396);
+
+    test('small centered 8% face fails fill', () {
+      const area = 0.08 * 480 * 640;
+      final side = math.sqrt(area);
+      final box = Rect.fromCenter(
+        center: const Offset(240, 320),
+        width: side,
+        height: side,
+      );
+      expect(
+        FaceGuidePlacement.issue(
+          faceBox: box,
+          imageSize: imageSize,
+          previewSize: previewSize,
+        ),
+        contains('closer'),
+      );
+    });
+
+    test('face covering about 75% of oval height passes', () {
+      const ovalHeight = 396 * 0.72;
+      const scale = 360 / 480;
+      final imageHeight = ovalHeight * 0.75 / scale;
+      final box = Rect.fromCenter(
+        center: const Offset(240, 320),
+        width: imageHeight * 0.72,
+        height: imageHeight,
+      );
+      expect(
+        FaceGuidePlacement.issue(
+          faceBox: box,
+          imageSize: imageSize,
+          previewSize: previewSize,
+        ),
+        isNull,
+      );
+    });
+
+    test('off-center large face fails center', () {
+      const ovalHeight = 396 * 0.72;
+      const scale = 360 / 480;
+      final imageHeight = ovalHeight * 0.75 / scale;
+      final box = Rect.fromLTWH(
+        0,
+        320 - imageHeight / 2,
+        imageHeight * 0.72,
+        imageHeight,
+      );
+      expect(
+        FaceGuidePlacement.issue(
+          faceBox: box,
+          imageSize: imageSize,
+          previewSize: previewSize,
+        ),
+        contains('Center'),
       );
     });
   });
