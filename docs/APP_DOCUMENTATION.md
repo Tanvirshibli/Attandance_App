@@ -21,7 +21,7 @@
 >
 > July 9, 2026 dual-device attendance: Home/History use ZKTeco-primary list merged with HRM JWT (one row per day). Machine and android punches both show. ZKTeco backend merges same-day machine-in + android-out onto one `new_attendance_requests` row (`device_type` may become `mixed`).
 
-> August 19, 2026 face capture: Auto-capture waits until the live face **fills the rounded-square frame** (height ≥ 70% of the guide, center inside a 12% inset). Image-area floor is **16%** (preferred **20%**). Live centering ±20%. Still registration always requires centering. Check-in uses a full preview with a dimmed rounded frame (not a clipped oval). Missing or corrupt 192-dim templates prompt re-registration on Home, Check-in, and Profile. Shared widget: `lib/widgets/face_capture_stage.dart`.
+> August 19, 2026 face capture: Auto-capture waits until the live face **fills the centered rounded frame** (height ≥ 70% of the guide, center inside a 12% inset). Image-area floor is **16%** (preferred **20%**). Live centering ±20%. Still registration always requires centering. Check-in uses a full preview with **one** dimmed rounded frame (not a clipped oval, not a second progress box). Missing or corrupt 192-dim templates prompt re-registration on Home, Check-in, and Profile. Shared widget: `lib/widgets/face_capture_stage.dart`.
 >
 > August 18, 2026 Google Maps: Geo Tracking uses native Google Maps (`google_maps_flutter`) with Standard, Terrain, and Hybrid Satellite layers, live marker, accuracy circle, history pins, and the same zoom/recenter controls.
 >
@@ -148,7 +148,7 @@ employee_attendance/
 │   │   ├── camera_input_image.dart
 │   │   └── face_guide_placement.dart  # Cover-map face box onto rounded frame; fill/center gate
 │   └── widgets/
-│       ├── face_capture_stage.dart    # Shared full-preview rounded frame, coaching chip, progress ring
+│       ├── face_capture_stage.dart    # Shared full-preview centered frame, coaching chip, progress stroke
 │       ├── face_oval_guide.dart       # Legacy oval overlay (unused by current capture screens)
 │       ├── stat_card.dart             # Dashboard stat card
 │       └── attendance_tile.dart       # Attendance record row
@@ -168,7 +168,7 @@ The app uses a **simple stateful widget architecture** without a state managemen
 - **Backend-synced templates** — Face embeddings live in-memory after login/profile hydrate from `face_registration_android`. Invalid (not 192 finite dims) templates are treated as unregistered.
 - **Singleton service** — `FaceRecognitionService` uses `factory` + `_internal()` pattern for a single instance across the app.
 - **On-device ML** — No network calls for face matching. ML Kit + TFLite run entirely on-device; templates are uploaded/fetched over JWT.
-- **Camera via camera package** — Uses the Flutter `camera` package for live camera preview directly within the app. Registration and check-in share `FaceCaptureStage` (full preview, dimmed rounded-square frame, coaching). Auto-capture is gated by size, centering, and hold.
+- **Camera via camera package** — Uses the Flutter `camera` package for live camera preview directly within the app. Registration and check-in share `FaceCaptureStage` (full preview, one centered dimmed rounded frame, coaching). Auto-capture is gated by size, centering, and hold.
 
 ### Data Flow
 
@@ -295,7 +295,7 @@ Manifest URL baked at build time from `rocket launcher/config/github.env` → `U
 | Phase | What Happens |
 |---|---|
 | **Initializing** | Camera + FaceRecognitionService initialization, verify face is registered |
-| **Scanning** | Live camera preview with `startImageStream` (~4–5 FPS, drop-if-busy). Placement must **fill the rounded-square frame** (mapped face height ≥ 70% of the guide) plus ≥ 16% of the image (not > 55% live) and stay centered (±20%). Missing frame size fails closed. Coaching chip shows Move closer / Move back / Center. Smile and blink require a straight pose. |
+| **Scanning** | Live camera preview with `startImageStream` (~4–5 FPS, drop-if-busy). Placement must **fill the centered rounded frame** (mapped face height ≥ 70% of the guide) plus ≥ 16% of the image (not > 55% live) and stay centered (±20%). Missing frame size fails closed. Coaching chip shows Move closer / Move back / Center. Smile and blink require a straight pose. |
 | **Verifying** | Early verification starts only after at least **2** challenges are passed (up to 2 captures). If a match is found, remaining steps are skipped; otherwise scanning continues. If all challenges are consumed, a final verification runs with up to 3 captures and best-confidence selection. |
 | **GPS** | Face verified → capture GPS coordinates via `Geolocator` (high accuracy, 15s timeout) → reverse geocode address |
 | **Success** | All steps complete → "Done ✓" button pops the screen and calls `onCheckIn` callback |
@@ -313,24 +313,24 @@ Manifest URL baked at build time from `rocket launcher/config/github.env` → `U
 
 #### Face-Path Progress Animation
 
-- Custom `_FaceScanProgressPainter` draws a clockwise progress path around a human face-shaped guide
+- `FaceGuidePainter` draws a clockwise progress stroke on the **same** centered rounded frame used for the dim cutout and L-corners
 - Progress fills in 20% increments for each accepted challenge and can jump to completion on early verification
-- Track color: white 15% opacity; progress color: `AppColors.primary` (blue) → `AppColors.success` (green) when complete
+- There is no separate faint track; progress color is `AppColors.primary` (blue) → `AppColors.success` (green) when complete
 - On 100%: `ScaleTransition` with `Curves.elasticOut` shows a green circle with checkmark icon
-- Stroke width: 5px (track) / 6px (progress path) with rounded caps/joins
+- Stroke width matches the visible frame (about 2.6–3.2px) with rounded caps/joins
 
 ### 6.5 FaceRegistrationScreen (`face_registration_screen.dart`, ~1000 lines)
 
 | Aspect | Detail |
 |---|---|
 | **State** | `StatefulWidget` with `TickerProviderStateMixin` |
-| **Camera** | Live front-camera preview using `camera` package in normal non-mirrored orientation, with face-shaped guide and progress ring |
+| **Camera** | Live front-camera preview using `camera` package in normal non-mirrored orientation, with a centered rounded frame and progress stroke |
 | **Flow** | Delete old registration → **2 s positioning window** → Auto-detect angle 1 (straight) with ~1 s hold → Auto-capture → Angle 2 (left) → ... → Angle 5 (down) → Done |
 | **Angle Detection** | Live `startImageStream` (~4–5 FPS, Android NV21) → 2 s first-open positioning (0.6 s after each capture) → frame-fill gate (Cover-mapped box + front-mirror X) then size/center (±20%) → `isTargetAngle(face, targetAngle)` (straight requires non-null Euler). Strict quality only on final `takePicture()` capture. Target angle held for **5 frames (~1 s)**, then camera-idle wait before JPEG. Preview uses `ResolutionPreset.medium`. |
 | **5 Angles** | Straight (\|yaw\|<14, \|pitch\|<14), Left (yaw 15–55°), Right (yaw -55– -15°), Up (pitch 9–45°), Down (pitch -70– -6°) |
 | **Same-Person** | Each new embedding checked against all previous captures via cosine similarity ≥ 65% |
 | **Quality** | Every step is pre-validated in live analysis (`checkFrontCamera` placement + `checkFaceQuality`) before angle hold/capture. Capture-time validation still runs via `registerFaceCapture()` pipeline. |
-| **UI** | Step indicator dots (5), camera preview with face-shaped overlay (`_FaceOvalOverlayPainter`), animated face-path progress ring (`_FaceRegistrationProgressPainter`), angle icon + instruction overlay, capture flash animation, completion overlay with green checkmark, progress list card, tips card, done button |
+| **UI** | Step indicator dots (5), camera preview with one centered rounded frame (`FaceGuidePainter`), clockwise progress on that same path, angle icon + instruction overlay, capture flash animation, completion overlay with green checkmark, progress list card, tips card, done button |
 
 ### 6.6 AttendanceHistoryScreen (`attendance_history_screen.dart`, 349 lines)
 
@@ -468,7 +468,7 @@ Live Camera Preview (front, non-mirrored, startImageStream ~4–5 FPS)
 #### Verification Pipeline (check-in with live challenges)
 
 ```
-Live Camera Preview (front, full frame with dimmed rounded-square frame)
+Live Camera Preview (front, full frame with one centered dimmed rounded frame)
   → Live stream frame analysis (~4–5 FPS; fast detector for guidance)
   → 2 s positioning window on first open (0.6 s settle after each challenge / stream restart)
   → Placement Gate: missing frame size fails closed; mapped face must fill the frame (≥ 70% frame height) and ≥ 16% of the image (not > 55% live), centered (±20%)
@@ -478,7 +478,7 @@ Live Camera Preview (front, full frame with dimmed rounded-square frame)
     3. Blink — requires straight pose, then state machine: eyes open → closed → open
     4. Turn Left — isTargetAngle(left), hold 5 frames
     5. Turn Right — isTargetAngle(right), hold 5 frames
-  → Clockwise face-path progress ring fills as accepted steps complete
+  → Clockwise progress stroke fills the same centered frame as accepted steps complete
   → After at least 2 completed challenges: early `verifyFace()` attempt (up to 2 image captures)
     → If matched: skip remaining challenges, show completion tick, continue to GPS
     → If not matched: continue with next challenge
@@ -935,7 +935,7 @@ The current stack uses **ML Kit for detection** and **MobileFaceNet for identity
 
 ### `lib/screens/check_in_screen.dart`
 - Live-camera check-in with randomized, dynamic liveness challenges (up to 5): look straight, smile, blink, turn left, turn right.
-- Full camera preview with shared `FaceCaptureStage` (dimmed rounded-square frame, L-corners, coaching chip, clockwise progress). Preview is **not** clipped to a face path.
+- Full camera preview with shared `FaceCaptureStage` (one centered dimmed rounded frame, L-corners on the rounded path, coaching chip, clockwise progress). Preview is **not** clipped to a face path.
 - Every step is gated by face placement (center/size) before challenge logic progresses; missing stream size fails closed.
 - Face-placement gate uses decoded captured-frame dimensions first, then fallback to preview dimensions; both normal and swapped width/height mappings are evaluated.
 - Check-in centering tolerance is **±20%** of the frame; frame-fill (70% of guide height) is required before a challenge can hold.
@@ -951,7 +951,7 @@ The current stack uses **ML Kit for detection** and **MobileFaceNet for identity
 
 ### `lib/screens/face_registration_screen.dart`
 - 5-angle live-camera face registration: straight, left, right, up, down.
-- Shared `FaceCaptureStage`: full preview, dimmed rounded-square cutout, L-corners, coaching chip, clockwise progress ring, step badge.
+- Shared `FaceCaptureStage`: full preview, one centered dimmed rounded cutout, L-corners on the rounded path, coaching chip, clockwise progress stroke, step badge.
 - Live `startImageStream` (~4–5 FPS, NV21 on Android) for angle detection; `takePicture()` only on auto-capture.
 - Each step is gated by placement before angle hold; missing stream size fails closed; strict quality runs at capture time only.
 - Auto-captures when target angle is held for **5 frames (~1 s)** after a **2 s** first-open positioning window (0.6 s settle between captures). Straight pose requires non-null Euler angles.
@@ -970,7 +970,7 @@ The current stack uses **ML Kit for detection** and **MobileFaceNet for identity
 - Warning when templates are missing or unreadable after hydrate.
 
 ### `lib/widgets/face_capture_stage.dart`
-- Shared full-preview camera stage for registration and check-in: dimmed outside a rounded-square frame, L-corner brackets, live coaching chip, clockwise progress ring.
+- Shared full-preview camera stage for registration and check-in: dimmed outside one centered rounded frame, L-corner brackets on that path, live coaching chip, clockwise progress stroke.
 
 ### `lib/utils/face_guide_placement.dart`
 - Maps the live ML Kit box onto the preview frame (`BoxFit.cover`, front-camera X-mirror). Capture is blocked until the face fills ~70% of frame height and the center sits in a 12% inset.

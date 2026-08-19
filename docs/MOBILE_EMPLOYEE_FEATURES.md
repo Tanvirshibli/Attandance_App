@@ -143,6 +143,11 @@ Handoff for backend teams: **[SALES_AND_PAYMENTS_API_CONTRACT.md](SALES_AND_PAYM
 - Guide is a **rounded square** with L-corners on the same rect (no oval). Fill is judged against that frame
 - Auto-capture still requires mapped height ≥ 70% of the guide and center inside a 12% inset
 
+### Face guide single frame (v2.2.3+55)
+
+- Registration and check-in show **one** centered rounded frame (dim cutout, border, L-corners, and capture progress share the same RRect)
+- The previous faint outer progress track is gone; L-corners sit on the rounded path so they do not clip the camera card
+
 ### Face oval fill (v2.2.3+53)
 
 - Auto-capture waits until the live face **fills the oval** (mapped height ≥ 70% of the guide, center inside a 12% inset). Front-camera preview is X-mirrored to match the box.
@@ -155,7 +160,7 @@ Handoff for backend teams: **[SALES_AND_PAYMENTS_API_CONTRACT.md](SALES_AND_PAYM
 - Live and still captures share an **8%** minimum face-area ratio; faces under **10%** are not acceptable; live faces over **55%** are too close
 - Missing camera frame size **fails closed** (no auto-capture)
 - Check-in smile/blink require a **straight** pose before JPEG verify
-- Shared `FaceCaptureStage`: full camera preview with a dimmed rounded-square frame (check-in no longer clips the preview to a face path)
+- Shared `FaceCaptureStage`: full camera preview with one centered dimmed rounded frame (check-in no longer clips the preview to a face path)
 - Missing or corrupt 192-dim templates prompt re-registration on Home, Check-in, and Profile (login is not blocked)
 
 ### Face capture timing (v2.2.3+45)
@@ -183,7 +188,7 @@ Handoff for backend teams: **[SALES_AND_PAYMENTS_API_CONTRACT.md](SALES_AND_PAYM
 - Successful punch auto-returns to Home after ~1.5s (or **Done**) with the punched record; Home refreshes from API after optimistic merge
 - Live camera uses **image stream** (~5 FPS) with **NV21** on Android and **device-orientation-aware** ML Kit rotation
 - Registration live path matches check-in: **placement + angle hold only**; strict quality runs on final `takePicture()` capture
-- Live framing must **fill the rounded-square frame** (≥ 70% of guide height, plus ≥ 16% of the camera image); a distant face cannot look “in frame” because the preview is no longer clipped
+- Live framing must **fill the centered rounded frame** (≥ 70% of guide height, plus ≥ 16% of the camera image); a distant face cannot look “in frame” because the preview is no longer clipped
 - Early check-in verify uses single embedding pass; final match keeps robust 4-variant embedding
 
 ### Geo map (v2.2.3+51)
