@@ -21,7 +21,7 @@
 >
 > July 9, 2026 dual-device attendance: Home/History use ZKTeco-primary list merged with HRM JWT (one row per day). Machine and android punches both show. ZKTeco backend merges same-day machine-in + android-out onto one `new_attendance_requests` row (`device_type` may become `mixed`).
 
-> August 19, 2026 face capture: Auto-capture waits until the live face **fills the centered rounded frame** (height ≥ 70% of the guide; straight center inside a 12% inset, turned poses 4%). Image-area floor is **16%** for live and still (20% is a quality penalty only). Live centering ±20%. A rejected still capture keeps its error visible for 2 seconds so the same step does not look like it restarted. Check-in uses a full preview with **one** dimmed rounded frame. Missing or corrupt 192-dim templates prompt re-registration on Home, Check-in, and Profile. Shared widget: `lib/widgets/face_capture_stage.dart`.
+> August 19, 2026 face capture: Auto-capture waits until the live face **fills the centered rounded frame** (height ≥ 70% of the guide; straight center inside a 12% inset, turned poses 4%). Image-area floor is **16%** for live and still (20% is a quality penalty only). The success tick is centered in the guide; step/coaching/status text sits above the frame. A rejected still capture keeps its error visible for 2 seconds. Missing or corrupt 192-dim templates prompt re-registration on Home, Check-in, and Profile. Shared widget: `lib/widgets/face_capture_stage.dart`.
 >
 > August 18, 2026 Google Maps: Geo Tracking uses native Google Maps (`google_maps_flutter`) with Standard, Terrain, and Hybrid Satellite layers, live marker, accuracy circle, history pins, and the same zoom/recenter controls.
 >
@@ -935,7 +935,7 @@ The current stack uses **ML Kit for detection** and **MobileFaceNet for identity
 
 ### `lib/screens/check_in_screen.dart`
 - Live-camera check-in with randomized, dynamic liveness challenges (up to 5): look straight, smile, blink, turn left, turn right.
-- Full camera preview with shared `FaceCaptureStage` (one centered dimmed rounded frame, L-corners on the rounded path, coaching chip, clockwise progress). Preview is **not** clipped to a face path.
+- Full camera preview with shared `FaceCaptureStage` (rounded frame, L-corners, success tick at guide center, coaching above the frame). Preview is **not** clipped to a face path.
 - Every step is gated by face placement (center/size) before challenge logic progresses; missing stream size fails closed.
 - Face-placement gate uses decoded captured-frame dimensions first, then fallback to preview dimensions; both normal and swapped width/height mappings are evaluated.
 - Check-in centering tolerance is **±20%** of the frame; frame-fill (70% of guide height) is required before a challenge can hold.
@@ -951,7 +951,7 @@ The current stack uses **ML Kit for detection** and **MobileFaceNet for identity
 
 ### `lib/screens/face_registration_screen.dart`
 - 5-angle live-camera face registration: straight, left, right, up, down.
-- Shared `FaceCaptureStage`: full preview, one centered dimmed rounded cutout, L-corners on the rounded path, coaching chip, clockwise progress stroke, step badge.
+- Shared `FaceCaptureStage`: full preview, rounded cutout, L-corners, success tick at guide center, step/coaching strip above the frame, clockwise progress stroke.
 - Live `startImageStream` (~4–5 FPS, NV21 on Android) for angle detection; `takePicture()` only on auto-capture.
 - Each step is gated by placement before angle hold; missing stream size fails closed; strict quality runs at capture time only.
 - Auto-captures when target angle is held for **5 frames (~1 s)** after a **2 s** first-open positioning window (0.6 s settle between captures). Straight pose requires non-null Euler angles.
@@ -970,7 +970,7 @@ The current stack uses **ML Kit for detection** and **MobileFaceNet for identity
 - Warning when templates are missing or unreadable after hydrate.
 
 ### `lib/widgets/face_capture_stage.dart`
-- Shared full-preview camera stage for registration and check-in: dimmed outside one centered rounded frame, L-corner brackets on that path, live coaching chip, clockwise progress stroke.
+- Shared full-preview camera stage for registration and check-in: dimmed outside one rounded frame, L-corner brackets on that path, success tick at the guide center, step/coaching strip above the frame, clockwise progress stroke.
 
 ### `lib/utils/face_guide_placement.dart`
 - Maps the live ML Kit box onto the preview frame (`BoxFit.cover`, front-camera X-mirror). Capture is blocked until the face fills ~70% of frame height. Straight poses use a 12% center inset; turned poses use 4%.

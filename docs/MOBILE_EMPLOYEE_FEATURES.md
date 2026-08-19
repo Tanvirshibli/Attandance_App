@@ -155,6 +155,11 @@ Handoff for backend teams: **[SALES_AND_PAYMENTS_API_CONTRACT.md](SALES_AND_PAYM
 - A rejected still capture keeps its error on screen for **2 seconds** instead of immediately repeating the angle instruction
 - Guide height is **72%** of the preview (pixel-inset so it stays inside the camera card)
 
+### Face overlay alignment (v2.2.3+57)
+
+- Success tick is pinned to the **center of the rounded guide**
+- Step badge, coaching, and check-in status sit in one horizontally centered strip **above** the guide (including GPS “Capturing location…”)
+
 ### Face oval fill (v2.2.3+53)
 
 - Auto-capture waits until the live face **fills the oval** (mapped height ≥ 70% of the guide, center inside a 12% inset). Front-camera preview is X-mirrored to match the box.
