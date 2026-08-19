@@ -69,13 +69,20 @@ void main() {
   });
 
   group('face guide geometry', () {
-    test('guide is centered inside the preview', () {
+    test('guide sits under the top overlay reserve', () {
       const preview = Size(360, 396);
       final frame = faceGuideRect(preview);
       expect(frame.center.dx, closeTo(preview.width / 2, 0.01));
-      expect(frame.center.dy, closeTo(preview.height / 2, 0.01));
-      expect(frame.top, greaterThanOrEqualTo(28));
-      expect(frame.bottom, lessThanOrEqualTo(preview.height - 28));
+      expect(frame.top, greaterThanOrEqualTo(faceGuideTopReserve - 0.01));
+      expect(frame.bottom, lessThanOrEqualTo(preview.height - faceGuideMargin));
+    });
+
+    test('tick origin is the center of the guide', () {
+      const preview = Size(360, 396);
+      final frame = faceGuideRect(preview);
+      final origin = faceGuideTickOrigin(preview);
+      expect(origin.dx + faceGuideTickSize / 2, closeTo(frame.center.dx, 0.01));
+      expect(origin.dy + faceGuideTickSize / 2, closeTo(frame.center.dy, 0.01));
     });
   });
 
@@ -143,7 +150,8 @@ void main() {
     test('70% guide fill meets the 16% still area floor', () {
       final frame = faceGuideRect(previewSize);
       const scale = 360 / 480;
-      final imageHeight = frame.height * FaceGuidePlacement.minOvalHeightFill / scale;
+      final imageHeight =
+          frame.height * (FaceGuidePlacement.minOvalHeightFill + 0.01) / scale;
       final box = Rect.fromCenter(
         center: const Offset(240, 320),
         width: imageHeight * 0.72,
