@@ -1,6 +1,7 @@
+import 'package:flutter/foundation.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_map/flutter_map.dart';
-import 'package:latlong2/latlong.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
 
 import '../config/theme.dart';
 import '../models/geo_ping.dart';
@@ -9,38 +10,36 @@ enum MapTileStyle {
   standard(
     label: 'Standard',
     icon: Icons.map_outlined,
-    urlTemplate: 'https://tile.openstreetmap.de/tiles/osmde/{z}/{x}/{y}.png',
-    attribution: '© OpenStreetMap contributors · OSM DE',
+    mapType: MapType.normal,
+    attribution: '© Google',
   ),
   detailed(
     label: 'Detailed',
     icon: Icons.terrain_rounded,
-    urlTemplate:
-        'https://c.tile-cyclosm.openstreetmap.fr/cyclosm/{z}/{x}/{y}.png',
-    attribution: '© OpenStreetMap contributors · CyclOSM',
+    mapType: MapType.terrain,
+    attribution: '© Google',
   ),
   satellite(
     label: 'Satellite',
     icon: Icons.satellite_alt_outlined,
-    urlTemplate:
-        'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
-    attribution: 'Source: Esri, Maxar, Earthstar Geographics',
+    mapType: MapType.hybrid,
+    attribution: '© Google',
   );
 
   const MapTileStyle({
     required this.label,
     required this.icon,
-    required this.urlTemplate,
+    required this.mapType,
     required this.attribution,
   });
 
   final String label;
   final IconData icon;
-  final String urlTemplate;
+  final MapType mapType;
   final String attribution;
 }
 
-/// OpenStreetMap live location panel used by Geo Tracking.
+/// Google Maps live location panel used by Geo Tracking.
 class LiveLocationMap extends StatefulWidget {
   const LiveLocationMap({
     super.key,
@@ -66,14 +65,17 @@ class LiveLocationMapState extends State<LiveLocationMap> {
   static const double _liveZoom = 17;
   static const double _historyZoom = 15;
 
-  final MapController _controller = MapController();
+  GoogleMapController? _controller;
   bool _followLive = true;
   bool _hasCenteredOnce = false;
+  bool _programmaticMove = false;
+  double _currentZoom = _historyZoom;
   MapTileStyle _tileStyle = MapTileStyle.standard;
 
   @override
   void dispose() {
-    _controller.dispose();
+    _controller?.dispose();
+    _controller = null;
     super.dispose();
   }
 
@@ -86,13 +88,13 @@ class LiveLocationMapState extends State<LiveLocationMap> {
     if (!_hasCenteredOnce) {
       _hasCenteredOnce = true;
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) _controller.move(next, _liveZoom);
+        if (mounted) _moveCamera(next, _liveZoom);
       });
       return;
     }
 
     if (_followLive && next != oldWidget.livePosition) {
-      _controller.move(next, _controller.camera.zoom);
+      _moveCamera(next, _currentZoom);
     }
   }
 
@@ -108,25 +110,119 @@ class LiveLocationMapState extends State<LiveLocationMap> {
   void recenter() {
     final target = widget.livePosition ?? _center;
     setState(() => _followLive = true);
-    _controller.move(target, widget.livePosition != null ? _liveZoom : _historyZoom);
+    _moveCamera(
+      target,
+      widget.livePosition != null ? _liveZoom : _historyZoom,
+    );
   }
 
   void moveTo(LatLng point, {double? zoom}) {
     setState(() => _followLive = false);
-    _controller.move(point, zoom ?? _liveZoom);
+    _moveCamera(point, zoom ?? _liveZoom);
   }
 
-  void _zoomBy(double delta) {
-    final camera = _controller.camera;
-    final next = (camera.zoom + delta).clamp(3.0, 19.0);
+  Future<void> _moveCamera(LatLng target, double zoom) async {
+    final controller = _controller;
+    if (controller == null) return;
+    _programmaticMove = true;
+    _currentZoom = zoom;
+    await controller.animateCamera(
+      CameraUpdate.newLatLngZoom(target, zoom),
+    );
+    Future<void>.delayed(const Duration(milliseconds: 400), () {
+      _programmaticMove = false;
+    });
+  }
+
+  Future<void> _zoomBy(double delta) async {
+    final next = (_currentZoom + delta).clamp(3.0, 20.0);
     setState(() => _followLive = false);
-    _controller.move(camera.center, next);
+    _currentZoom = next;
+    final controller = _controller;
+    if (controller == null) return;
+    _programmaticMove = true;
+    await controller.animateCamera(CameraUpdate.zoomTo(next));
+    Future<void>.delayed(const Duration(milliseconds: 400), () {
+      _programmaticMove = false;
+    });
+  }
+
+  Set<Marker> get _markers {
+    final markers = <Marker>{};
+    var index = 0;
+    for (final ping in widget.history.take(12)) {
+      markers.add(
+        Marker(
+          markerId: MarkerId('history-$index'),
+          position: LatLng(ping.latitude, ping.longitude),
+          icon: BitmapDescriptor.defaultMarkerWithHue(
+            BitmapDescriptor.hueCyan,
+          ),
+          infoWindow: InfoWindow(
+            title: ping.address ?? 'Recent ping',
+          ),
+          zIndexInt: index,
+        ),
+      );
+      index++;
+    }
+    final live = widget.livePosition;
+    if (live != null) {
+      markers.add(
+        Marker(
+          markerId: const MarkerId('live'),
+          position: live,
+          icon: BitmapDescriptor.defaultMarkerWithHue(
+            BitmapDescriptor.hueAzure,
+          ),
+          infoWindow: const InfoWindow(title: 'You'),
+          zIndexInt: 100,
+        ),
+      );
+    }
+    return markers;
+  }
+
+  Set<Circle> get _circles {
+    final live = widget.livePosition;
+    final accuracy = widget.accuracyMeters;
+    if (live == null || accuracy == null || accuracy <= 0) {
+      return const <Circle>{};
+    }
+    return {
+      Circle(
+        circleId: const CircleId('accuracy'),
+        center: live,
+        radius: accuracy.clamp(8, 120),
+        fillColor: AppColors.primary.withValues(alpha: 0.12),
+        strokeColor: AppColors.primary.withValues(alpha: 0.35),
+        strokeWidth: 2,
+      ),
+    };
+  }
+
+  void _onMapCreated(GoogleMapController controller) {
+    _controller = controller;
+    final live = widget.livePosition;
+    if (live != null) {
+      _hasCenteredOnce = true;
+      _moveCamera(live, _liveZoom);
+    }
+  }
+
+  void _onCameraMoveStarted() {
+    if (!_programmaticMove && _followLive) {
+      setState(() => _followLive = false);
+    }
+  }
+
+  void _onCameraMove(CameraPosition position) {
+    _currentZoom = position.zoom;
   }
 
   @override
   Widget build(BuildContext context) {
     final live = widget.livePosition;
-    final accuracy = widget.accuracyMeters;
 
     return ClipRRect(
       borderRadius: BorderRadius.circular(24),
@@ -145,94 +241,33 @@ class LiveLocationMapState extends State<LiveLocationMap> {
           ),
           child: Stack(
             children: [
-              FlutterMap(
-                mapController: _controller,
-                options: MapOptions(
-                  initialCenter: _center,
-                  initialZoom: live != null ? _liveZoom : _historyZoom,
-                  minZoom: 3,
-                  maxZoom: 19,
-                  onPositionChanged: (camera, hasGesture) {
-                    if (hasGesture && _followLive) {
-                      setState(() => _followLive = false);
-                    }
-                  },
-                  interactionOptions: const InteractionOptions(
-                    flags: InteractiveFlag.all & ~InteractiveFlag.rotate,
-                  ),
+              GoogleMap(
+                initialCameraPosition: CameraPosition(
+                  target: _center,
+                  zoom: live != null ? _liveZoom : _historyZoom,
                 ),
-                children: [
-                  TileLayer(
-                    urlTemplate: _tileStyle.urlTemplate,
-                    userAgentPackageName: 'com.pphl.employee_attendance',
-                    maxNativeZoom: 19,
+                mapType: _tileStyle.mapType,
+                markers: _markers,
+                circles: _circles,
+                onMapCreated: _onMapCreated,
+                onCameraMoveStarted: _onCameraMoveStarted,
+                onCameraMove: _onCameraMove,
+                minMaxZoomPreference: const MinMaxZoomPreference(3, 20),
+                compassEnabled: false,
+                rotateGesturesEnabled: false,
+                myLocationEnabled: false,
+                myLocationButtonEnabled: false,
+                zoomControlsEnabled: false,
+                mapToolbarEnabled: false,
+                buildingsEnabled: true,
+                indoorViewEnabled: true,
+                trafficEnabled: false,
+                liteModeEnabled: false,
+                gestureRecognizers: <Factory<OneSequenceGestureRecognizer>>{
+                  Factory<OneSequenceGestureRecognizer>(
+                    () => EagerGestureRecognizer(),
                   ),
-                  if (live != null && accuracy != null && accuracy > 0)
-                    CircleLayer(
-                      circles: [
-                        CircleMarker(
-                          point: live,
-                          radius: accuracy.clamp(8, 120),
-                          useRadiusInMeter: true,
-                          color: AppColors.primary.withValues(alpha: 0.12),
-                          borderColor:
-                              AppColors.primary.withValues(alpha: 0.35),
-                          borderStrokeWidth: 1.5,
-                        ),
-                      ],
-                    ),
-                  MarkerLayer(
-                    markers: [
-                      ...widget.history.take(12).map((ping) {
-                        return Marker(
-                          point: LatLng(ping.latitude, ping.longitude),
-                          width: 26,
-                          height: 26,
-                          child: Container(
-                            decoration: BoxDecoration(
-                              color: AppColors.accent.withValues(alpha: 0.92),
-                              shape: BoxShape.circle,
-                              border:
-                                  Border.all(color: Colors.white, width: 2),
-                            ),
-                            child: const Icon(
-                              Icons.place_rounded,
-                              size: 12,
-                              color: Colors.white,
-                            ),
-                          ),
-                        );
-                      }),
-                      if (live != null)
-                        Marker(
-                          point: live,
-                          width: 48,
-                          height: 48,
-                          child: Container(
-                            decoration: BoxDecoration(
-                              color: AppColors.primary,
-                              shape: BoxShape.circle,
-                              border:
-                                  Border.all(color: Colors.white, width: 3),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: AppColors.primary
-                                      .withValues(alpha: 0.4),
-                                  blurRadius: 14,
-                                  spreadRadius: 1,
-                                ),
-                              ],
-                            ),
-                            child: const Icon(
-                              Icons.navigation_rounded,
-                              color: Colors.white,
-                              size: 22,
-                            ),
-                          ),
-                        ),
-                    ],
-                  ),
-                ],
+                },
               ),
               Positioned(
                 left: 12,

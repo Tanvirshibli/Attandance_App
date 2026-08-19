@@ -10,6 +10,18 @@ if (file("google-services.json").exists()) {
     apply(plugin = "com.google.gms.google-services")
 }
 
+fun mapsApiKey(): String {
+    val localFile = rootProject.file("local.properties")
+    if (localFile.exists()) {
+        val line = localFile.readLines()
+            .firstOrNull { it.trim().startsWith("MAPS_API_KEY=") }
+        if (!line.isNullOrBlank()) {
+            return line.substringAfter("=").trim()
+        }
+    }
+    return "AIzaSyAlYUnlVuqbvT9GalVRLWx75kqxJoHSqLk"
+}
+
 android {
     namespace = "com.pphl.employee_attendance"
     compileSdk = flutter.compileSdkVersion
@@ -34,6 +46,7 @@ android {
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+        manifestPlaceholders["MAPS_API_KEY"] = mapsApiKey()
     }
 
     buildTypes {

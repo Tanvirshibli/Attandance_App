@@ -32,6 +32,11 @@
 -keep class com.google.android.gms.location.** { *; }
 -dontwarn com.google.android.gms.**
 
+# Google Maps SDK
+-keep class com.google.android.gms.maps.** { *; }
+-keep class com.google.android.gms.maps.model.** { *; }
+-dontwarn com.google.android.gms.maps.**
+
 # Firebase / FCM
 -keep class com.google.firebase.** { *; }
 -keep class com.google.android.gms.** { *; }

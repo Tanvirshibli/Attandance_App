@@ -141,7 +141,7 @@ All API calls are **direct HTTP** — no extra middleware layer:
 | Interval | **5 minutes** (configurable in dashboard) |
 | Storage | ZKTeco `mobile_location_pings` table |
 | Upload API | `POST /api/v1/mobile/geo-location` |
-| Live map | OpenStreetMap via `flutter_map` — live GPS marker, history pins, recenter |
+| Live map | Native Google Maps via `google_maps_flutter` — live GPS marker, history pins, recenter, Standard/Terrain/Hybrid |
 | Background | Foreground timer + WorkManager + ongoing notification; FCM wake when Firebase configured |
 | Permissions | Foreground + background location (required at first launch) |
 | Control | **No user on/off toggle** — status card only; auto-enabled after permissions / login |
@@ -196,7 +196,7 @@ All API calls are **direct HTTP** — no extra middleware layer:
 | 9 | Geo UI polish, history, ongoing notification | Done |
 | 10 | FCM geo wake (`google-services.json` + ZKTeco service account) | Done |
 | 11 | Replace Home/Attendance/Alerts dummy KPIs | Done (Home: rows-based summary + today-only clock + open-shift weekly hours) |
-| 12 | Geo Tracking live map UI redesign (`flutter_map` / OSM) | Done |
+| 12 | Geo Tracking live map UI redesign (Google Maps) | Done |
 
 **Still external / blocked:** provide Firebase credential files locally; Payments live flip + Post Sale create API; feature flags as needed.
 
