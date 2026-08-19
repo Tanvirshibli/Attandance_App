@@ -56,7 +56,7 @@ class FaceRecognitionService {
   // Live too-close ceiling so the face is not cropped by the guide.
   static const double maxLiveFaceRatio = 0.55;
 
-  // Live centering vs full frame (oval half-width is ~0.31).
+  // Live centering vs full frame (guide half-width is ~0.31).
   static const double liveCenterTolerance = 0.20;
 
   // Still JPEG centering. Angled poses may sit slightly off-axis.
@@ -603,7 +603,7 @@ class FaceRecognitionService {
     final faceCenterY = face.boundingBox.center.dy / imageHeight;
 
     if ((faceCenterX - 0.5).abs() > 0.25 || (faceCenterY - 0.5).abs() > 0.25) {
-      issues.add('Face is off-center — position your face in the oval guide');
+      issues.add('Face is off-center — position your face in the guide');
       score -= 20;
     }
 

@@ -50,7 +50,7 @@ class _FaceRegistrationScreenState extends State<FaceRegistrationScreen>
   static const Duration _firstPositioningWindow = Duration(seconds: 2);
   static const Duration _postCaptureSettle = Duration(milliseconds: 600);
   static const String _positioningMessage =
-      'Position your face in the oval…';
+      'Position your face in the guide…';
   DateTime? _analysisArmedAt;
   bool _isFirstStreamStart = true;
   double _progress = 0.0;
