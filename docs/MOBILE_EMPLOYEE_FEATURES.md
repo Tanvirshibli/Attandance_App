@@ -27,7 +27,7 @@ On **every cold start and when returning from background**, the app checks notif
 - Sales Info (live overall + module breakdown; Post sale with searchable dealer list)
 - Vehicles (fleet list → Maintenance / Trips per vehicle; unfiltered)
 - Farm & Dealer (field collection: dealers, farms, visits, surveys, follow-ups)
-- Geo Tracking (Google Maps; status only — no on/off toggle; auto-enabled after first-launch permissions)
+- Geo Tracking (Google Maps; status only — no on/off toggle; auto-enabled after first-launch permissions; full-screen map with exit)
 
 ---
 
@@ -160,6 +160,12 @@ Handoff for backend teams: **[SALES_AND_PAYMENTS_API_CONTRACT.md](SALES_AND_PAYM
 - Success tick is pinned to the **center of the rounded guide**
 - Step badge, coaching, and check-in status sit in one horizontally centered strip **above** the guide (including GPS “Capturing location…”)
 
+### Face tick, keep-awake, map fullscreen (v2.2.3+58)
+
+- Success tick is laid out with `Positioned.fromRect` on the same `faceGuideRect` the painter uses; registration’s **done** overlay uses that guide too
+- Face registration and check-in hold a **wakelock** so the screen stays on until the capture screen is closed
+- Geo Tracking has a **full-screen map** (layer switcher, zoom, and recenter stay); the exit control and system back return to the inset map
+
 ### Face oval fill (v2.2.3+53)
 
 - Auto-capture waits until the live face **fills the oval** (mapped height ≥ 70% of the guide, center inside a 12% inset). Front-camera preview is X-mirrored to match the box.
@@ -210,6 +216,7 @@ Handoff for backend teams: **[SALES_AND_PAYMENTS_API_CONTRACT.md](SALES_AND_PAYM
 - Live marker, GPS accuracy circle, and recent-ping pins are unchanged
 - Default zoom remains **17** live / **15** history
 - Zoom **+ / −** controls and recenter are still available beside the map
+- Full-screen toggle fills the screen with the map only; system back exits fullscreen first
 - Requires Maps SDK for Android enabled on the Google Cloud key restricted to `com.pphl.employee_attendance`
 
 ### Payments hub (v2.3)

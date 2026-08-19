@@ -21,7 +21,9 @@
 >
 > July 9, 2026 dual-device attendance: Home/History use ZKTeco-primary list merged with HRM JWT (one row per day). Machine and android punches both show. ZKTeco backend merges same-day machine-in + android-out onto one `new_attendance_requests` row (`device_type` may become `mixed`).
 
-> August 19, 2026 face capture: Auto-capture waits until the live face **fills the centered rounded frame** (height ≥ 70% of the guide; straight center inside a 12% inset, turned poses 4%). Image-area floor is **16%** for live and still (20% is a quality penalty only). The success tick is centered in the guide; step/coaching/status text sits above the frame. A rejected still capture keeps its error visible for 2 seconds. Missing or corrupt 192-dim templates prompt re-registration on Home, Check-in, and Profile. Shared widget: `lib/widgets/face_capture_stage.dart`.
+> August 19, 2026 face capture: Auto-capture waits until the live face **fills the centered rounded frame** (height ≥ 70% of the guide; straight center inside a 12% inset, turned poses 4%). Image-area floor is **16%** for live and still (20% is a quality penalty only). The success tick is centered on the painted guide rect; step/coaching/status text sits above the frame. Registration and check-in keep the display awake. A rejected still capture keeps its error visible for 2 seconds. Missing or corrupt 192-dim templates prompt re-registration on Home, Check-in, and Profile. Shared widget: `lib/widgets/face_capture_stage.dart`.
+>
+> August 19, 2026 Geo Tracking: the live Google Maps panel can go **full screen** (same style, zoom, and recenter controls). System back exits fullscreen before leaving the screen.
 >
 > August 18, 2026 Google Maps: Geo Tracking uses native Google Maps (`google_maps_flutter`) with Standard, Terrain, and Hybrid Satellite layers, live marker, accuracy circle, history pins, and the same zoom/recenter controls.
 >
@@ -755,6 +757,7 @@ android:label="PPHL Attendance"
 | `geolocator` | ^14.0.2 | GPS coordinates |
 | `geocoding` | ^4.0.0 | Reverse geocoding (coords → address) |
 | `google_maps_flutter` | ^2.12.3 | Native Google Maps on Geo Tracking |
+| `wakelock_plus` | ^1.3.2 | Keep the screen on during face registration and check-in |
 | `permission_handler` | ^12.0.1 | Runtime permission requests |
 | `google_mlkit_face_detection` | ^0.13.2 | On-device face detection with landmarks + classification |
 | `tflite_flutter` | ^0.12.1 | TensorFlow Lite inference for MobileFaceNet |
@@ -927,7 +930,7 @@ The current stack uses **ML Kit for detection** and **MobileFaceNet for identity
 ### Auth / geo reliability
 - `AuthService.refreshToken()` + `HrmApiClient` 401 retry.
 - Geo ongoing notification via `GeoNotificationService`; FCM wake is active in `FcmWakeHandler` when Firebase is configured (`google-services.json`).
-- `GeoTrackingScreen` uses `LiveLocationMap` (native Google Maps, zoom 17/15, +/- controls, map-style switcher) for a live GPS view with history pins. Users can switch between Standard (`MapType.normal`), Detailed (`MapType.terrain`), and Satellite (`MapType.hybrid`); status card only (no on/off toggle) — tracking auto-enables after first-launch permissions / login.
+- `GeoTrackingScreen` uses `LiveLocationMap` (native Google Maps, zoom 17/15, +/- controls, map-style switcher, full-screen toggle) for a live GPS view with history pins. Users can switch between Standard (`MapType.normal`), Detailed (`MapType.terrain`), and Satellite (`MapType.hybrid`); status card only (no on/off toggle) — tracking auto-enables after first-launch permissions / login. System back exits map fullscreen before popping the screen.
 
 ### `lib/screens/home_screen.dart`
 - Dashboard with gradient header, stats row (4 StatCards), clock-in card (navigates to CheckInScreen), weekly bar chart, recent attendance list.
