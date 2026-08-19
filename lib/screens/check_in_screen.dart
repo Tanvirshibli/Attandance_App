@@ -17,6 +17,7 @@ import '../services/face_recognition_service.dart';
 import '../services/attendance_request_service.dart';
 import '../services/auth_service.dart';
 import '../utils/camera_input_image.dart';
+import '../utils/face_guide_placement.dart';
 import '../widgets/face_capture_stage.dart';
 import 'face_registration_screen.dart';
 
@@ -63,6 +64,8 @@ class _CheckInScreenState extends State<CheckInScreen>
   String _errorMessage = '';
   bool _cameraReady = false;
   bool _needsFaceReregister = false;
+  double _previewStageWidth = 0;
+  double _previewStageHeight = 0;
 
   // ---- Challenge tracking ----
   late List<ChallengeType> _challenges;
@@ -512,6 +515,23 @@ class _CheckInScreenState extends State<CheckInScreen>
       return 'Hold still while the camera focuses';
     }
 
+    final previewSize = _previewWidgetSize();
+    if (previewSize == null) {
+      return 'Hold still while the camera focuses';
+    }
+
+    final ovalIssue = FaceGuidePlacement.issue(
+      faceBox: face.boundingBox,
+      imageSize: Size(
+        frameDimensions.width.toDouble(),
+        frameDimensions.height.toDouble(),
+      ),
+      previewSize: previewSize,
+      mirrorX: _cameraController?.description.lensDirection ==
+          CameraLensDirection.front,
+    );
+    if (ovalIssue != null) return ovalIssue;
+
     final placement = _faceService.evaluateLivePlacement(
       face,
       frameDimensions.width,
@@ -519,6 +539,17 @@ class _CheckInScreenState extends State<CheckInScreen>
     );
     if (placement.isFrontCamera) return null;
     return placement.issue ?? 'Fill the face guide';
+  }
+
+  Size? _previewWidgetSize() {
+    if (_previewStageWidth > 0 && _previewStageHeight > 0) {
+      return Size(_previewStageWidth, _previewStageHeight);
+    }
+    if (!mounted) return null;
+    final width = MediaQuery.sizeOf(context).width - 32;
+    final height = MediaQuery.sizeOf(context).width * 1.05;
+    if (width <= 0 || height <= 0) return null;
+    return Size(width, height);
   }
 
   /// Check an angle-based challenge with hold requirement.
@@ -936,6 +967,8 @@ class _CheckInScreenState extends State<CheckInScreen>
 
     final sw = MediaQuery.of(context).size.width;
     final previewHeight = sw * 1.05;
+    _previewStageWidth = sw - 32;
+    _previewStageHeight = previewHeight;
 
     return PopScope(
       canPop: false,
