@@ -713,8 +713,6 @@ class _CheckInScreenState extends State<CheckInScreen>
     return false;
   }
 
-  String _activeStatusMessage() => _statusMessage;
-
   IconData get _coachingIcon {
     final message = _statusMessage.toLowerCase();
     if (!_faceDetected) return Icons.face_retouching_off_outlined;
@@ -1056,43 +1054,17 @@ class _CheckInScreenState extends State<CheckInScreen>
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-      child: Column(
-        children: [
-          FaceCaptureStage(
-            height: height,
-            cameraReady: _cameraReady,
-            cameraController: _cameraController,
-            progress: _animatedProgress,
-            guideColor: guideColor,
-            isMatching: _facePlacedCorrectly && _angleHoldFrames > 0,
-            showSuccessTick: _progress >= 1.0,
-            tickScale: _tickScale,
-            coachingMessage: _phase == CheckInPhase.scanning
-                ? _statusMessage
-                : null,
-            coachingIcon: _coachingIcon,
-          ),
-          if (_phase != CheckInPhase.scanning) ...[
-            const SizedBox(height: 12),
-            AnimatedSwitcher(
-              duration: const Duration(milliseconds: 300),
-              child: Text(
-                _activeStatusMessage(),
-                key: ValueKey(_activeStatusMessage()),
-                textAlign: TextAlign.center,
-                style: GoogleFonts.poppins(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w600,
-                  color: _phase == CheckInPhase.success
-                      ? AppColors.success
-                      : _phase == CheckInPhase.error
-                          ? AppColors.error
-                          : Colors.white,
-                ),
-              ),
-            ),
-          ],
-        ],
+      child: FaceCaptureStage(
+        height: height,
+        cameraReady: _cameraReady,
+        cameraController: _cameraController,
+        progress: _animatedProgress,
+        guideColor: guideColor,
+        isMatching: _facePlacedCorrectly && _angleHoldFrames > 0,
+        showSuccessTick: _progress >= 1.0,
+        tickScale: _tickScale,
+        coachingMessage: _statusMessage,
+        coachingIcon: _coachingIcon,
       ),
     );
   }
