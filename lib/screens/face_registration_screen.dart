@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:math';
 import 'dart:ui';
 
 import 'package:camera/camera.dart';
@@ -7,6 +8,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:google_mlkit_face_detection/google_mlkit_face_detection.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:wakelock_plus/wakelock_plus.dart';
 
 import '../config/theme.dart';
 import '../services/face_recognition_service.dart';
@@ -111,6 +113,7 @@ class _FaceRegistrationScreenState extends State<FaceRegistrationScreen>
       duration: const Duration(milliseconds: 600),
     );
     _tickScale = CurvedAnimation(parent: _tickAnim, curve: Curves.elasticOut);
+    WakelockPlus.enable();
     _progressAnim.addListener(() {
       if (!mounted) return;
       setState(() {
@@ -215,6 +218,7 @@ class _FaceRegistrationScreenState extends State<FaceRegistrationScreen>
 
   @override
   void dispose() {
+    WakelockPlus.disable();
     _stopImageStream();
     _cameraController?.dispose();
     _captureFlashAnim.dispose();
@@ -734,36 +738,63 @@ class _FaceRegistrationScreenState extends State<FaceRegistrationScreen>
             ),
           ),
           if (_isCompleted)
-            Container(
+            SizedBox(
               width: double.infinity,
               height: height,
-              decoration: BoxDecoration(
-                color: Colors.black.withValues(alpha: 0.6),
-                borderRadius: BorderRadius.circular(24),
-              ),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Container(
-                    width: 80,
-                    height: 80,
-                    decoration: const BoxDecoration(
-                      color: AppColors.success,
-                      shape: BoxShape.circle,
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  final size = Size(constraints.maxWidth, constraints.maxHeight);
+                  final guide = faceGuideRect(size);
+                  return Container(
+                    decoration: BoxDecoration(
+                      color: Colors.black.withValues(alpha: 0.6),
+                      borderRadius: BorderRadius.circular(24),
                     ),
-                    child: const Icon(Icons.check_rounded,
-                        color: Colors.white, size: 48),
-                  ),
-                  const SizedBox(height: 16),
-                  Text(
-                    'Registration Complete!',
-                    style: GoogleFonts.poppins(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                      color: Colors.white,
+                    child: Stack(
+                      fit: StackFit.expand,
+                      children: [
+                        Positioned(
+                          left: 16,
+                          right: 16,
+                          top: 8,
+                          height: max(0.0, guide.top - 8),
+                          child: Align(
+                            alignment: Alignment.bottomCenter,
+                            child: Text(
+                              'Registration Complete!',
+                              textAlign: TextAlign.center,
+                              style: GoogleFonts.poppins(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w600,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ),
+                        ),
+                        Positioned.fromRect(
+                          rect: guide,
+                          child: const Center(
+                            child: SizedBox(
+                              width: 80,
+                              height: 80,
+                              child: DecoratedBox(
+                                decoration: BoxDecoration(
+                                  color: AppColors.success,
+                                  shape: BoxShape.circle,
+                                ),
+                                child: Icon(
+                                  Icons.check_rounded,
+                                  color: Colors.white,
+                                  size: 48,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
-                  ),
-                ],
+                  );
+                },
               ),
             ),
         ],

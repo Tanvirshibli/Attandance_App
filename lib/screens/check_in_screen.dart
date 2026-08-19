@@ -10,6 +10,7 @@ import 'package:geocoding/geocoding.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:google_mlkit_face_detection/google_mlkit_face_detection.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:wakelock_plus/wakelock_plus.dart';
 
 import '../config/theme.dart';
 import '../models/attendance_request_record.dart';
@@ -111,6 +112,7 @@ class _CheckInScreenState extends State<CheckInScreen>
   AttendanceRequestRecord? _punchedRecord;
   bool _isClosing = false;
   bool _aborted = false;
+  bool _wakelockHeld = false;
 
   // ---- Animations ----
   late AnimationController _progressAnim;
@@ -132,6 +134,8 @@ class _CheckInScreenState extends State<CheckInScreen>
       return;
     }
     _routeActive = true;
+    WakelockPlus.enable();
+    _wakelockHeld = true;
     _progressAnim = AnimationController(
         vsync: this, duration: const Duration(milliseconds: 400));
     _tickAnim = AnimationController(
@@ -283,6 +287,9 @@ class _CheckInScreenState extends State<CheckInScreen>
 
   @override
   void dispose() {
+    if (_wakelockHeld) {
+      WakelockPlus.disable();
+    }
     _routeActive = false;
     _stopImageStream();
     _cameraController?.dispose();
