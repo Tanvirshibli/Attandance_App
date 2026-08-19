@@ -1,6 +1,6 @@
 # Mobile Employee Features (v2.2.0)
 
-Last updated: August 18, 2026
+Last updated: August 19, 2026
 
 This document describes the employee self-service modules in **Attandance_App**. HRM/ZKTeco APIs are wired where available. **Sales Info reporting and Post Sale create are live** when demo flags are off. **Auth-wise payment report and receive** use the sales host when `payment.enabled` is on. HRM loan/payslip screens still demo by default (see [SALES_AND_PAYMENTS_API_CONTRACT.md](SALES_AND_PAYMENTS_API_CONTRACT.md)).
 
@@ -27,7 +27,7 @@ On **every cold start and when returning from background**, the app checks notif
 - Sales Info (live overall + module breakdown; Post sale with searchable dealer list)
 - Vehicles (fleet list → Maintenance / Trips per vehicle; unfiltered)
 - Farm & Dealer (field collection: dealers, farms, visits, surveys, follow-ups)
-- Geo Tracking (status only — no on/off toggle; auto-enabled after first-launch permissions, richer map layers)
+- Geo Tracking (Google Maps; status only — no on/off toggle; auto-enabled after first-launch permissions)
 
 ---
 
@@ -138,6 +138,14 @@ Handoff for backend teams: **[SALES_AND_PAYMENTS_API_CONTRACT.md](SALES_AND_PAYM
 - `mergeRecords` / `resolveTodayRecord` prefer in/out punches on the target calendar day over adjacent-day leftovers
 - Pending **Update Check Out** with a checkout time already shown is unchanged (requested days can still update out)
 
+### Face capture robustness (v2.2.3+52)
+
+- Live and still captures share an **8%** minimum face-area ratio; faces under **10%** are not acceptable; live faces over **55%** are too close
+- Missing camera frame size **fails closed** (no auto-capture)
+- Check-in smile/blink require a **straight** pose before JPEG verify
+- Shared `FaceCaptureStage`: full camera preview with a dimmed oval (check-in no longer clips the preview to the face path)
+- Missing or corrupt 192-dim templates prompt re-registration on Home, Check-in, and Profile (login is not blocked)
+
 ### Face capture timing (v2.2.3+45)
 
 - Registration and check-in ignore auto-capture for **2 seconds** after the camera opens so the user can aim (`Position your face in the oval/guide`)
@@ -163,15 +171,17 @@ Handoff for backend teams: **[SALES_AND_PAYMENTS_API_CONTRACT.md](SALES_AND_PAYM
 - Successful punch auto-returns to Home after ~1.5s (or **Done**) with the punched record; Home refreshes from API after optimistic merge
 - Live camera uses **image stream** (~5 FPS) with **NV21** on Android and **device-orientation-aware** ML Kit rotation
 - Registration live path matches check-in: **placement + angle hold only**; strict quality runs on final `takePicture()` capture
-- Arm's-length framing accepted during live guidance; strict quality only on final verify/register still
+- Live framing must fill the oval (≥ 8% face area); a distant face cannot look “in frame” because the preview is no longer clipped
 - Early check-in verify uses single embedding pass; final match keeps robust 4-variant embedding
 
-### Geo map (v2.2.3+50)
+### Geo map (v2.2.3+51)
 
-- Geo Tracking now includes a layer switcher inside the mini map
-- **Standard** = OpenStreetMap DE, **Detailed** = CyclOSM, **Satellite** = Esri World Imagery
+- Geo Tracking uses **native Google Maps** (`google_maps_flutter`)
+- Layer switcher: **Standard** = `MapType.normal`, **Detailed** = `MapType.terrain`, **Satellite** = `MapType.hybrid` (imagery plus labels)
+- Live marker, GPS accuracy circle, and recent-ping pins are unchanged
 - Default zoom remains **17** live / **15** history
 - Zoom **+ / −** controls and recenter are still available beside the map
+- Requires Maps SDK for Android enabled on the Google Cloud key restricted to `com.pphl.employee_attendance`
 
 ### Payments hub (v2.3)
 

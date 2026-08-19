@@ -21,7 +21,9 @@
 >
 > July 9, 2026 dual-device attendance: Home/History use ZKTeco-primary list merged with HRM JWT (one row per day). Machine and android punches both show. ZKTeco backend merges same-day machine-in + android-out onto one `new_attendance_requests` row (`device_type` may become `mixed`).
 
-> August 18, 2026 geo map refresh: Geo Tracking keeps `flutter_map` but now offers **Standard**, **Detailed**, and **Satellite** layers from public tile providers, giving users a richer Google-Maps-like view without requiring a Google Maps API key.
+> August 19, 2026 face capture: Live and still captures require at least **8%** face area (preferred **10%**), reject live faces that are too close, fail closed when stream size is missing, and require a straight pose before smile/blink verify. Check-in no longer clips the preview to the oval. Missing or corrupt 192-dim templates prompt re-registration on Home, Check-in, and Profile. Shared widget: `lib/widgets/face_capture_stage.dart`.
+>
+> August 18, 2026 Google Maps: Geo Tracking uses native Google Maps (`google_maps_flutter`) with Standard, Terrain, and Hybrid Satellite layers, live marker, accuracy circle, history pins, and the same zoom/recenter controls.
 >
 > August 16, 2026 Vehicles: Services → Vehicles lists the full active fleet. Tap a vehicle for **Maintenance** or **Trips** (unfiltered by logged-in user). See `docs/VEHICLES_API.md`.
 >
@@ -134,8 +136,8 @@ employee_attendance/
 │   │   ├── login_screen.dart         # Login UI (real backend auth)
 │   │   ├── main_shell.dart           # Bottom nav shell (5 tabs)
 │   │   ├── home_screen.dart          # Dashboard with stats, clock-in card, chart
-│   │   ├── check_in_screen.dart      # Live camera check-in with dynamic liveness steps + circular progress
-│   │   ├── face_registration_screen.dart  # 5-angle live camera face registration with face-path progress ring
+│   │   ├── check_in_screen.dart      # Live camera check-in with full-preview oval guide + challenges
+│   │   ├── face_registration_screen.dart  # 5-angle live camera face registration with shared FaceCaptureStage
 │   │   ├── attendance_history_screen.dart # History list with filters
 │   │   ├── notifications_screen.dart     # Notification list
 │   │   └── profile_screen.dart           # Profile, settings, face registration shortcut
@@ -143,7 +145,8 @@ employee_attendance/
 │   │   ├── auth_service.dart             # Backend auth API + token/session persistence
 │   │   └── face_recognition_service.dart # Core ML service with angle detection (~1050 lines)
 │   └── widgets/
-│       ├── face_oval_guide.dart       # Face placement oval overlay
+│       ├── face_capture_stage.dart    # Shared full-preview oval, coaching chip, progress ring
+│       ├── face_oval_guide.dart       # Legacy oval overlay (unused by current capture screens)
 │       ├── stat_card.dart             # Dashboard stat card
 │       └── attendance_tile.dart       # Attendance record row
 ├── pubspec.yaml                       # Dependencies & assets
@@ -159,10 +162,10 @@ employee_attendance/
 The app uses a **simple stateful widget architecture** without a state management library. Each screen manages its own state via `StatefulWidget` + `setState()`. The face recognition service is a **singleton** accessed directly.
 
 ### Key Architectural Decisions
-- **No backend** — All data is local. Authentication is simulated. Face data is stored in `SharedPreferences`.
+- **Backend-synced templates** — Face embeddings live in-memory after login/profile hydrate from `face_registration_android`. Invalid (not 192 finite dims) templates are treated as unregistered.
 - **Singleton service** — `FaceRecognitionService` uses `factory` + `_internal()` pattern for a single instance across the app.
-- **On-device ML** — No network calls for face recognition. ML Kit + TFLite run entirely on-device.
-- **Camera via camera package** — Uses the Flutter `camera` package for live camera preview directly within the app. For registration, the system detects face angles in real-time and auto-captures. For check-in, challenges are evaluated live with a circular progress animation.
+- **On-device ML** — No network calls for face matching. ML Kit + TFLite run entirely on-device; templates are uploaded/fetched over JWT.
+- **Camera via camera package** — Uses the Flutter `camera` package for live camera preview directly within the app. Registration and check-in share `FaceCaptureStage` (full preview, dimmed oval, coaching). Auto-capture is gated by size, centering, and hold.
 
 ### Data Flow
 
@@ -179,7 +182,7 @@ User → Login (dummy) → MainShell → [Home | Attendance | Notifications | Pr
                                ├── Liveness (smile + sharpness)
                                ├── Front-camera validation
                                ├── Same-person validation
-                               └── SharedPreferences (embeddings)
+                               └── In-memory templates (hydrated from HRM `face_registration`)
 ```
 
 ---
@@ -270,6 +273,7 @@ Manifest URL baked at build time from `rocket launcher/config/github.env` → `U
 | **Header** | Gradient card with live backend avatar letters, employee name, designation/employee ID, greeting (dynamic AM/PM), today's check-in/out/hours |
 | **Quick Stats** | 4 `StatCard` widgets: Present / Absent / Holiday / Leave from HRM single-employee daily `rows` (`attendanceType`); punch-day fallback when rows empty |
 | **Clock-In Card** | Today-only; one punch button at a time (Check In **or** Check Out); day-complete hides both buttons → `CheckInScreen` |
+| **Face warning** | If templates are missing or corrupt, a warning card plus Check In/Out routes to `FaceRegistrationScreen` |
 | **Weekly Chart** | `BarChart` from punch records (open shifts use `now` as end) |
 | **Recent Attendance** | List of top 5 `AttendanceTile` widgets from live requests |
 
@@ -279,8 +283,8 @@ Manifest URL baked at build time from `rocket launcher/config/github.env` → `U
 |---|---|
 | **State** | `StatefulWidget` with `TickerProviderStateMixin` |
 | **Props** | `VoidCallback onCheckIn` — called on success |
-| **Layout** | Fixed top (camera + face-path progress), scrollable middle (challenge status, verification/GPS cards), fixed bottom (action button) |
-| **Camera** | Live front-camera preview using `camera` package, displayed inside a human face-shaped clip container (normal non-mirrored orientation) |
+| **Layout** | Fixed top (full-preview oval + progress), scrollable middle (challenge status, verification/GPS cards), fixed bottom (action button) |
+| **Camera** | Live front-camera preview using `camera` package via `FaceCaptureStage` (full frame, dimmed oval — not clipped) |
 | **Flow** | Face-placement-gated dynamic challenge flow. See [Check-In Flow](#check-in-flow) below |
 
 #### Check-In Flow
@@ -288,11 +292,11 @@ Manifest URL baked at build time from `rocket launcher/config/github.env` → `U
 | Phase | What Happens |
 |---|---|
 | **Initializing** | Camera + FaceRecognitionService initialization, verify face is registered |
-| **Scanning** | Live camera preview active with `startImageStream` (~4–5 FPS, drop-if-busy). Each step is gated by face placement (must be centered and sized correctly in the face guide). Placement validation uses stream frame dimensions (not only preview metadata), includes width/height orientation fallback, and uses check-in centering tolerance tuned to ±35%. Live guidance uses the fast ML Kit detector (`minFaceSize: 0.12`); JPEG `takePicture()` runs only for verify/challenge commits. Liveness challenges run in randomized order. |
+| **Scanning** | Live camera preview with `startImageStream` (~4–5 FPS, drop-if-busy). Placement must fill ≥ 8% of the image (not > 55% live) and stay centered (±35%). Missing frame size fails closed. Coaching chip shows Move closer / Move back / Center. Smile and blink require a straight pose. |
 | **Verifying** | Early verification starts only after at least **2** challenges are passed (up to 2 captures). If a match is found, remaining steps are skipped; otherwise scanning continues. If all challenges are consumed, a final verification runs with up to 3 captures and best-confidence selection. |
 | **GPS** | Face verified → capture GPS coordinates via `Geolocator` (high accuracy, 15s timeout) → reverse geocode address |
 | **Success** | All steps complete → "Done ✓" button pops the screen and calls `onCheckIn` callback |
-| **Error** | Any failure → error card + "Retry" button resets challenges |
+| **Error** | Any failure → error card + Retry; missing face data → **Register face** |
 
 #### Liveness Challenges (up to 5, randomized order)
 
@@ -368,26 +372,29 @@ The face recognition pipeline is implemented entirely on-device in `FaceRecognit
 | Constant | Value | Purpose |
 |---|---|---|
 | `_inputSize` | 112 | MobileFaceNet input image size (112×112 pixels) |
-| `_embeddingSize` | 192 | Output embedding dimensionality |
+| `embeddingSize` | 192 | MobileFaceNet output dimensionality; valid templates must be this length and finite |
 | `_matchThreshold` | 0.80 | Base minimum cosine similarity for **core** identity match (quality-aware to ~82% for lower quality) |
 | `_strongMatchThreshold` | 0.88 | Strong **core-template** similarity with consistency requirement |
 | `_adaptiveEnrollmentThreshold` | 0.86 | Minimum core confidence required before adding adaptive templates |
 | `_samePersonThreshold` | 0.65 | Minimum cosine similarity between registration captures to confirm same person |
 | `_smileThreshold` | 0.55 | Minimum `smilingProbability` from ML Kit for smile liveness |
-| `_minFaceRatioForSelfie` | 0.06 | Minimum face-area-to-image-area ratio (6%) for front camera validation |
+| `minAcceptableFaceRatio` | 0.08 | Hard-reject floor for live **and** still face-area-to-image-area (8%) |
+| `minPreferredFaceRatio` | 0.10 | Below this, `checkFaceQuality` is not `isAcceptable` even if score passes |
+| `maxLiveFaceRatio` | 0.55 | Live too-close ceiling so cropped faces cannot auto-capture |
 | `_minSharpnessScore` | 15.0 | Minimum Laplacian variance for sharpness/screen detection |
 | `registrationCaptures` | 5 | Number of photos taken during multi-capture registration |
 | `registrationAngles` | [straight, left, right, up, down] | Ordered list of target angles for registration |
 
-#### SharedPreferences Keys
+#### Face template storage
 
-| Key | Type | Purpose |
-|---|---|---|
-| `registered_face_embeddings` | `String` (JSON array of arrays) | All individual capture embeddings |
-| `registered_face_avg_embedding` | `String` (JSON array) | Averaged + L2-normalized embedding |
-| `registered_face_adaptive_embeddings` | `String` (JSON array of arrays) | Rolling templates auto-learned from successful verifications (max 20) |
-| `face_registration_time` | `String` (ISO 8601) | Registration timestamp |
-| `face_registration_count` | `int` | Number of captures used |
+Templates are **not** stored in SharedPreferences. They are:
+
+- Generated on-device (192-dim L2-normalized embeddings)
+- Uploaded to HRM `face_registration_android`
+- Hydrated into `FaceRecognitionService` memory on login / profile fetch
+- Treated as unregistered if missing, wrong length, or non-finite (`clearRegistrationMemory()`)
+
+Home, Check-in, and Profile prompt: “Your face data is missing or unreadable. Please register your face again.”
 
 #### Public Methods
 
@@ -412,7 +419,7 @@ The face recognition pipeline is implemented entirely on-device in `FaceRecognit
 | `registerFaceCapture(File, {int captureNumber, FaceAngle? targetAngle})` | `Future<FaceRegistrationResult>` | Single capture in a multi-capture registration flow. `targetAngle` enables `skipRotationCheck` for non-straight angles. |
 | `registerFace(File)` | `Future<FaceRegistrationResult>` | Legacy single-photo registration |
 | `verifyFace(File, {bool requireSmile})` | `Future<FaceVerificationResult>` | Full verification: generate robust embedding with all checks → compare against stored average + registration captures (core templates) → weighted top-k + core-hit consistency decision (quality-aware threshold) → evaluate adaptive templates as supporting signals only → auto-enroll adaptive template only on high-confidence core matches |
-| `isFaceRegistered()` | `Future<bool>` | Check if embeddings exist in SharedPreferences |
+| `isFaceRegistered()` | `Future<bool>` | True only when a 192-dim finite average embedding is in memory |
 | `getRegistrationTime()` | `Future<String?>` | Get stored registration timestamp |
 | `getRegistrationCaptureCount()` | `Future<int>` | Get number of captures used |
 | `deleteRegisteredFace()` | `Future<void>` | Remove all stored face data |
@@ -442,29 +449,29 @@ Live Camera Preview (front, non-mirrored, startImageStream ~4–5 FPS)
     → Must hold target angle for 5 frames (~1 s)
     → Camera-idle wait, then auto-capture JPEG
     → Reject if 0 faces or >1 face
-    → Front Camera Validation (face ratio ≥ 6%; centering required for straight capture, relaxed for non-straight captures)
-    → Face Quality Check (size, centering, eyes open; rotation checks SKIPPED for non-straight angles)
+    → Front Camera Validation (face ratio ≥ 8%; live too-close > 55% rejected; centering required for straight capture, relaxed for non-straight captures)
+    → Face Quality Check (size, centering, eyes open; rotation checks SKIPPED for non-straight angles; under 10% face area is not acceptable)
     → Sharpness Check (Laplacian variance ≥ 15.0 on face region)
     → Same-Person Check (cosine similarity ≥ 65% against all previous captures)
     → Crop face (40% padding, make square)
     → Generate 4 embedding variants (original, mirrored, grayscale, grayscale+mirrored)
     → Average variant embeddings
     → L2 normalization
-    → Store in SharedPreferences
+    → Keep in memory; on final capture upload to HRM `face_registration_android`
     → If final capture (5th): compute averaged embedding, store alongside individuals, clear adaptive templates
 ```
 
 #### Verification Pipeline (check-in with live challenges)
 
 ```
-Live Camera Preview (front, face-shaped container, non-mirrored display)
+Live Camera Preview (front, full frame with dimmed oval — not clipped to the guide)
   → Live stream frame analysis (~4–5 FPS; fast detector for guidance)
   → 2 s positioning window on first open (0.6 s settle after each challenge / stream restart)
-  → Placement Gate: face must be centered and correctly sized in face guide (orientation-aware width/height fallback)
+  → Placement Gate: missing frame size fails closed; face must fill ≥ 8% (not > 55% live) and stay centered (±35%)
   → Randomized Liveness Challenges (dynamic, up to 5):
     1. Look Straight — isTargetAngle(straight), non-null Euler, hold 5 frames (~1 s)
-    2. Smile — smilingProbability ≥ 55% for 3 consecutive frames
-    3. Blink — state machine: eyes open → closed → open
+    2. Smile — requires straight pose, then smilingProbability ≥ 55% for 3 consecutive frames
+    3. Blink — requires straight pose, then state machine: eyes open → closed → open
     4. Turn Left — isTargetAngle(left), hold 5 frames
     5. Turn Right — isTargetAngle(right), hold 5 frames
   → Clockwise face-path progress ring fills as accepted steps complete
@@ -479,8 +486,7 @@ Live Camera Preview (front, face-shaped container, non-mirrored display)
     → Face Quality Check
     → Sharpness Check (Laplacian variance)
     → Crop → variant embeddings (normal/flipped/grayscale) → averaged embedding
-    → Load stored average embedding from SharedPreferences
-    → Cosine similarity against average + each registration embedding (core)
+    → Compare against in-memory average + registration embeddings (core)
     → Weighted top-k aggregate on core templates (top1 60%, top2 25%, top3 15%)
     → Require core consistency (minimum core-hit count) plus quality-aware threshold (~80% / ~82%)
     → Evaluate adaptive-template similarity only as supporting signal (not approval source)
@@ -636,15 +642,9 @@ A row widget displaying a single attendance record.
 | **Notifications** | Empty until notifications API is wired |
 | **Team members** | Not displayed currently |
 
-### 10.2 SharedPreferences (Face Data)
+### 10.2 Face templates (in-memory + HRM)
 
-| Key | Content |
-|---|---|
-| `registered_face_embeddings` | JSON array of 1–5 individual 192-dim embedding arrays |
-| `registered_face_avg_embedding` | JSON array of 1 averaged 192-dim embedding |
-| `registered_face_adaptive_embeddings` | JSON array of adaptive verification-time embeddings (up to 20) |
-| `face_registration_time` | ISO 8601 timestamp string |
-| `face_registration_count` | Integer count of captures (1–5) |
+Face embeddings are **not** stored in SharedPreferences. Valid templates are 192-dimensional finite vectors held in `FaceRecognitionService` after hydrate from `GET /api/v1/get-my-info` → `face_registration`, and upserted to `face_registration_android` at registration. Missing or corrupt vectors clear memory and prompt re-registration.
 
 ### 10.3 GPS Data
 
@@ -750,8 +750,7 @@ android:label="PPHL Attendance"
 | `camera` | ^0.11.1 | Live camera preview for face scanning & registration |
 | `geolocator` | ^14.0.2 | GPS coordinates |
 | `geocoding` | ^4.0.0 | Reverse geocoding (coords → address) |
-| `flutter_map` | ^8.1.1 | Live geo map with switchable Standard / Detailed / Satellite tile layers |
-| `latlong2` | ^0.9.1 | Map coordinates |
+| `google_maps_flutter` | ^2.12.3 | Native Google Maps on Geo Tracking |
 | `permission_handler` | ^12.0.1 | Runtime permission requests |
 | `google_mlkit_face_detection` | ^0.13.2 | On-device face detection with landmarks + classification |
 | `tflite_flutter` | ^0.12.1 | TensorFlow Lite inference for MobileFaceNet |
@@ -837,7 +836,7 @@ build\app\outputs\flutter-apk\app-armeabi-v7a-release.apk (~36.7 MB, 32-bit phon
 | **Authentication** | Requires live backend JWT auth from `pphl_erp`; offline login is not supported |
 | **Data persistence** | Core attendance, profile, face registration, and approval data are backend-driven; some dashboard widgets still use static/demo values |
 | **Backend** | Live API integration is required for production flows; the app is no longer an offline-only prototype |
-| **Face data** | Stored in `SharedPreferences` (plain JSON) — not encrypted |
+| **Face data** | 192-dim embeddings in app memory, synced to HRM `face_registration_android` (not SharedPreferences) |
 | **GPS data** | Captured but not persisted after screen closes |
 | **Camera** | Uses `camera` package for live preview — full programmatic control over front camera. Angle detection, smile/blink checks done in real-time via `startImageStream` (~4–5 FPS); JPEG capture only on final register/verify commits. |
 | **Single user** | Only one face can be registered at a time (single-tenant) |
@@ -911,7 +910,7 @@ The current stack uses **ML Kit for detection** and **MobileFaceNet for identity
 - `generateEmbedding()` now performs robust embedding fusion from 4 variants (normal + mirrored + grayscale + grayscale mirrored).
 - `verifyFace()` now uses weighted top-k similarity over **core registration templates** with quality-aware thresholding and minimum-hit consistency checks.
 - Adaptive templates are treated as supporting signals only and cannot directly approve identity.
-- Adaptive templates (`registered_face_adaptive_embeddings`, max 20, deduped) are auto-enrolled only on high-confidence core matches.
+- Adaptive templates (in-memory, max 20, deduped) are auto-enrolled only on high-confidence core matches.
 - See [Section 7](#7-face-recognition-system) for complete API documentation.
 
 ### `lib/screens/login_screen.dart` (402 lines)
@@ -924,18 +923,20 @@ The current stack uses **ML Kit for detection** and **MobileFaceNet for identity
 ### Auth / geo reliability
 - `AuthService.refreshToken()` + `HrmApiClient` 401 retry.
 - Geo ongoing notification via `GeoNotificationService`; FCM wake is active in `FcmWakeHandler` when Firebase is configured (`google-services.json`).
-- `GeoTrackingScreen` uses `LiveLocationMap` (`flutter_map`, zoom 17/15, +/- controls, map-style switcher) for a live GPS view with history pins. Users can switch between Standard, Detailed, and Satellite layers; status card only (no on/off toggle) — tracking auto-enables after first-launch permissions / login.
+- `GeoTrackingScreen` uses `LiveLocationMap` (native Google Maps, zoom 17/15, +/- controls, map-style switcher) for a live GPS view with history pins. Users can switch between Standard (`MapType.normal`), Detailed (`MapType.terrain`), and Satellite (`MapType.hybrid`); status card only (no on/off toggle) — tracking auto-enables after first-launch permissions / login.
 
-### `lib/screens/home_screen.dart` (545 lines)
+### `lib/screens/home_screen.dart`
 - Dashboard with gradient header, stats row (4 StatCards), clock-in card (navigates to CheckInScreen), weekly bar chart, recent attendance list.
+- Warning card and Check In/Out redirect when face templates are missing or unreadable.
 
-### `lib/screens/check_in_screen.dart` (~1318 lines)
+### `lib/screens/check_in_screen.dart`
 - Live-camera check-in with randomized, dynamic liveness challenges (up to 5): look straight, smile, blink, turn left, turn right.
-- Front camera preview displayed in normal non-mirrored orientation inside a human face-shaped clipped container.
-- Every step is gated by face placement (center/size) before challenge logic progresses.
-- Face-placement gate uses decoded captured-frame dimensions first, then fallback to preview dimensions; both normal and swapped width/height mappings are evaluated to prevent false "not centered" failures on some devices.
+- Full camera preview with shared `FaceCaptureStage` (dimmed oval, corners, coaching chip, clockwise progress). Preview is **not** clipped to the face path.
+- Every step is gated by face placement (center/size) before challenge logic progresses; missing stream size fails closed.
+- Face-placement gate uses decoded captured-frame dimensions first, then fallback to preview dimensions; both normal and swapped width/height mappings are evaluated.
 - Check-in centering tolerance is relaxed to ±35% to improve robustness across device camera metadata/layout differences.
-- `_FaceScanProgressPainter` custom painter draws an animated clockwise progress path around the face guide.
+- Smile and blink also require `isTargetAngle(straight)` before early `takePicture()`.
+- Missing/corrupt templates show **Register face** (not a no-op Retry).
 - Green tick animation (`ScaleTransition` + `Curves.elasticOut`) on completion (including early-verified completion).
 - Performs early identity verification after at least 2 completed challenges; if matched, remaining steps are skipped and GPS flow starts.
 - Early verification now uses up to 2 captures and final verification uses up to 3 captures, taking the best confidence.
@@ -944,11 +945,11 @@ The current stack uses **ML Kit for detection** and **MobileFaceNet for identity
 - Phases: initializing → scanning → verifying → gps → success | error.
 - Blink detection uses a 3-phase state machine: `waitingOpen` → `waitingClosed` → `waitingReopen` → `done`.
 
-### `lib/screens/face_registration_screen.dart` (~1000 lines)
+### `lib/screens/face_registration_screen.dart`
 - 5-angle live-camera face registration: straight, left, right, up, down.
-- Front camera preview with face-shaped overlay (`_FaceOvalOverlayPainter`) plus animated face-path progress ring (`_FaceRegistrationProgressPainter`).
+- Shared `FaceCaptureStage`: full preview, dimmed oval cutout, coaching chip, clockwise progress ring, step badge.
 - Live `startImageStream` (~4–5 FPS, NV21 on Android) for angle detection; `takePicture()` only on auto-capture.
-- Each step is gated by placement before angle hold; strict quality runs at capture time only.
+- Each step is gated by placement before angle hold; missing stream size fails closed; strict quality runs at capture time only.
 - Auto-captures when target angle is held for **5 frames (~1 s)** after a **2 s** first-open positioning window (0.6 s settle between captures). Straight pose requires non-null Euler angles.
 - Step indicator dots (5), capture flash animation, completion overlay.
 - Same-person validation between captures (cosine similarity ≥ 65%).
@@ -960,11 +961,15 @@ The current stack uses **ML Kit for detection** and **MobileFaceNet for identity
 ### `lib/screens/notifications_screen.dart` (307 lines)
 - Notification list with "Today" and "Earlier" sections, icon/color mapping per notification type.
 
-### `lib/screens/profile_screen.dart` (472 lines)
-- Profile header, personal info card, quick actions (including Face Registration navigation), settings toggles, logout.
+### `lib/screens/profile_screen.dart`
+- Profile header, personal info card, quick actions (Register face vs Re-register face), settings toggles, logout.
+- Warning when templates are missing or unreadable after hydrate.
 
-### `lib/widgets/face_oval_guide.dart` (344 lines)
-- Face placement oval overlay with cutout, corner marks, eye guides, alignment lines. Has animated variant.
+### `lib/widgets/face_capture_stage.dart`
+- Shared full-preview camera stage for registration and check-in: dimmed outside the oval, corner brackets, live coaching chip, clockwise progress ring.
+
+### `lib/widgets/face_oval_guide.dart`
+- Legacy face placement oval overlay. Current capture screens use `FaceCaptureStage` instead.
 
 ### `lib/widgets/stat_card.dart` (68 lines)
 - Compact stat card widget for dashboard.
