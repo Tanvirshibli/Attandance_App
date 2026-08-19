@@ -8,6 +8,7 @@ class FaceGuidePlacement {
   static const double minOvalHeightFill = 0.70;
   static const double maxOvalHeightFill = 1.15;
   static const double ovalInsetFraction = 0.12;
+  static const double angledInsetFraction = 0.04;
 
   /// Cover-fit [imageRect] from [imageSize] onto [previewSize].
   static Rect mapImageRectToPreview({
@@ -47,21 +48,27 @@ class FaceGuidePlacement {
     );
   }
 
-  static Rect insetGuideRect(Size previewSize) {
+  static Rect insetGuideRect(
+    Size previewSize, {
+    double? insetFraction,
+  }) {
+    final fraction = insetFraction ?? ovalInsetFraction;
     final frame = faceGuideRect(previewSize);
     return Rect.fromCenter(
       center: frame.center,
-      width: frame.width * (1 - ovalInsetFraction * 2),
-      height: frame.height * (1 - ovalInsetFraction * 2),
+      width: frame.width * (1 - fraction * 2),
+      height: frame.height * (1 - fraction * 2),
     );
   }
 
   /// Null when the face fills and sits inside the frame; otherwise coaching text.
+  /// [angled] uses a looser center inset so yaw/pitch poses are not treated as off-guide.
   static String? issue({
     required Rect faceBox,
     required Size imageSize,
     required Size previewSize,
     bool mirrorX = false,
+    bool angled = false,
   }) {
     if (imageSize.width <= 0 ||
         imageSize.height <= 0 ||
@@ -90,7 +97,10 @@ class FaceGuidePlacement {
       return 'Move back a little — your face is too close';
     }
 
-    final inset = insetGuideRect(previewSize);
+    final inset = insetGuideRect(
+      previewSize,
+      insetFraction: angled ? angledInsetFraction : ovalInsetFraction,
+    );
     final centerInside = buildFaceGuidePath(inset).contains(mapped.center);
     if (!centerInside) {
       return 'Center your face inside the guide';

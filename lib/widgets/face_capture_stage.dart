@@ -23,7 +23,7 @@ Rect faceGuideRect(Size size) {
   const coachingReserve = 56.0;
   final width = min(size.width * 0.62, max(0.0, size.width - margin * 2));
   final height = min(
-    size.height * 0.58,
+    size.height * 0.72,
     max(0.0, size.height - coachingReserve - margin),
   );
   return Rect.fromCenter(

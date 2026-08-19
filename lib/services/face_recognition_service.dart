@@ -50,7 +50,7 @@ class FaceRecognitionService {
   // Minimum face-to-image area ratio for live preview and still capture.
   static const double minAcceptableFaceRatio = 0.16;
 
-  // Faces below this ratio are not acceptable even if the quality score passes.
+  // Faces below this ratio get a quality penalty but are not auto-rejected.
   static const double minPreferredFaceRatio = 0.20;
 
   // Live too-close ceiling so the face is not cropped by the guide.
@@ -618,7 +618,7 @@ class FaceRecognitionService {
     }
 
     final minScore = forLiveGuidance ? 40.0 : 50.0;
-    final framingOk = faceRatio >= minPreferredFaceRatio &&
+    final framingOk = faceRatio >= minAcceptableFaceRatio &&
         !(forLiveGuidance && faceRatio > maxLiveFaceRatio);
 
     return FaceQualityResult(

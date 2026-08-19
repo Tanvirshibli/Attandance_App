@@ -33,7 +33,7 @@ void main() {
       );
     });
 
-    test('0.18 passes the live size floor', () {
+    test('0.18 passes the live and still size floor', () {
       expect(
         FaceRecognitionService.isFaceRatioAcceptable(
           0.18,
@@ -137,6 +137,61 @@ void main() {
           previewSize: previewSize,
         ),
         contains('Center'),
+      );
+    });
+
+    test('70% guide fill meets the 16% still area floor', () {
+      final frame = faceGuideRect(previewSize);
+      const scale = 360 / 480;
+      final imageHeight = frame.height * FaceGuidePlacement.minOvalHeightFill / scale;
+      final box = Rect.fromCenter(
+        center: const Offset(240, 320),
+        width: imageHeight * 0.72,
+        height: imageHeight,
+      );
+      final areaRatio = (box.width * box.height) / (imageSize.width * imageSize.height);
+      expect(
+        areaRatio,
+        greaterThanOrEqualTo(FaceRecognitionService.minAcceptableFaceRatio),
+      );
+      expect(
+        FaceGuidePlacement.issue(
+          faceBox: box,
+          imageSize: imageSize,
+          previewSize: previewSize,
+        ),
+        isNull,
+      );
+    });
+
+    test('turned pose uses a looser center inset', () {
+      final frameHeight = faceGuideRect(previewSize).height;
+      const scale = 360 / 480;
+      final imageHeight = frameHeight * 0.75 / scale;
+      final tight = FaceGuidePlacement.insetGuideRect(previewSize);
+      final mappedX = tight.left - 8;
+      final imageX = mappedX / scale;
+      final box = Rect.fromCenter(
+        center: Offset(imageX, 320),
+        width: imageHeight * 0.72,
+        height: imageHeight,
+      );
+      expect(
+        FaceGuidePlacement.issue(
+          faceBox: box,
+          imageSize: imageSize,
+          previewSize: previewSize,
+        ),
+        contains('Center'),
+      );
+      expect(
+        FaceGuidePlacement.issue(
+          faceBox: box,
+          imageSize: imageSize,
+          previewSize: previewSize,
+          angled: true,
+        ),
+        isNull,
       );
     });
   });
