@@ -17,7 +17,16 @@ class FaceRegistrationData {
   final String? registeredAt;
   final String? status;
 
-  bool get hasData => avgEmbedding.isNotEmpty;
+  bool get hasData => hasValidTemplates;
+
+  bool get hasValidTemplates => isValidEmbedding(avgEmbedding);
+
+  static bool isValidEmbedding(List<double>? values) {
+    if (values == null || values.length != 192) {
+      return false;
+    }
+    return values.every((value) => value.isFinite);
+  }
 
   Map<String, dynamic> toJson() {
     return {
@@ -36,7 +45,7 @@ class FaceRegistrationData {
     }
 
     final avg = _toDoubleList(raw['avgEmbedding']);
-    if (avg.isEmpty) {
+    if (!isValidEmbedding(avg)) {
       return null;
     }
 

@@ -27,7 +27,7 @@ class FaceRecognitionService {
 
   // MobileFaceNet input: 112x112x3, output: 1x192
   static const int _inputSize = 112;
-  static const int _embeddingSize = 192;
+  static const int embeddingSize = 192;
 
   // Core match threshold against registration templates (avg + captures)
   static const double _matchThreshold = 0.80;
@@ -47,11 +47,14 @@ class FaceRecognitionService {
   // Minimum smile probability for liveness "smile" challenge
   static const double _smileThreshold = 0.55;
 
-  // Liveness: minimum face-to-image area ratio to accept (prevents back camera)
-  static const double _minFaceRatioForSelfie = 0.06;
+  // Minimum face-to-image area ratio for live preview and still capture.
+  static const double minAcceptableFaceRatio = 0.08;
 
-  // Live guidance: allow arm's-length framing during preview
-  static const double _minFaceRatioForLiveGuidance = 0.04;
+  // Faces below this ratio are not acceptable even if the quality score passes.
+  static const double minPreferredFaceRatio = 0.10;
+
+  // Live too-close ceiling so the face is not cropped by the guide.
+  static const double maxLiveFaceRatio = 0.55;
 
   // Liveness: minimum edge sharpness score (photos-of-screens are blurrier)
   static const double _minSharpnessScore = 15.0;
@@ -75,7 +78,7 @@ class FaceRecognitionService {
   int _registrationCaptureCount = 0;
 
   void hydrateRegistration(FaceRegistrationData? registration) {
-    if (registration == null || !registration.hasData) {
+    if (registration == null || !registration.hasValidTemplates) {
       clearRegistrationMemory();
       return;
     }
@@ -95,7 +98,7 @@ class FaceRecognitionService {
   }
 
   FaceRegistrationData? exportRegistrationData() {
-    if (_registeredAvgEmbedding == null || _registeredAvgEmbedding!.isEmpty) {
+    if (!FaceRegistrationData.isValidEmbedding(_registeredAvgEmbedding)) {
       return null;
     }
 
@@ -220,7 +223,7 @@ class FaceRecognitionService {
       final imageArea = rawImage.width * rawImage.height;
       final faceRatio = faceArea / imageArea;
 
-      if (faceRatio < _minFaceRatioForSelfie) {
+      if (faceRatio < minAcceptableFaceRatio) {
         issues.add(
             'Face is too small — hold the phone closer or use the front camera.');
       }
@@ -299,9 +302,11 @@ class FaceRecognitionService {
   }) {
     final faceArea = face.boundingBox.width * face.boundingBox.height;
     final imageArea = imageWidth * imageHeight;
-    final faceRatio = faceArea / imageArea;
-    final minRatio =
-        forLiveGuidance ? _minFaceRatioForLiveGuidance : _minFaceRatioForSelfie;
+    final faceRatio = imageArea <= 0 ? 0.0 : faceArea / imageArea;
+    final ratioIssue = faceFramingIssue(
+      faceRatio,
+      forLiveGuidance: forLiveGuidance,
+    );
 
     final faceCenterX = face.boundingBox.center.dx / imageWidth;
     final faceCenterY = face.boundingBox.center.dy / imageHeight;
@@ -309,17 +314,12 @@ class FaceRecognitionService {
         (faceCenterX - 0.5).abs() < centerTolerance &&
         (faceCenterY - 0.5).abs() < centerTolerance;
 
-    // Front camera selfie: face ratio above threshold and optionally centered
     final isFrontCamera =
-        faceRatio >= minRatio && (!requireCentering || isCentered);
+        ratioIssue == null && (!requireCentering || isCentered);
 
-    String? issue;
-    if (faceRatio < minRatio) {
-      issue = forLiveGuidance
-          ? 'Move a little closer and center your face in the guide'
-          : 'Face appears too small — please use the front camera and hold the phone at arm\'s length.';
-    } else if (requireCentering && !isCentered) {
-      issue = 'Face is not centered — please look directly at the front camera.';
+    String? issue = ratioIssue;
+    if (issue == null && requireCentering && !isCentered) {
+      issue = 'Center your face inside the guide';
     }
 
     return FrontCameraCheckResult(
@@ -327,6 +327,62 @@ class FaceRecognitionService {
       faceRatio: faceRatio,
       issue: issue,
     );
+  }
+
+  /// Size gate used by live preview and still capture (no ML Kit needed).
+  static String? faceFramingIssue(
+    double faceRatio, {
+    required bool forLiveGuidance,
+  }) {
+    if (faceRatio < minAcceptableFaceRatio) {
+      return forLiveGuidance
+          ? 'Move closer and fill the face guide'
+          : 'Face appears too small — please use the front camera and hold the phone closer.';
+    }
+    if (forLiveGuidance && faceRatio > maxLiveFaceRatio) {
+      return 'Move back a little — your face is too close';
+    }
+    return null;
+  }
+
+  static bool isFaceRatioAcceptable(
+    double faceRatio, {
+    required bool forLiveGuidance,
+  }) {
+    return faceFramingIssue(
+          faceRatio,
+          forLiveGuidance: forLiveGuidance,
+        ) ==
+        null;
+  }
+
+  /// Live placement with a width/height swap fallback for rotated frames.
+  FrontCameraCheckResult evaluateLivePlacement(
+    Face face,
+    int imageWidth,
+    int imageHeight,
+  ) {
+    final primary = checkFrontCamera(
+      face,
+      imageWidth,
+      imageHeight,
+      requireCentering: true,
+      centerTolerance: 0.35,
+      forLiveGuidance: true,
+    );
+    if (primary.isFrontCamera || imageWidth == imageHeight) {
+      return primary;
+    }
+
+    final swapped = checkFrontCamera(
+      face,
+      imageHeight,
+      imageWidth,
+      requireCentering: true,
+      centerTolerance: 0.35,
+      forLiveGuidance: true,
+    );
+    return swapped.isFrontCamera ? swapped : primary;
   }
 
   // ---- Same Person Validation ----
@@ -485,23 +541,18 @@ class FaceRecognitionService {
     final imageArea = imageWidth * imageHeight;
     final faceRatio = faceArea / imageArea;
 
-    if (forLiveGuidance) {
-      if (faceRatio < 0.04) {
-        issues.add('Face is too far — move closer to the camera');
-        score -= 40;
-      } else if (faceRatio < 0.06) {
-        issues.add('Face is a bit far — move slightly closer');
-        score -= 10;
-      }
-    } else if (faceRatio < 0.05) {
+    if (faceRatio < minAcceptableFaceRatio) {
       issues.add('Face is too far — move closer to the camera');
       score -= 40;
-    } else if (faceRatio < 0.10) {
+    } else if (faceRatio < minPreferredFaceRatio) {
       issues.add('Face is a bit far — move slightly closer');
       score -= 20;
     }
 
-    if (!forLiveGuidance && faceRatio > 0.70) {
+    if (forLiveGuidance && faceRatio > maxLiveFaceRatio) {
+      issues.add('Face is too close — move back a little');
+      score -= 20;
+    } else if (!forLiveGuidance && faceRatio > 0.70) {
       issues.add('Face is too close — move back a little');
       score -= 20;
     }
@@ -550,14 +601,14 @@ class FaceRecognitionService {
       score -= 20;
     }
 
-    final tooFarHard = forLiveGuidance ? faceRatio < 0.04 : faceRatio < 0.05;
     final minScore = forLiveGuidance ? 40.0 : 50.0;
+    final framingOk = faceRatio >= minPreferredFaceRatio &&
+        !(forLiveGuidance && faceRatio > maxLiveFaceRatio);
 
     return FaceQualityResult(
       score: score.clamp(0.0, 100.0),
       issues: issues,
-      isAcceptable: score >= minScore &&
-          (!tooFarHard || !issues.any((i) => i.contains('too far'))),
+      isAcceptable: score >= minScore && framingOk,
       faceRatio: faceRatio,
       yaw: yaw,
       pitch: pitch,
@@ -724,7 +775,7 @@ class FaceRecognitionService {
     );
 
     final input = _imageToFloat32List(resized);
-    final output = List.filled(_embeddingSize, 0.0).reshape([1, _embeddingSize]);
+    final output = List.filled(embeddingSize, 0.0).reshape([1, embeddingSize]);
     _interpreter!.run(input, output);
     return _l2Normalize(List<double>.from(output[0]));
   }
@@ -763,13 +814,13 @@ class FaceRecognitionService {
     if (embeddings.isEmpty) return [];
     if (embeddings.length == 1) return embeddings.first;
 
-    final avg = List.filled(_embeddingSize, 0.0);
+    final avg = List.filled(embeddingSize, 0.0);
     for (final emb in embeddings) {
-      for (int i = 0; i < _embeddingSize; i++) {
+      for (int i = 0; i < embeddingSize; i++) {
         avg[i] += emb[i];
       }
     }
-    for (int i = 0; i < _embeddingSize; i++) {
+    for (int i = 0; i < embeddingSize; i++) {
       avg[i] /= embeddings.length;
     }
     return _l2Normalize(avg);
@@ -882,9 +933,9 @@ class FaceRecognitionService {
     );
   }
 
-  /// Check if a face has been registered
+  /// Check if a valid face template is loaded in memory.
   Future<bool> isFaceRegistered() async {
-    return _registeredAvgEmbedding != null && _registeredAvgEmbedding!.isNotEmpty;
+    return FaceRegistrationData.isValidEmbedding(_registeredAvgEmbedding);
   }
 
   /// Get the registration timestamp
@@ -915,7 +966,7 @@ class FaceRecognitionService {
       return FaceVerificationResult(
         isMatch: false,
         confidence: 0,
-        message: 'No face registered. Please register your face first in Profile.',
+        message: 'Your face data is missing or unreadable. Please register your face again.',
       );
     }
 
