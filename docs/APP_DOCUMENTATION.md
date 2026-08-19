@@ -21,7 +21,7 @@
 >
 > July 9, 2026 dual-device attendance: Home/History use ZKTeco-primary list merged with HRM JWT (one row per day). Machine and android punches both show. ZKTeco backend merges same-day machine-in + android-out onto one `new_attendance_requests` row (`device_type` may become `mixed`).
 
-> August 19, 2026 face capture: Auto-capture waits until the live face **fills the centered rounded frame** (height ≥ 70% of the guide, center inside a 12% inset). Image-area floor is **16%** (preferred **20%**). Live centering ±20%. Still registration always requires centering. Check-in uses a full preview with **one** dimmed rounded frame (not a clipped oval, not a second progress box). Missing or corrupt 192-dim templates prompt re-registration on Home, Check-in, and Profile. Shared widget: `lib/widgets/face_capture_stage.dart`.
+> August 19, 2026 face capture: Auto-capture waits until the live face **fills the centered rounded frame** (height ≥ 70% of the guide; straight center inside a 12% inset, turned poses 4%). Image-area floor is **16%** for live and still (20% is a quality penalty only). Live centering ±20%. A rejected still capture keeps its error visible for 2 seconds so the same step does not look like it restarted. Check-in uses a full preview with **one** dimmed rounded frame. Missing or corrupt 192-dim templates prompt re-registration on Home, Check-in, and Profile. Shared widget: `lib/widgets/face_capture_stage.dart`.
 >
 > August 18, 2026 Google Maps: Geo Tracking uses native Google Maps (`google_maps_flutter`) with Standard, Terrain, and Hybrid Satellite layers, live marker, accuracy circle, history pins, and the same zoom/recenter controls.
 >
@@ -382,7 +382,7 @@ The face recognition pipeline is implemented entirely on-device in `FaceRecognit
 | `_samePersonThreshold` | 0.65 | Minimum cosine similarity between registration captures to confirm same person |
 | `_smileThreshold` | 0.55 | Minimum `smilingProbability` from ML Kit for smile liveness |
 | `minAcceptableFaceRatio` | 0.16 | Hard-reject floor for live **and** still face-area-to-image-area (16%) |
-| `minPreferredFaceRatio` | 0.20 | Below this, `checkFaceQuality` is not `isAcceptable` even if score passes |
+| `minPreferredFaceRatio` | 0.20 | Below this, `checkFaceQuality` applies a score penalty; hard reject is `minAcceptableFaceRatio` (0.16) |
 | `maxLiveFaceRatio` | 0.55 | Live too-close ceiling so cropped faces cannot auto-capture |
 | `liveCenterTolerance` | 0.20 | Live face-center vs full frame |
 | `_minSharpnessScore` | 15.0 | Minimum Laplacian variance for sharpness/screen detection |
@@ -973,7 +973,7 @@ The current stack uses **ML Kit for detection** and **MobileFaceNet for identity
 - Shared full-preview camera stage for registration and check-in: dimmed outside one centered rounded frame, L-corner brackets on that path, live coaching chip, clockwise progress stroke.
 
 ### `lib/utils/face_guide_placement.dart`
-- Maps the live ML Kit box onto the preview frame (`BoxFit.cover`, front-camera X-mirror). Capture is blocked until the face fills ~70% of frame height and the center sits in a 12% inset.
+- Maps the live ML Kit box onto the preview frame (`BoxFit.cover`, front-camera X-mirror). Capture is blocked until the face fills ~70% of frame height. Straight poses use a 12% center inset; turned poses use 4%.
 
 ### `lib/widgets/face_oval_guide.dart`
 - Legacy face placement oval overlay. Current capture screens use `FaceCaptureStage` instead.

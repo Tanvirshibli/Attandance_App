@@ -148,6 +148,13 @@ Handoff for backend teams: **[SALES_AND_PAYMENTS_API_CONTRACT.md](SALES_AND_PAYM
 - Registration and check-in show **one** centered rounded frame (dim cutout, border, L-corners, and capture progress share the same RRect)
 - The previous faint outer progress track is gone; L-corners sit on the rounded path so they do not clip the camera card
 
+### Face registration step advance (v2.2.3+56)
+
+- A registration step advances only after the still capture is saved; live hold and still size now share the **16%** area floor (20% is a quality penalty only)
+- Turned poses use a **4%** center inset (straight stays **12%**) so left/right/up/down are not treated as off-guide
+- A rejected still capture keeps its error on screen for **2 seconds** instead of immediately repeating the angle instruction
+- Guide height is **72%** of the preview (pixel-inset so it stays inside the camera card)
+
 ### Face oval fill (v2.2.3+53)
 
 - Auto-capture waits until the live face **fills the oval** (mapped height ≥ 70% of the guide, center inside a 12% inset). Front-camera preview is X-mirrored to match the box.
