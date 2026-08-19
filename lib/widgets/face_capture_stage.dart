@@ -84,7 +84,6 @@ class FaceCaptureStage extends StatelessWidget {
           builder: (context, constraints) {
             final size = Size(constraints.maxWidth, constraints.maxHeight);
             final guide = faceGuideRect(size);
-            final tickOrigin = faceGuideTickOrigin(size);
             final hasCoaching =
                 coachingMessage != null && coachingMessage!.isNotEmpty;
             final hasLabels = topBadge != null || hasCoaching;
@@ -104,21 +103,21 @@ class FaceCaptureStage extends StatelessWidget {
                           ? AppColors.success
                           : AppColors.primary,
                     ),
+                    child: const SizedBox.expand(),
                   ),
                 ),
                 if (showSuccessTick)
-                  Positioned(
-                    left: tickOrigin.dx,
-                    top: tickOrigin.dy,
-                    width: faceGuideTickSize,
-                    height: faceGuideTickSize,
-                    child: tickScale == null
-                        ? _successTick()
-                        : ScaleTransition(
-                            alignment: Alignment.center,
-                            scale: tickScale!,
-                            child: _successTick(),
-                          ),
+                  Positioned.fromRect(
+                    rect: guide,
+                    child: Center(
+                      child: tickScale == null
+                          ? _successTick()
+                          : ScaleTransition(
+                              alignment: Alignment.center,
+                              scale: tickScale!,
+                              child: _successTick(),
+                            ),
+                    ),
                   ),
                 if (flash != null) Positioned.fill(child: flash!),
                 if (hasLabels)
@@ -263,22 +262,23 @@ class FaceGuidePainter extends CustomPainter {
     _drawRoundedCorners(canvas, rrect, cornerPaint, 22);
 
     if (progress > 0) {
-      final metrics = facePath.computeMetrics();
-      if (metrics.isEmpty) return;
-      final metric = metrics.first;
-      final progressPath = metric.extractPath(
-        0,
-        metric.length * progress.clamp(0.0, 1.0),
-      );
-      canvas.drawPath(
-        progressPath,
-        Paint()
-          ..color = progressColor
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = isMatching ? 3.2 : 2.6
-          ..strokeCap = StrokeCap.round
-          ..strokeJoin = StrokeJoin.round,
-      );
+      // PathMetrics is a one-pass iterable — do not call isEmpty then first.
+      for (final metric in facePath.computeMetrics()) {
+        final progressPath = metric.extractPath(
+          0,
+          metric.length * progress.clamp(0.0, 1.0),
+        );
+        canvas.drawPath(
+          progressPath,
+          Paint()
+            ..color = progressColor
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = isMatching ? 3.2 : 2.6
+            ..strokeCap = StrokeCap.round
+            ..strokeJoin = StrokeJoin.round,
+        );
+        break;
+      }
     }
   }
 

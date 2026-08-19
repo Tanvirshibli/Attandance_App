@@ -84,6 +84,34 @@ void main() {
       expect(origin.dx + faceGuideTickSize / 2, closeTo(frame.center.dx, 0.01));
       expect(origin.dy + faceGuideTickSize / 2, closeTo(frame.center.dy, 0.01));
     });
+
+    testWidgets('success tick is centered on the painted guide', (tester) async {
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: Scaffold(
+            body: Center(
+              child: SizedBox(
+                width: 360,
+                height: 396,
+                child: FaceCaptureStage(
+                  height: 396,
+                  cameraReady: false,
+                  progress: 1,
+                  guideColor: Colors.blue,
+                  showSuccessTick: true,
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+      final stage = tester.getRect(find.byType(FaceCaptureStage));
+      final icon = tester.getCenter(find.byIcon(Icons.check_rounded));
+      final expected = stage.topLeft + faceGuideRect(stage.size).center;
+      expect(icon.dx, closeTo(expected.dx, 1.5));
+      expect(icon.dy, closeTo(expected.dy, 1.5));
+    });
   });
 
   group('frame fill', () {
