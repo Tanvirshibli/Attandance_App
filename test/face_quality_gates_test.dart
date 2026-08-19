@@ -67,7 +67,7 @@ void main() {
     });
   });
 
-  group('oval fill', () {
+  group('frame fill', () {
     const imageSize = Size(480, 640);
     const previewSize = Size(360, 396);
 
@@ -89,10 +89,10 @@ void main() {
       );
     });
 
-    test('face covering about 75% of oval height passes', () {
-      const ovalHeight = 396 * 0.72;
+    test('face covering about 75% of frame height passes', () {
+      const frameHeight = 396 * 0.72;
       const scale = 360 / 480;
-      final imageHeight = ovalHeight * 0.75 / scale;
+      final imageHeight = frameHeight * 0.75 / scale;
       final box = Rect.fromCenter(
         center: const Offset(240, 320),
         width: imageHeight * 0.72,
@@ -109,9 +109,9 @@ void main() {
     });
 
     test('off-center large face fails center', () {
-      const ovalHeight = 396 * 0.72;
+      const frameHeight = 396 * 0.72;
       const scale = 360 / 480;
-      final imageHeight = ovalHeight * 0.75 / scale;
+      final imageHeight = frameHeight * 0.75 / scale;
       final box = Rect.fromLTWH(
         0,
         320 - imageHeight / 2,

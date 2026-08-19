@@ -3,7 +3,7 @@ import 'dart:ui';
 
 import '../widgets/face_capture_stage.dart';
 
-/// Maps a live face box onto the on-screen oval (BoxFit.cover + optional mirror).
+/// Maps a live face box onto the on-screen rounded frame (BoxFit.cover + optional mirror).
 class FaceGuidePlacement {
   static const double minOvalHeightFill = 0.70;
   static const double maxOvalHeightFill = 1.15;
@@ -48,15 +48,15 @@ class FaceGuidePlacement {
   }
 
   static Rect insetGuideRect(Size previewSize) {
-    final oval = faceGuideRect(previewSize);
+    final frame = faceGuideRect(previewSize);
     return Rect.fromCenter(
-      center: oval.center,
-      width: oval.width * (1 - ovalInsetFraction * 2),
-      height: oval.height * (1 - ovalInsetFraction * 2),
+      center: frame.center,
+      width: frame.width * (1 - ovalInsetFraction * 2),
+      height: frame.height * (1 - ovalInsetFraction * 2),
     );
   }
 
-  /// Null when the face fills and sits inside the oval; otherwise coaching text.
+  /// Null when the face fills and sits inside the frame; otherwise coaching text.
   static String? issue({
     required Rect faceBox,
     required Size imageSize,
@@ -77,12 +77,12 @@ class FaceGuidePlacement {
       previewSize: previewSize,
       mirrorX: mirrorX,
     );
-    final oval = faceGuideRect(previewSize);
-    if (oval.height <= 0) {
+    final frame = faceGuideRect(previewSize);
+    if (frame.height <= 0) {
       return 'Hold still while the camera focuses';
     }
 
-    final heightFill = mapped.height / oval.height;
+    final heightFill = mapped.height / frame.height;
     if (heightFill < minOvalHeightFill) {
       return 'Move closer and fill the face guide';
     }

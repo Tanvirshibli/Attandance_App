@@ -4,42 +4,16 @@ import 'package:google_fonts/google_fonts.dart';
 
 import '../config/theme.dart';
 
-Path buildFaceGuidePath(Rect rect) {
-  final cx = rect.center.dx;
-  final top = rect.top;
-  final bottom = rect.bottom;
-  final left = rect.left;
-  final right = rect.right;
-  final cheekY = rect.top + rect.height * 0.38;
-  final jawY = rect.top + rect.height * 0.78;
+Radius faceGuideCornerRadius(Rect rect) {
+  return Radius.circular(rect.shortestSide * 0.22);
+}
 
-  return Path()
-    ..moveTo(cx, top)
-    ..cubicTo(
-      cx + rect.width * 0.34,
-      top + rect.height * 0.02,
-      right,
-      cheekY,
-      cx + rect.width * 0.24,
-      jawY,
-    )
-    ..cubicTo(
-      cx + rect.width * 0.16,
-      bottom,
-      cx - rect.width * 0.16,
-      bottom,
-      cx - rect.width * 0.24,
-      jawY,
-    )
-    ..cubicTo(
-      left,
-      cheekY,
-      cx - rect.width * 0.34,
-      top + rect.height * 0.02,
-      cx,
-      top,
-    )
-    ..close();
+RRect faceGuideRRect(Rect rect) {
+  return RRect.fromRectAndRadius(rect, faceGuideCornerRadius(rect));
+}
+
+Path buildFaceGuidePath(Rect rect) {
+  return Path()..addRRect(faceGuideRRect(rect));
 }
 
 Rect faceGuideRect(Size size) {
@@ -50,7 +24,7 @@ Rect faceGuideRect(Size size) {
   );
 }
 
-/// Full-preview face capture stage with dimmed oval, corners, and coaching.
+/// Full-preview face capture stage with dimmed rounded frame, corners, and coaching.
 class FaceCaptureStage extends StatelessWidget {
   const FaceCaptureStage({
     super.key,
@@ -221,7 +195,7 @@ class FaceGuideOverlayPainter extends CustomPainter {
     final facePath = buildFaceGuidePath(faceRect);
 
     final bgPaint = Paint()
-      ..color = Colors.black.withValues(alpha: 0.45)
+      ..color = Colors.black.withValues(alpha: 0.48)
       ..style = PaintingStyle.fill;
 
     final bgPath = Path()
@@ -232,19 +206,20 @@ class FaceGuideOverlayPainter extends CustomPainter {
     canvas.drawPath(bgPath, bgPaint);
 
     final borderPaint = Paint()
-      ..color = guideColor
+      ..color = guideColor.withValues(alpha: 0.88)
       ..style = PaintingStyle.stroke
-      ..strokeWidth = isMatching ? 3.5 : 2.2
+      ..strokeWidth = isMatching ? 2.4 : 1.6
       ..strokeJoin = StrokeJoin.round
       ..strokeCap = StrokeCap.round;
-    canvas.drawPath(facePath, borderPaint);
+    canvas.drawRRect(faceGuideRRect(faceRect), borderPaint);
 
     final cornerPaint = Paint()
       ..color = guideColor
       ..style = PaintingStyle.stroke
-      ..strokeWidth = 3.2
-      ..strokeCap = StrokeCap.round;
-    const arm = 18.0;
+      ..strokeWidth = isMatching ? 4.2 : 3.4
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round;
+    const arm = 22.0;
     _drawCorner(canvas, faceRect.topLeft, Offset(arm, 0), Offset(0, arm), cornerPaint);
     _drawCorner(canvas, faceRect.topRight, Offset(-arm, 0), Offset(0, arm), cornerPaint);
     _drawCorner(canvas, faceRect.bottomLeft, Offset(arm, 0), Offset(0, -arm), cornerPaint);
@@ -287,8 +262,8 @@ class FaceGuideProgressPainter extends CustomPainter {
     final faceRect = faceGuideRect(size).deflate(strokeWidth / 2);
     final facePath = buildFaceGuidePath(faceRect);
 
-    canvas.drawPath(
-      facePath,
+    canvas.drawRRect(
+      faceGuideRRect(faceRect),
       Paint()
         ..color = trackColor
         ..style = PaintingStyle.stroke
@@ -297,7 +272,9 @@ class FaceGuideProgressPainter extends CustomPainter {
     );
 
     if (progress > 0) {
-      final metric = facePath.computeMetrics().first;
+      final metrics = facePath.computeMetrics();
+      if (metrics.isEmpty) return;
+      final metric = metrics.first;
       final progressPath = metric.extractPath(
         0,
         metric.length * progress.clamp(0.0, 1.0),
