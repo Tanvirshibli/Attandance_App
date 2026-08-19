@@ -12,7 +12,7 @@ Flutter Android app for PPHL attendance.
 - JWT refresh on 401 (single-flight); profile cache for geo; 429 pauses geo HRM work — see [docs/AUTH_AND_RATE_LIMITS.md](docs/AUTH_AND_RATE_LIMITS.md)
 - Geo: live Google Maps window (Standard / Terrain / Hybrid Satellite), 5-min foreground timer, WorkManager, ongoing notification; FCM wake registers tokens and handles `geo_wake` data pushes when `android/app/google-services.json` is present (see `.example`)
 - Persistent per-install device identity sent with attendance and face-registration requests
-- Face capture: full-preview oval (not clipped), 8% minimum face size, missing/corrupt templates prompt re-register
+- Face capture: full-preview oval (not clipped); capture waits until the face fills the oval; missing/corrupt templates prompt re-register
 
 See [docs/MOBILE_EMPLOYEE_FEATURES.md](docs/MOBILE_EMPLOYEE_FEATURES.md) for API wiring status per feature. **OTA updates:** [docs/OTA_UPDATES.md](docs/OTA_UPDATES.md). Farm & Dealer mobile API: [docs/FARM_DEALER_MOBILE.md](docs/FARM_DEALER_MOBILE.md). Backend handoff for Sales/Payments: [docs/SALES_AND_PAYMENTS_API_CONTRACT.md](docs/SALES_AND_PAYMENTS_API_CONTRACT.md). Emulator workflow: [docs/EMULATOR_TESTING.md](docs/EMULATOR_TESTING.md). Rate limits / forced logout: [docs/AUTH_AND_RATE_LIMITS.md](docs/AUTH_AND_RATE_LIMITS.md).
 

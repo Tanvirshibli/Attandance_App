@@ -138,6 +138,13 @@ Handoff for backend teams: **[SALES_AND_PAYMENTS_API_CONTRACT.md](SALES_AND_PAYM
 - `mergeRecords` / `resolveTodayRecord` prefer in/out punches on the target calendar day over adjacent-day leftovers
 - Pending **Update Check Out** with a checkout time already shown is unchanged (requested days can still update out)
 
+### Face oval fill (v2.2.3+53)
+
+- Auto-capture waits until the live face **fills the oval** (mapped height ≥ 70% of the guide, center inside a 12% inset). Front-camera preview is X-mirrored to match the box.
+- Image-area floor is **16%** (preferred **20%**); live centering **±20%**
+- Still registration always requires centering (slightly looser for left/right/up/down)
+- Shared helper: `lib/utils/face_guide_placement.dart`
+
 ### Face capture robustness (v2.2.3+52)
 
 - Live and still captures share an **8%** minimum face-area ratio; faces under **10%** are not acceptable; live faces over **55%** are too close
@@ -171,7 +178,7 @@ Handoff for backend teams: **[SALES_AND_PAYMENTS_API_CONTRACT.md](SALES_AND_PAYM
 - Successful punch auto-returns to Home after ~1.5s (or **Done**) with the punched record; Home refreshes from API after optimistic merge
 - Live camera uses **image stream** (~5 FPS) with **NV21** on Android and **device-orientation-aware** ML Kit rotation
 - Registration live path matches check-in: **placement + angle hold only**; strict quality runs on final `takePicture()` capture
-- Live framing must fill the oval (≥ 8% face area); a distant face cannot look “in frame” because the preview is no longer clipped
+- Live framing must **fill the oval** (≥ 70% of guide height, plus ≥ 16% of the camera image); a distant face cannot look “in frame” because the preview is no longer clipped
 - Early check-in verify uses single embedding pass; final match keeps robust 4-variant embedding
 
 ### Geo map (v2.2.3+51)
