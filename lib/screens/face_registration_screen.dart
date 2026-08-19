@@ -13,6 +13,7 @@ import '../services/face_recognition_service.dart';
 import '../services/face_registration_api_service.dart';
 import '../services/auth_service.dart';
 import '../utils/camera_input_image.dart';
+import '../widgets/face_capture_stage.dart';
 
 /// 5-angle face registration screen with live camera preview.
 /// Automatically detects each target angle and captures when held.
@@ -387,38 +388,18 @@ class _FaceRegistrationScreenState extends State<FaceRegistrationScreen>
   }
 
   String? _facePlacementIssue(Face face) {
-      final dimensions = _streamFrameDimensions();
-      if (dimensions == null) return null;
+    final dimensions = _streamFrameDimensions();
+    if (dimensions == null) {
+      return 'Hold still while the camera focuses';
+    }
 
-      final primary = _faceService.checkFrontCamera(
-        face,
-        dimensions.width,
-        dimensions.height,
-        requireCentering: true,
-        centerTolerance: 0.35,
-        forLiveGuidance: true,
-      );
-      if (primary.isFrontCamera) return null;
-
-      FrontCameraCheckResult? swapped;
-      if (dimensions.width != dimensions.height) {
-        swapped = _faceService.checkFrontCamera(
-          face,
-          dimensions.height,
-          dimensions.width,
-          requireCentering: true,
-          centerTolerance: 0.35,
-          forLiveGuidance: true,
-        );
-        if (swapped.isFrontCamera) return null;
-      }
-
-      final issue = swapped?.issue ?? primary.issue;
-      if (issue != null && issue.contains('small')) {
-        return 'Move a little closer and place your face inside the guide';
-      }
-
-      return 'Place your face correctly inside the face guide';
+    final placement = _faceService.evaluateLivePlacement(
+      face,
+      dimensions.width,
+      dimensions.height,
+    );
+    if (placement.isFrontCamera) return null;
+    return placement.issue ?? 'Fill the face guide';
   }
 
   // Live stream uses placement only; strict quality runs at capture time.
@@ -646,109 +627,32 @@ class _FaceRegistrationScreenState extends State<FaceRegistrationScreen>
   // Camera preview with overlay
   // ----------------------------------------------------------------
   Widget _buildCameraPreview(double height) {
-    return SizedBox(
-      width: double.infinity,
-      height: height,
+    final guideColor = _faceDetected
+        ? (_facePlacedCorrectly && _angleHoldFrames > 0
+            ? AppColors.success
+            : _facePlacedCorrectly
+                ? AppColors.primary
+                : AppColors.warning)
+        : Colors.white54;
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
       child: Stack(
         alignment: Alignment.center,
         children: [
-          // Camera feed
-          if (_cameraReady && _cameraController != null)
-            ClipRRect(
-              borderRadius: BorderRadius.circular(24),
-              child: SizedBox(
-                width: double.infinity,
-                height: height,
-                child: FittedBox(
-                  fit: BoxFit.cover,
-                  child: SizedBox(
-                    width: _cameraController!.value.previewSize?.height ??
-                        480,
-                    height:
-                        _cameraController!.value.previewSize?.width ?? 640,
-                    child: CameraPreview(_cameraController!),
-                  ),
-                ),
-              ),
-            )
-          else
-            Container(
-              width: double.infinity,
-              height: height,
-              decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.05),
-                borderRadius: BorderRadius.circular(24),
-              ),
-              child: const Center(
-                  child:
-                      CircularProgressIndicator(color: Colors.white38)),
-            ),
-
-          Positioned.fill(
-            child: AnimatedBuilder(
-              animation: _progressAnim,
-              builder: (context, child) => CustomPaint(
-                painter: _FaceRegistrationProgressPainter(
-                  progress: _animatedProgress,
-                  trackColor: Colors.white.withValues(alpha: 0.15),
-                  progressColor: _progress >= 1.0
-                      ? AppColors.success
-                      : AppColors.primary,
-                ),
-              ),
-            ),
-          ),
-
-          // Face-shaped oval overlay
-          Positioned.fill(
-            child: CustomPaint(
-              painter: _FaceOvalOverlayPainter(
-                guideColor: _faceDetected
-                    ? (_facePlacedCorrectly && _angleHoldFrames > 0
-                        ? AppColors.success
-                        : _facePlacedCorrectly
-                            ? AppColors.primary
-                            : AppColors.warning)
-                    : Colors.white54,
-                isMatching: _angleHoldFrames > 0,
-              ),
-            ),
-          ),
-
-          if (_progress >= 1.0)
-            ScaleTransition(
-              scale: _tickScale,
-              child: Container(
-                width: 72,
-                height: 72,
-                decoration: BoxDecoration(
-                  color: AppColors.success.withValues(alpha: 0.88),
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(Icons.check_rounded,
-                    color: Colors.white, size: 40),
-              ),
-            ),
-
-          // Capture-flash white overlay
-          FadeTransition(
-            opacity: _captureFlashAnim,
-            child: Container(
-              width: double.infinity,
-              height: height,
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(24),
-              ),
-            ),
-          ),
-
-          // Step label (top)
-          Positioned(
-            top: 12,
-            child: Container(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+          FaceCaptureStage(
+            height: height,
+            cameraReady: _cameraReady,
+            cameraController: _cameraController,
+            progress: _animatedProgress,
+            guideColor: guideColor,
+            isMatching: _angleHoldFrames > 0,
+            showSuccessTick: _progress >= 1.0 && !_isCompleted,
+            tickScale: _tickScale,
+            coachingMessage: _isCompleted ? null : _statusMessage,
+            coachingIcon: _coachingIcon,
+            topBadge: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
               decoration: BoxDecoration(
                 color: AppColors.primary.withValues(alpha: 0.85),
                 borderRadius: BorderRadius.circular(16),
@@ -758,41 +662,17 @@ class _FaceRegistrationScreenState extends State<FaceRegistrationScreen>
                     ? 'Done!'
                     : 'Step ${_currentCapture + 1} of ${FaceRecognitionService.registrationCaptures}',
                 style: GoogleFonts.poppins(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                    color: Colors.white),
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.white,
+                ),
               ),
             ),
-          ),
-
-          // Instruction (bottom)
-          Positioned(
-            bottom: 20,
-            child: Container(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-              decoration: BoxDecoration(
-                color: Colors.black.withValues(alpha: 0.6),
-                borderRadius: BorderRadius.circular(20),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  _angleIcon(_targetAngle),
-                  const SizedBox(width: 8),
-                  Text(
-                    _statusMessage,
-                    style: GoogleFonts.poppins(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.white),
-                  ),
-                ],
-              ),
+            flash: FadeTransition(
+              opacity: _captureFlashAnim,
+              child: const ColoredBox(color: Colors.white),
             ),
           ),
-
-          // Completed overlay
           if (_isCompleted)
             Container(
               width: double.infinity,
@@ -815,21 +695,32 @@ class _FaceRegistrationScreenState extends State<FaceRegistrationScreen>
                         color: Colors.white, size: 48),
                   ),
                   const SizedBox(height: 16),
-                  Text('Registration Complete!',
-                      style: GoogleFonts.poppins(
-                          fontSize: 20,
-                          fontWeight: FontWeight.w700,
-                          color: Colors.white)),
                   Text(
-                      '${FaceRecognitionService.registrationCaptures} angles captured',
-                      style: GoogleFonts.poppins(
-                          fontSize: 14, color: Colors.white60)),
+                    'Registration Complete!',
+                    style: GoogleFonts.poppins(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.white,
+                    ),
+                  ),
                 ],
               ),
             ),
         ],
       ),
     );
+  }
+
+  IconData get _coachingIcon {
+    final message = _statusMessage.toLowerCase();
+    if (!_faceDetected) return Icons.face_retouching_off_outlined;
+    if (message.contains('too close')) return Icons.zoom_out_rounded;
+    if (message.contains('closer') || message.contains('too small')) {
+      return Icons.zoom_in_rounded;
+    }
+    if (message.contains('center')) return Icons.center_focus_strong_rounded;
+    if (!_facePlacedCorrectly) return Icons.zoom_in_rounded;
+    return Icons.center_focus_strong_rounded;
   }
 
   Widget _angleIcon(FaceAngle angle) {
@@ -1004,148 +895,4 @@ class _FaceRegistrationScreenState extends State<FaceRegistrationScreen>
       ),
     );
   }
-}
-
-// ================================================================
-// Oval overlay painter
-// ================================================================
-
-Path _buildRegistrationFacePath(Rect rect) {
-  final cx = rect.center.dx;
-  final top = rect.top;
-  final bottom = rect.bottom;
-  final left = rect.left;
-  final right = rect.right;
-  final cheekY = rect.top + rect.height * 0.38;
-  final jawY = rect.top + rect.height * 0.78;
-
-  return Path()
-    ..moveTo(cx, top)
-    ..cubicTo(
-      cx + rect.width * 0.34,
-      top + rect.height * 0.02,
-      right,
-      cheekY,
-      cx + rect.width * 0.24,
-      jawY,
-    )
-    ..cubicTo(
-      cx + rect.width * 0.16,
-      bottom,
-      cx - rect.width * 0.16,
-      bottom,
-      cx - rect.width * 0.24,
-      jawY,
-    )
-    ..cubicTo(
-      left,
-      cheekY,
-      cx - rect.width * 0.34,
-      top + rect.height * 0.02,
-      cx,
-      top,
-    )
-    ..close();
-}
-
-class _FaceRegistrationProgressPainter extends CustomPainter {
-  final double progress;
-  final Color trackColor;
-  final Color progressColor;
-  static const double _strokeWidth = 5;
-
-  _FaceRegistrationProgressPainter({
-    required this.progress,
-    required this.trackColor,
-    required this.progressColor,
-  });
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final faceRect = Rect.fromCenter(
-      center: Offset(size.width / 2, size.height * 0.45),
-      width: size.width * 0.62,
-      height: size.height * 0.72,
-    ).deflate(_strokeWidth / 2);
-
-    final facePath = _buildRegistrationFacePath(faceRect);
-
-    canvas.drawPath(
-      facePath,
-      Paint()
-        ..color = trackColor
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = _strokeWidth
-        ..strokeJoin = StrokeJoin.round,
-    );
-
-    if (progress > 0) {
-      final metric = facePath.computeMetrics().first;
-      final progressPath = metric.extractPath(
-        0,
-        metric.length * progress.clamp(0.0, 1.0),
-      );
-
-      canvas.drawPath(
-        progressPath,
-        Paint()
-          ..color = progressColor
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = _strokeWidth + 1
-          ..strokeCap = StrokeCap.round
-          ..strokeJoin = StrokeJoin.round,
-      );
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant _FaceRegistrationProgressPainter oldDelegate) {
-    return oldDelegate.progress != progress ||
-        oldDelegate.progressColor != progressColor;
-  }
-}
-
-class _FaceOvalOverlayPainter extends CustomPainter {
-  final Color guideColor;
-  final bool isMatching;
-
-  _FaceOvalOverlayPainter({
-    required this.guideColor,
-    required this.isMatching,
-  });
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final faceRect = Rect.fromCenter(
-      center: Offset(size.width / 2, size.height * 0.45),
-      width: size.width * 0.62,
-      height: size.height * 0.72,
-    );
-    final facePath = _buildRegistrationFacePath(faceRect);
-
-    // Semi-transparent background outside the face guide
-    final bgPaint = Paint()
-      ..color = Colors.black.withValues(alpha: 0.4)
-      ..style = PaintingStyle.fill;
-
-    final bgPath = Path()
-      ..addRect(Rect.fromLTWH(0, 0, size.width, size.height))
-      ..addPath(facePath, Offset.zero)
-      ..fillType = PathFillType.evenOdd;
-
-    canvas.drawPath(bgPath, bgPaint);
-
-    // Face-shaped border
-    final borderPaint = Paint()
-      ..color = guideColor
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = isMatching ? 3.5 : 2.0
-      ..strokeJoin = StrokeJoin.round
-      ..strokeCap = StrokeCap.round;
-    canvas.drawPath(facePath, borderPaint);
-  }
-
-  @override
-  bool shouldRepaint(covariant _FaceOvalOverlayPainter old) =>
-      old.guideColor != guideColor || old.isMatching != isMatching;
 }

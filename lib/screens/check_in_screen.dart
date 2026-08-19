@@ -17,117 +17,8 @@ import '../services/face_recognition_service.dart';
 import '../services/attendance_request_service.dart';
 import '../services/auth_service.dart';
 import '../utils/camera_input_image.dart';
-
-// ================================================================
-// Face path helpers & progress painter
-// ================================================================
-
-Path _buildFaceGuidePath(Rect rect) {
-  final cx = rect.center.dx;
-  final top = rect.top;
-  final bottom = rect.bottom;
-  final left = rect.left;
-  final right = rect.right;
-  final cheekY = rect.top + rect.height * 0.38;
-  final jawY = rect.top + rect.height * 0.78;
-
-  return Path()
-    ..moveTo(cx, top)
-    ..cubicTo(
-      cx + rect.width * 0.34,
-      top + rect.height * 0.02,
-      right,
-      cheekY,
-      cx + rect.width * 0.24,
-      jawY,
-    )
-    ..cubicTo(
-      cx + rect.width * 0.16,
-      bottom,
-      cx - rect.width * 0.16,
-      bottom,
-      cx - rect.width * 0.24,
-      jawY,
-    )
-    ..cubicTo(
-      left,
-      cheekY,
-      cx - rect.width * 0.34,
-      top + rect.height * 0.02,
-      cx,
-      top,
-    )
-    ..close();
-}
-
-class _FaceScanProgressPainter extends CustomPainter {
-  final double progress; // 0.0 – 1.0
-  final Color trackColor;
-  final Color progressColor;
-  final double strokeWidth;
-  static const double _inset = 8.0;
-
-  _FaceScanProgressPainter({
-    required this.progress,
-    required this.trackColor,
-    required this.progressColor,
-    this.strokeWidth = 5.0,
-  });
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final faceRect = Rect.fromLTWH(
-      _inset,
-      _inset,
-      size.width - (_inset * 2),
-      size.height - (_inset * 2),
-    ).deflate(strokeWidth / 2);
-
-    final facePath = _buildFaceGuidePath(faceRect);
-
-    canvas.drawPath(
-      facePath,
-      Paint()
-        ..color = trackColor
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = strokeWidth
-        ..strokeJoin = StrokeJoin.round,
-    );
-
-    if (progress > 0) {
-      final metric = facePath.computeMetrics().first;
-      final progressPath = metric.extractPath(
-        0,
-        metric.length * progress.clamp(0.0, 1.0),
-      );
-      canvas.drawPath(
-        progressPath,
-        Paint()
-          ..color = progressColor
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = strokeWidth + 1
-          ..strokeCap = StrokeCap.round
-          ..strokeJoin = StrokeJoin.round,
-      );
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant _FaceScanProgressPainter old) =>
-      old.progress != progress || old.progressColor != progressColor;
-}
-
-class _FaceShapeClipper extends CustomClipper<Path> {
-  const _FaceShapeClipper();
-
-  @override
-  Path getClip(Size size) {
-    return _buildFaceGuidePath(Rect.fromLTWH(0, 0, size.width, size.height));
-  }
-
-  @override
-  bool shouldReclip(covariant CustomClipper<Path> oldClipper) => false;
-}
+import '../widgets/face_capture_stage.dart';
+import 'face_registration_screen.dart';
 
 // ================================================================
 // Enums
@@ -171,6 +62,7 @@ class _CheckInScreenState extends State<CheckInScreen>
   String _statusMessage = 'Initializing...';
   String _errorMessage = '';
   bool _cameraReady = false;
+  bool _needsFaceReregister = false;
 
   // ---- Challenge tracking ----
   late List<ChallengeType> _challenges;
@@ -285,8 +177,9 @@ class _CheckInScreenState extends State<CheckInScreen>
       if (!mounted) return;
       setState(() {
         _phase = CheckInPhase.error;
+        _needsFaceReregister = true;
         _errorMessage =
-            'No face registered. Please register your face in Profile first.';
+            'Your face data is missing or unreadable. Please register your face again.';
       });
       return;
     }
@@ -522,15 +415,15 @@ class _CheckInScreenState extends State<CheckInScreen>
         final face = faces.first;
         final frameDimensions =
             CameraInputImage.effectiveDimensions(image, controller);
-        if (!_isFacePlacedCorrectly(face, frameDimensions)) {
+        final placementIssue = _facePlacementIssue(face, frameDimensions);
+        if (placementIssue != null) {
           setState(() {
             _faceDetected = true;
             _facePlacedCorrectly = false;
             _angleHoldFrames = 0;
             _blinkPhase = _BlinkPhase.waitingOpen;
             _smileHoldFrames = 0;
-            _statusMessage =
-                'Place your face correctly inside the face guide';
+            _statusMessage = placementIssue;
           });
         } else {
           setState(() {
@@ -563,7 +456,10 @@ class _CheckInScreenState extends State<CheckInScreen>
             'Look straight at the camera');
         break;
       case ChallengeType.smile:
-        if (_faceService.isSmiling(face)) {
+        if (!_faceService.isTargetAngle(face, FaceAngle.straight)) {
+          _smileHoldFrames = 0;
+          setState(() => _statusMessage = 'Look straight, then smile');
+        } else if (_faceService.isSmiling(face)) {
           _smileHoldFrames++;
           if (_smileHoldFrames >= _requiredSmileHoldFrames) {
             passed = true;
@@ -576,6 +472,11 @@ class _CheckInScreenState extends State<CheckInScreen>
         }
         break;
       case ChallengeType.blink:
+        if (!_faceService.isTargetAngle(face, FaceAngle.straight)) {
+          _blinkPhase = _BlinkPhase.waitingOpen;
+          setState(() => _statusMessage = 'Look straight at the camera');
+          break;
+        }
         _handleBlinkChallenge(face);
         passed = _blinkPhase == _BlinkPhase.done;
         if (!passed) {
@@ -603,38 +504,21 @@ class _CheckInScreenState extends State<CheckInScreen>
     }
   }
 
-  bool _isFacePlacedCorrectly(
+  String? _facePlacementIssue(
     Face face,
     ({int width, int height})? frameDimensions,
   ) {
-    if (frameDimensions == null) return true;
-
-    final imageWidth = frameDimensions.width;
-    final imageHeight = frameDimensions.height;
-
-    final placement = _faceService.checkFrontCamera(
-      face,
-      imageWidth,
-      imageHeight,
-      requireCentering: true,
-      centerTolerance: 0.35,
-      forLiveGuidance: true,
-    );
-    if (placement.isFrontCamera) return true;
-
-    if (imageWidth != imageHeight) {
-      final swappedPlacement = _faceService.checkFrontCamera(
-        face,
-        imageHeight,
-        imageWidth,
-        requireCentering: true,
-        centerTolerance: 0.35,
-        forLiveGuidance: true,
-      );
-      if (swappedPlacement.isFrontCamera) return true;
+    if (frameDimensions == null) {
+      return 'Hold still while the camera focuses';
     }
 
-    return false;
+    final placement = _faceService.evaluateLivePlacement(
+      face,
+      frameDimensions.width,
+      frameDimensions.height,
+    );
+    if (placement.isFrontCamera) return null;
+    return placement.issue ?? 'Fill the face guide';
   }
 
   /// Check an angle-based challenge with hold requirement.
@@ -781,11 +665,18 @@ class _CheckInScreenState extends State<CheckInScreen>
     return false;
   }
 
-  String _activeStatusMessage() {
-    if (_phase == CheckInPhase.scanning && !_facePlacedCorrectly) {
-      return 'Place your face correctly inside the face guide';
+  String _activeStatusMessage() => _statusMessage;
+
+  IconData get _coachingIcon {
+    final message = _statusMessage.toLowerCase();
+    if (!_faceDetected) return Icons.face_retouching_off_outlined;
+    if (message.contains('too close')) return Icons.zoom_out_rounded;
+    if (message.contains('closer') || message.contains('too small')) {
+      return Icons.zoom_in_rounded;
     }
-    return _statusMessage;
+    if (message.contains('center')) return Icons.center_focus_strong_rounded;
+    if (!_facePlacedCorrectly) return Icons.zoom_in_rounded;
+    return Icons.center_focus_strong_rounded;
   }
 
   // ================================================================
@@ -1001,6 +892,10 @@ class _CheckInScreenState extends State<CheckInScreen>
   }
 
   void _retry() {
+    if (_needsFaceReregister) {
+      unawaited(_openFaceRegistration());
+      return;
+    }
     _stopImageStream();
     _tickAnim.reset();
     _setupChallenges();
@@ -1015,6 +910,22 @@ class _CheckInScreenState extends State<CheckInScreen>
     _startImageStream();
   }
 
+  Future<void> _openFaceRegistration() async {
+    await _releaseCamera();
+    if (!mounted) return;
+    await Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const FaceRegistrationScreen()),
+    );
+    if (!mounted) return;
+    setState(() {
+      _needsFaceReregister = false;
+      _errorMessage = '';
+      _phase = CheckInPhase.initializing;
+      _statusMessage = 'Initializing...';
+    });
+    await _init();
+  }
+
   // ================================================================
   // Build
   // ================================================================
@@ -1024,8 +935,7 @@ class _CheckInScreenState extends State<CheckInScreen>
     if (_aborted) return const SizedBox.shrink();
 
     final sw = MediaQuery.of(context).size.width;
-    final faceWidth = sw * 0.64;
-    final faceHeight = faceWidth * 1.28;
+    final previewHeight = sw * 1.05;
 
     return PopScope(
       canPop: false,
@@ -1052,7 +962,7 @@ class _CheckInScreenState extends State<CheckInScreen>
       body: Column(
         children: [
           // ---- FIXED TOP: Camera + Circular Progress ----
-          _buildCameraSection(faceWidth, faceHeight),
+          _buildCameraSection(previewHeight),
 
           // ---- SCROLLABLE MIDDLE ----
           Expanded(
@@ -1085,133 +995,53 @@ class _CheckInScreenState extends State<CheckInScreen>
   // ----------------------------------------------------------------
   // Camera section with circular progress
   // ----------------------------------------------------------------
-  Widget _buildCameraSection(double width, double height) {
+  Widget _buildCameraSection(double height) {
+    final guideColor = _faceDetected
+        ? (_facePlacedCorrectly && _angleHoldFrames > 0
+            ? AppColors.success
+            : _facePlacedCorrectly
+                ? AppColors.primary
+                : AppColors.warning)
+        : Colors.white54;
+
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 16),
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
       child: Column(
         children: [
-          SizedBox(
-            width: width + 28,
-            height: height + 28,
-            child: Stack(
-              alignment: Alignment.center,
-              children: [
-                // Camera preview clipped to face shape
-                if (_cameraReady && _cameraController != null)
-                  ClipPath(
-                    clipper: const _FaceShapeClipper(),
-                    child: SizedBox(
-                      width: width,
-                      height: height,
-                      child: FittedBox(
-                        fit: BoxFit.cover,
-                        child: SizedBox(
-                          width:
-                              _cameraController!.value.previewSize?.height ??
-                                  width,
-                          height:
-                              _cameraController!.value.previewSize?.width ??
-                                  height,
-                          child: CameraPreview(_cameraController!),
-                        ),
-                      ),
-                    ),
-                  )
-                else
-                  ClipPath(
-                    clipper: const _FaceShapeClipper(),
-                    child: Container(
-                      width: width,
-                      height: height,
-                      color: Colors.white.withValues(alpha: 0.05),
-                      child: const Center(
-                          child: CircularProgressIndicator(
-                              color: Colors.white38)),
-                    ),
-                  ),
-
-                // Clockwise progress around face path
-                SizedBox(
-                  width: width + 18,
-                  height: height + 18,
-                  child: AnimatedBuilder(
-                    animation: _progressAnim,
-                    builder: (context, child) => CustomPaint(
-                      painter: _FaceScanProgressPainter(
-                        progress: _animatedProgress,
-                        trackColor:
-                            Colors.white.withValues(alpha: 0.15),
-                        progressColor: _progress >= 1.0
-                            ? AppColors.success
-                            : AppColors.primary,
-                        strokeWidth: 5,
-                      ),
-                    ),
-                  ),
-                ),
-
-                // Green tick when all challenges pass
-                if (_progress >= 1.0)
-                  ScaleTransition(
-                    scale: _tickScale,
-                    child: Container(
-                      width: 70,
-                      height: 70,
-                      decoration: BoxDecoration(
-                        color: AppColors.success.withValues(alpha: 0.85),
-                        shape: BoxShape.circle,
-                      ),
-                      child: const Icon(Icons.check_rounded,
-                          color: Colors.white, size: 40),
-                    ),
-                  ),
-
-                // "No face" badge
-                if (_cameraReady &&
-                    (!_faceDetected || !_facePlacedCorrectly) &&
-                    _phase == CheckInPhase.scanning)
-                  Positioned(
-                    bottom: 4,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 14, vertical: 5),
-                      decoration: BoxDecoration(
-                        color: AppColors.warning.withValues(alpha: 0.9),
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                        child: Text(
-                          _faceDetected
-                            ? 'Face not aligned to guide'
-                            : 'No face detected',
-                          style: GoogleFonts.poppins(
-                              fontSize: 11,
-                              fontWeight: FontWeight.w500,
-                              color: Colors.white)),
-                    ),
-                  ),
-              ],
-            ),
+          FaceCaptureStage(
+            height: height,
+            cameraReady: _cameraReady,
+            cameraController: _cameraController,
+            progress: _animatedProgress,
+            guideColor: guideColor,
+            isMatching: _facePlacedCorrectly && _angleHoldFrames > 0,
+            showSuccessTick: _progress >= 1.0,
+            tickScale: _tickScale,
+            coachingMessage: _phase == CheckInPhase.scanning
+                ? _statusMessage
+                : null,
+            coachingIcon: _coachingIcon,
           ),
-          const SizedBox(height: 12),
-
-          // Status message
-          AnimatedSwitcher(
-            duration: const Duration(milliseconds: 300),
-            child: Text(
-              _activeStatusMessage(),
-              key: ValueKey(_activeStatusMessage()),
-              textAlign: TextAlign.center,
-              style: GoogleFonts.poppins(
-                fontSize: 15,
-                fontWeight: FontWeight.w600,
-                color: _phase == CheckInPhase.success
-                    ? AppColors.success
-                    : _phase == CheckInPhase.error
-                        ? AppColors.error
-                        : Colors.white,
+          if (_phase != CheckInPhase.scanning) ...[
+            const SizedBox(height: 12),
+            AnimatedSwitcher(
+              duration: const Duration(milliseconds: 300),
+              child: Text(
+                _activeStatusMessage(),
+                key: ValueKey(_activeStatusMessage()),
+                textAlign: TextAlign.center,
+                style: GoogleFonts.poppins(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w600,
+                  color: _phase == CheckInPhase.success
+                      ? AppColors.success
+                      : _phase == CheckInPhase.error
+                          ? AppColors.error
+                          : Colors.white,
+                ),
               ),
             ),
-          ),
+          ],
         ],
       ),
     );
@@ -1485,8 +1315,8 @@ class _CheckInScreenState extends State<CheckInScreen>
         bgColor = AppColors.success;
         break;
       case CheckInPhase.error:
-        label = 'Retry';
-        onPressed = _retry;
+        label = _needsFaceReregister ? 'Register face' : 'Retry';
+        onPressed = _needsFaceReregister ? _openFaceRegistration : _retry;
         bgColor = AppColors.warning;
         break;
     }

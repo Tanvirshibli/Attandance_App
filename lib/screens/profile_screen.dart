@@ -26,6 +26,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   bool _isLoadingProfile = true;
   String? _profileError;
   String _appVersionLabel = '…';
+  bool _faceRegistered = true;
 
   @override
   void initState() {
@@ -68,11 +69,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
         _profileError = profile == null ? 'Could not load profile data.' : null;
       });
       _faceRecognitionService.hydrateRegistration(profile?.faceRegistration);
+      final registered = await _faceRecognitionService.isFaceRegistered();
+      if (mounted) {
+        setState(() => _faceRegistered = registered);
+      }
     } catch (_) {
       if (!mounted) return;
       setState(() {
         _profile = AuthUserProfile.fallback();
         _profileError = 'Could not load profile data.';
+        _faceRegistered = false;
       });
       _faceRecognitionService.clearRegistrationMemory();
     } finally {
@@ -108,7 +114,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
               child: FadeInUp(
                 delay: const Duration(milliseconds: 300),
                 duration: const Duration(milliseconds: 500),
-                child: _buildQuickActions(context),
+                child: Column(
+                  children: [
+                    if (!_isLoadingProfile && !_faceRegistered)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 12),
+                        child: _buildFaceMissingWarning(context),
+                      ),
+                    _buildQuickActions(context),
+                  ],
+                ),
               ),
             ),
           ),
@@ -352,6 +367,26 @@ class _ProfileScreenState extends State<ProfileScreen> {
     return Divider(color: AppColors.divider.withValues(alpha: 0.5), height: 1);
   }
 
+  Widget _buildFaceMissingWarning(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppColors.warning.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.warning.withValues(alpha: 0.45)),
+      ),
+      child: Text(
+        'Your face data is missing or unreadable. Please register your face again.',
+        style: GoogleFonts.poppins(
+          fontSize: 13,
+          fontWeight: FontWeight.w500,
+          color: AppColors.textPrimary,
+        ),
+      ),
+    );
+  }
+
   Widget _buildQuickActions(BuildContext context) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -393,14 +428,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
             const SizedBox(width: 12),
             _quickActionCard(
               Icons.face_retouching_natural,
-              'Register\nFace',
+              _faceRegistered ? 'Re-register\nFace' : 'Register\nFace',
               AppColors.warning,
-              onTap: () {
-                Navigator.of(context).push(
+              onTap: () async {
+                await Navigator.of(context).push(
                   MaterialPageRoute(
                     builder: (_) => const FaceRegistrationScreen(),
                   ),
                 );
+                if (!mounted) return;
+                final registered =
+                    await _faceRecognitionService.isFaceRegistered();
+                if (!mounted) return;
+                setState(() => _faceRegistered = registered);
               },
             ),
             const SizedBox(width: 12),

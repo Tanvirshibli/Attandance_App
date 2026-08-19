@@ -9,9 +9,11 @@ import '../models/auth_user_profile.dart';
 import '../services/attendance_report_service.dart';
 import '../services/attendance_request_service.dart';
 import '../services/auth_service.dart';
+import '../services/face_recognition_service.dart';
 import '../widgets/stat_card.dart';
 import '../widgets/attendance_tile.dart';
 import 'check_in_screen.dart';
+import 'face_registration_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -25,6 +27,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       AttendanceRequestService();
   final AttendanceReportService _reportService = AttendanceReportService();
   final AuthService _authService = AuthService();
+  final FaceRecognitionService _faceService = FaceRecognitionService();
 
   bool _canPunchIn = false;
   bool _canPunchOut = false;
@@ -44,6 +47,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   List<double> _weeklyHours = List<double>.filled(7, 0);
   AuthUserProfile _profile = AuthUserProfile.fallback();
   bool _isLoadingProfile = true;
+  bool _faceRegistered = true;
 
   @override
   void initState() {
@@ -76,16 +80,25 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     try {
       final profile = await _authService.getCurrentUserProfile();
       if (!mounted) return;
+      if (profile != null) {
+        _faceService.hydrateRegistration(profile.faceRegistration);
+      }
+      final registered = await _faceService.isFaceRegistered();
+      if (!mounted) return;
 
       setState(() {
         _profile = profile ?? AuthUserProfile.fallback();
         _isLoadingProfile = false;
+        _faceRegistered = registered;
       });
     } catch (_) {
+      if (!mounted) return;
+      final registered = await _faceService.isFaceRegistered();
       if (!mounted) return;
       setState(() {
         _profile = AuthUserProfile.fallback();
         _isLoadingProfile = false;
+        _faceRegistered = registered;
       });
     }
   }
@@ -380,12 +393,22 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       return;
     }
 
+    final registered = await _faceService.isFaceRegistered();
+    if (!mounted) return;
+    if (!registered) {
+      await _openFaceRegistration();
+      if (!mounted) return;
+      final nowRegistered = await _faceService.isFaceRegistered();
+      if (!nowRegistered) return;
+    }
+
     setState(() {
       _checkFlowOpening = true;
       if (isCheckOut) {
         _awaitingCheckOutSync = true;
       }
     });
+    if (!mounted) return;
     try {
       final punched = await Navigator.of(context).push<AttendanceRequestRecord?>(
         MaterialPageRoute(
@@ -403,6 +426,17 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         requireCheckOut: isCheckOut || _awaitingCheckOutSync,
       );
     }
+  }
+
+  Future<void> _openFaceRegistration() async {
+    if (!mounted) return;
+    await Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const FaceRegistrationScreen()),
+    );
+    if (!mounted) return;
+    final registered = await _faceService.isFaceRegistered();
+    if (!mounted) return;
+    setState(() => _faceRegistered = registered);
   }
 
   String _attendanceActionTitle() {
@@ -484,6 +518,18 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               ),
             ),
           ),
+
+          if (!_isLoadingProfile && !_faceRegistered)
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+                child: FadeInUp(
+                  delay: const Duration(milliseconds: 250),
+                  duration: const Duration(milliseconds: 500),
+                  child: _buildFaceMissingCard(),
+                ),
+              ),
+            ),
 
           // Attendance actions
           SliverToBoxAdapter(
@@ -788,6 +834,49 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildFaceMissingCard() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppColors.warning.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.warning.withValues(alpha: 0.45)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Your face data is missing or unreadable. Please register your face again.',
+            style: GoogleFonts.poppins(
+              fontSize: 13,
+              fontWeight: FontWeight.w500,
+              color: AppColors.textPrimary,
+            ),
+          ),
+          const SizedBox(height: 10),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton(
+              onPressed: _openFaceRegistration,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.warning,
+                foregroundColor: Colors.white,
+                elevation: 0,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              child: Text(
+                'Register face',
+                style: GoogleFonts.poppins(fontWeight: FontWeight.w600),
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
