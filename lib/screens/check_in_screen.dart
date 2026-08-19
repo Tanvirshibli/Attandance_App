@@ -529,6 +529,7 @@ class _CheckInScreenState extends State<CheckInScreen>
       previewSize: previewSize,
       mirrorX: _cameraController?.description.lensDirection ==
           CameraLensDirection.front,
+      angled: _currentChallengeIsAngled(),
     );
     if (ovalIssue != null) return ovalIssue;
 
@@ -539,6 +540,22 @@ class _CheckInScreenState extends State<CheckInScreen>
     );
     if (placement.isFrontCamera) return null;
     return placement.issue ?? 'Fill the face guide';
+  }
+
+  bool _currentChallengeIsAngled() {
+    if (_currentChallengeIndex < 0 ||
+        _currentChallengeIndex >= _challenges.length) {
+      return false;
+    }
+    switch (_challenges[_currentChallengeIndex]) {
+      case ChallengeType.turnLeft:
+      case ChallengeType.turnRight:
+        return true;
+      case ChallengeType.lookStraight:
+      case ChallengeType.smile:
+      case ChallengeType.blink:
+        return false;
+    }
   }
 
   Size? _previewWidgetSize() {

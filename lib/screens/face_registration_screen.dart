@@ -49,9 +49,11 @@ class _FaceRegistrationScreenState extends State<FaceRegistrationScreen>
   static const int _requiredHoldFrames = 5;
   static const Duration _firstPositioningWindow = Duration(seconds: 2);
   static const Duration _postCaptureSettle = Duration(milliseconds: 600);
+  static const Duration _rejectMessageHold = Duration(seconds: 2);
   static const String _positioningMessage =
       'Position your face in the guide…';
   DateTime? _analysisArmedAt;
+  DateTime? _rejectMessageUntil;
   bool _isFirstStreamStart = true;
   double _progress = 0.0;
   double _animatedProgress = 0.0;
@@ -84,6 +86,10 @@ class _FaceRegistrationScreenState extends State<FaceRegistrationScreen>
     }
     return FaceRecognitionService.registrationAngles[_currentCapture];
   }
+
+  bool get _holdingRejectMessage =>
+      _rejectMessageUntil != null &&
+      DateTime.now().isBefore(_rejectMessageUntil!);
 
   // ================================================================
   // Lifecycle
@@ -245,7 +251,9 @@ class _FaceRegistrationScreenState extends State<FaceRegistrationScreen>
         if (mounted) {
           setState(() {
             _angleHoldFrames = 0;
-            if (_currentCapture == 0 && !_captureResults[0]) {
+            if (!_holdingRejectMessage &&
+                _currentCapture == 0 &&
+                !_captureResults[0]) {
               _statusMessage = _positioningMessage;
             }
           });
@@ -277,6 +285,20 @@ class _FaceRegistrationScreenState extends State<FaceRegistrationScreen>
 
       final faces = await _faceService.detectFacesLive(inputImage);
       if (!mounted) return;
+
+      if (_holdingRejectMessage) {
+        setState(() {
+          _angleHoldFrames = 0;
+          if (faces.isEmpty || faces.length > 1) {
+            _faceDetected = false;
+            _facePlacedCorrectly = false;
+          } else {
+            _faceDetected = true;
+            _facePlacedCorrectly = _facePlacementIssue(faces.first) == null;
+          }
+        });
+        return;
+      }
 
       if (faces.isEmpty) {
         setState(() {
@@ -410,6 +432,8 @@ class _FaceRegistrationScreenState extends State<FaceRegistrationScreen>
       previewSize: previewSize,
       mirrorX: _cameraController?.description.lensDirection ==
           CameraLensDirection.front,
+      angled: _targetAngle != FaceAngle.straight &&
+          _targetAngle != FaceAngle.unknown,
     );
     if (ovalIssue != null) return ovalIssue;
 
@@ -468,6 +492,7 @@ class _FaceRegistrationScreenState extends State<FaceRegistrationScreen>
       if (!mounted) return;
 
       if (result.success) {
+        _rejectMessageUntil = null;
         setState(() => _captureResults[_currentCapture] = true);
 
         if (result.isPartial) {
@@ -510,6 +535,7 @@ class _FaceRegistrationScreenState extends State<FaceRegistrationScreen>
       } else {
         setState(() {
           _angleHoldFrames = 0;
+          _rejectMessageUntil = DateTime.now().add(_rejectMessageHold);
           _statusMessage = result.isDifferentPerson
               ? 'Different person detected! Try again.'
               : result.message;
@@ -519,6 +545,7 @@ class _FaceRegistrationScreenState extends State<FaceRegistrationScreen>
     } catch (e) {
       setState(() {
         _angleHoldFrames = 0;
+        _rejectMessageUntil = DateTime.now().add(_rejectMessageHold);
         _statusMessage = 'Capture failed. Try again.';
       });
     }
