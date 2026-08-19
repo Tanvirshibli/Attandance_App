@@ -1,3 +1,5 @@
+import 'dart:math';
+
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -17,10 +19,17 @@ Path buildFaceGuidePath(Rect rect) {
 }
 
 Rect faceGuideRect(Size size) {
+  const margin = 28.0;
+  const coachingReserve = 56.0;
+  final width = min(size.width * 0.62, max(0.0, size.width - margin * 2));
+  final height = min(
+    size.height * 0.58,
+    max(0.0, size.height - coachingReserve - margin),
+  );
   return Rect.fromCenter(
-    center: Offset(size.width / 2, size.height * 0.45),
-    width: size.width * 0.62,
-    height: size.height * 0.72,
+    center: Offset(size.width / 2, size.height / 2),
+    width: width,
+    height: height,
   );
 }
 
@@ -91,20 +100,13 @@ class FaceCaptureStage extends StatelessWidget {
               ),
             Positioned.fill(
               child: CustomPaint(
-                painter: FaceGuideProgressPainter(
+                painter: FaceGuidePainter(
+                  guideColor: guideColor,
+                  isMatching: isMatching,
                   progress: progress,
-                  trackColor: Colors.white.withValues(alpha: 0.15),
                   progressColor: progress >= 1.0
                       ? AppColors.success
                       : AppColors.primary,
-                ),
-              ),
-            ),
-            Positioned.fill(
-              child: CustomPaint(
-                painter: FaceGuideOverlayPainter(
-                  guideColor: guideColor,
-                  isMatching: isMatching,
                 ),
               ),
             ),
@@ -180,18 +182,25 @@ class FaceCaptureStage extends StatelessWidget {
   }
 }
 
-class FaceGuideOverlayPainter extends CustomPainter {
-  FaceGuideOverlayPainter({
+class FaceGuidePainter extends CustomPainter {
+  FaceGuidePainter({
     required this.guideColor,
     required this.isMatching,
+    required this.progress,
+    required this.progressColor,
   });
 
   final Color guideColor;
   final bool isMatching;
+  final double progress;
+  final Color progressColor;
 
   @override
   void paint(Canvas canvas, Size size) {
     final faceRect = faceGuideRect(size);
+    if (faceRect.width <= 0 || faceRect.height <= 0) return;
+
+    final rrect = faceGuideRRect(faceRect);
     final facePath = buildFaceGuidePath(faceRect);
 
     final bgPaint = Paint()
@@ -211,7 +220,7 @@ class FaceGuideOverlayPainter extends CustomPainter {
       ..strokeWidth = isMatching ? 2.4 : 1.6
       ..strokeJoin = StrokeJoin.round
       ..strokeCap = StrokeCap.round;
-    canvas.drawRRect(faceGuideRRect(faceRect), borderPaint);
+    canvas.drawRRect(rrect, borderPaint);
 
     final cornerPaint = Paint()
       ..color = guideColor
@@ -219,57 +228,7 @@ class FaceGuideOverlayPainter extends CustomPainter {
       ..strokeWidth = isMatching ? 4.2 : 3.4
       ..strokeCap = StrokeCap.round
       ..strokeJoin = StrokeJoin.round;
-    const arm = 22.0;
-    _drawCorner(canvas, faceRect.topLeft, Offset(arm, 0), Offset(0, arm), cornerPaint);
-    _drawCorner(canvas, faceRect.topRight, Offset(-arm, 0), Offset(0, arm), cornerPaint);
-    _drawCorner(canvas, faceRect.bottomLeft, Offset(arm, 0), Offset(0, -arm), cornerPaint);
-    _drawCorner(canvas, faceRect.bottomRight, Offset(-arm, 0), Offset(0, -arm), cornerPaint);
-  }
-
-  void _drawCorner(
-    Canvas canvas,
-    Offset origin,
-    Offset horizontal,
-    Offset vertical,
-    Paint paint,
-  ) {
-    canvas.drawLine(origin, origin + horizontal, paint);
-    canvas.drawLine(origin, origin + vertical, paint);
-  }
-
-  @override
-  bool shouldRepaint(covariant FaceGuideOverlayPainter oldDelegate) {
-    return oldDelegate.guideColor != guideColor ||
-        oldDelegate.isMatching != isMatching;
-  }
-}
-
-class FaceGuideProgressPainter extends CustomPainter {
-  FaceGuideProgressPainter({
-    required this.progress,
-    required this.trackColor,
-    required this.progressColor,
-    this.strokeWidth = 5,
-  });
-
-  final double progress;
-  final Color trackColor;
-  final Color progressColor;
-  final double strokeWidth;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final faceRect = faceGuideRect(size).deflate(strokeWidth / 2);
-    final facePath = buildFaceGuidePath(faceRect);
-
-    canvas.drawRRect(
-      faceGuideRRect(faceRect),
-      Paint()
-        ..color = trackColor
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = strokeWidth
-        ..strokeJoin = StrokeJoin.round,
-    );
+    _drawRoundedCorners(canvas, rrect, cornerPaint, 22);
 
     if (progress > 0) {
       final metrics = facePath.computeMetrics();
@@ -284,17 +243,67 @@ class FaceGuideProgressPainter extends CustomPainter {
         Paint()
           ..color = progressColor
           ..style = PaintingStyle.stroke
-          ..strokeWidth = strokeWidth + 1
+          ..strokeWidth = isMatching ? 3.2 : 2.6
           ..strokeCap = StrokeCap.round
           ..strokeJoin = StrokeJoin.round,
       );
     }
   }
 
+  void _drawRoundedCorners(
+    Canvas canvas,
+    RRect rrect,
+    Paint paint,
+    double arm,
+  ) {
+    final r = rrect.tlRadiusX;
+    canvas.drawLine(
+      Offset(rrect.left + r, rrect.top),
+      Offset(rrect.left + r + arm, rrect.top),
+      paint,
+    );
+    canvas.drawLine(
+      Offset(rrect.left, rrect.top + r),
+      Offset(rrect.left, rrect.top + r + arm),
+      paint,
+    );
+    canvas.drawLine(
+      Offset(rrect.right - r, rrect.top),
+      Offset(rrect.right - r - arm, rrect.top),
+      paint,
+    );
+    canvas.drawLine(
+      Offset(rrect.right, rrect.top + r),
+      Offset(rrect.right, rrect.top + r + arm),
+      paint,
+    );
+    canvas.drawLine(
+      Offset(rrect.left + r, rrect.bottom),
+      Offset(rrect.left + r + arm, rrect.bottom),
+      paint,
+    );
+    canvas.drawLine(
+      Offset(rrect.left, rrect.bottom - r),
+      Offset(rrect.left, rrect.bottom - r - arm),
+      paint,
+    );
+    canvas.drawLine(
+      Offset(rrect.right - r, rrect.bottom),
+      Offset(rrect.right - r - arm, rrect.bottom),
+      paint,
+    );
+    canvas.drawLine(
+      Offset(rrect.right, rrect.bottom - r),
+      Offset(rrect.right, rrect.bottom - r - arm),
+      paint,
+    );
+  }
+
   @override
-  bool shouldRepaint(covariant FaceGuideProgressPainter oldDelegate) {
-    return oldDelegate.progress != progress ||
-        oldDelegate.progressColor != progressColor ||
-        oldDelegate.trackColor != trackColor;
+  bool shouldRepaint(covariant FaceGuidePainter oldDelegate) {
+    return oldDelegate.guideColor != guideColor ||
+        oldDelegate.isMatching != isMatching ||
+        oldDelegate.progress != progress ||
+        oldDelegate.progressColor != progressColor;
   }
 }

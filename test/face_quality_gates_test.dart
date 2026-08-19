@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:employee_attendance/models/face_registration_data.dart';
 import 'package:employee_attendance/services/face_recognition_service.dart';
 import 'package:employee_attendance/utils/face_guide_placement.dart';
+import 'package:employee_attendance/widgets/face_capture_stage.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -67,6 +68,17 @@ void main() {
     });
   });
 
+  group('face guide geometry', () {
+    test('guide is centered inside the preview', () {
+      const preview = Size(360, 396);
+      final frame = faceGuideRect(preview);
+      expect(frame.center.dx, closeTo(preview.width / 2, 0.01));
+      expect(frame.center.dy, closeTo(preview.height / 2, 0.01));
+      expect(frame.top, greaterThanOrEqualTo(28));
+      expect(frame.bottom, lessThanOrEqualTo(preview.height - 28));
+    });
+  });
+
   group('frame fill', () {
     const imageSize = Size(480, 640);
     const previewSize = Size(360, 396);
@@ -90,7 +102,7 @@ void main() {
     });
 
     test('face covering about 75% of frame height passes', () {
-      const frameHeight = 396 * 0.72;
+      final frameHeight = faceGuideRect(previewSize).height;
       const scale = 360 / 480;
       final imageHeight = frameHeight * 0.75 / scale;
       final box = Rect.fromCenter(
@@ -109,7 +121,7 @@ void main() {
     });
 
     test('off-center large face fails center', () {
-      const frameHeight = 396 * 0.72;
+      final frameHeight = faceGuideRect(previewSize).height;
       const scale = 360 / 480;
       final imageHeight = frameHeight * 0.75 / scale;
       final box = Rect.fromLTWH(
