@@ -106,10 +106,12 @@ Handoff for backend teams: **[SALES_AND_PAYMENTS_API_CONTRACT.md](SALES_AND_PAYM
 ### Farm & Dealer (marketing)
 
 - Services tile → hub (Markets, Dealers, Farms, Visits, Follow-ups) + New Market / New Dealer / New Farm FABs
-- Party create: `employee_id` required; **Company/Sector dropdowns** from Sales `GET /api/booking-person-books/form-data`; farms can link parent dealer; products, photos
+- Create forms collect the **full Phase-1 field set** the current marketing API accepts (v2.2.3+59). ID fields are type-to-search (`SearchableSelectField`)
+- Live lists for `market_id` / parent party / `visit_id` (FK-checked). Demo catalog for ERP dealer, product, unit, and assigned employee IDs until live master APIs exist
+- Party create: `employee_id` required; **Company/Sector** from Sales `GET /api/booking-person-books/form-data` (demo fallback if empty); farms can link parent dealer; products, photos
 - Create forms **auto-fill GPS + address** (no Capture GPS / Check-in GPS buttons); visits start `in_progress` with auto check-in; check-out completes visit; farm survey + follow-ups from party detail
 - ZKTeco `/api/v1/mobile/marketing/*` including `visits/{id}/check-in|check-out` (no JWT); flag `marketing.enabled`
-- See [FARM_DEALER_MOBILE.md](FARM_DEALER_MOBILE.md) for endpoint keys and payloads
+- Attachments stay photos only (`photos[]`). See [FARM_DEALER_MOBILE.md](FARM_DEALER_MOBILE.md) for endpoint keys and payloads
 
 ### Post booking Zone dropdown (v2.2.3+44)
 
@@ -159,6 +161,13 @@ Handoff for backend teams: **[SALES_AND_PAYMENTS_API_CONTRACT.md](SALES_AND_PAYM
 
 - Success tick is pinned to the **center of the rounded guide**
 - Step badge, coaching, and check-in status sit in one horizontally centered strip **above** the guide (including GPS “Capturing location…”)
+
+### Farm & Dealer Phase-1 forms (v2.2.3+59)
+
+- Market, party, visit, farm survey, and follow-up create screens send every field the current ZKTeco marketing API already accepts
+- Type-to-search ID pickers: live markets/parties/visits; demo ERP dealers, products, units, employees; Sales companies/sectors with demo fallback
+- Farm survey adds `survey_type`, `production_percent`, product/unit IDs, and extra numeric metrics (`LAND_AREA_ACRE`, fertilizer, eggs, pond area)
+- Follow-up adds assigned demo employee, live `visit_id`, notes, and optional photos (`attachable_type=followup`)
 
 ### Face tick, keep-awake, map fullscreen (v2.2.3+58)
 
