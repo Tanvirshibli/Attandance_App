@@ -2,9 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../../config/theme.dart';
+import '../../data/marketing_demo_masters.dart';
+import '../../models/booking_form_data_models.dart';
 import '../../services/marketing_service.dart';
+import '../../services/sales_service.dart';
 import '../../utils/marketing_location_helper.dart';
 import '../../widgets/gradient_screen_header.dart';
+import '../../widgets/searchable_select_field.dart';
 import '../../widgets/section_card.dart';
 
 class MarketFormScreen extends StatefulWidget {
@@ -16,6 +20,7 @@ class MarketFormScreen extends StatefulWidget {
 
 class _MarketFormScreenState extends State<MarketFormScreen> {
   final MarketingService _service = MarketingService();
+  final SalesService _salesService = SalesService();
   final _name = TextEditingController();
   final _code = TextEditingController();
   final _division = TextEditingController();
@@ -26,16 +31,30 @@ class _MarketFormScreenState extends State<MarketFormScreen> {
   final _address = TextEditingController();
   final _notes = TextEditingController();
 
+  List<BookingFormCompany> _companies = MarketingDemoMasters.companies;
+  List<BookingFormSector> _sectors = MarketingDemoMasters.sectors;
+  BookingFormCompany? _company;
+  BookingFormSector? _sector;
+  String _status = 'active';
   double? _lat;
   double? _lng;
   bool _resolvingLocation = true;
   String? _locationStatus;
   bool _submitting = false;
+  bool _loadingMasters = true;
+
+  List<BookingFormSector> get _sectorsForCompany {
+    if (_company == null) return _sectors;
+    final filtered =
+        _sectors.where((s) => s.companyId == _company!.id).toList();
+    return filtered.isNotEmpty ? filtered : _sectors;
+  }
 
   @override
   void initState() {
     super.initState();
     _autoFillLocation();
+    _loadMasters();
   }
 
   @override
@@ -50,6 +69,18 @@ class _MarketFormScreenState extends State<MarketFormScreen> {
     _address.dispose();
     _notes.dispose();
     super.dispose();
+  }
+
+  Future<void> _loadMasters() async {
+    final result = await _salesService.fetchBookingFormData();
+    if (!mounted) return;
+    setState(() {
+      _loadingMasters = false;
+      if (result.success && result.data != null) {
+        _companies = MarketingDemoMasters.companiesOr(result.data!.companies);
+        _sectors = MarketingDemoMasters.sectorsOr(result.data!.sectors);
+      }
+    });
   }
 
   Future<void> _autoFillLocation() async {
@@ -119,6 +150,8 @@ class _MarketFormScreenState extends State<MarketFormScreen> {
     final result = await _service.createMarket(
       name: _name.text.trim(),
       code: _code.text.trim().isEmpty ? null : _code.text.trim(),
+      companyId: _company?.id,
+      sectorId: _sector?.id,
       divisionName:
           _division.text.trim().isEmpty ? null : _division.text.trim(),
       district: _district.text.trim().isEmpty ? null : _district.text.trim(),
@@ -128,7 +161,7 @@ class _MarketFormScreenState extends State<MarketFormScreen> {
       address: _address.text.trim().isEmpty ? null : _address.text.trim(),
       lat: _lat,
       lng: _lng,
-      status: 'active',
+      status: _status,
       notes: _notes.text.trim().isEmpty ? null : _notes.text.trim(),
     );
     if (!mounted) return;
@@ -191,7 +224,7 @@ class _MarketFormScreenState extends State<MarketFormScreen> {
       backgroundColor: AppColors.background,
       body: Column(
         children: [
-          GradientScreenHeader(
+          const GradientScreenHeader(
             title: 'New Market',
             subtitle: 'Location & geo hierarchy',
           ),
@@ -215,6 +248,57 @@ class _MarketFormScreenState extends State<MarketFormScreen> {
                         TextField(
                           controller: _code,
                           decoration: _decoration(hint: 'Optional'),
+                        ),
+                        const SizedBox(height: 12),
+                        if (_loadingMasters)
+                          const LinearProgressIndicator()
+                        else ...[
+                          SearchableSelectField<BookingFormCompany>(
+                            label: 'Company',
+                            icon: Icons.apartment_outlined,
+                            options: _companies,
+                            selected: _company,
+                            displayString: (c) => c.displayName,
+                            searchText: (c) => c.displayName.toLowerCase(),
+                            onSelected: (c) => setState(() {
+                              _company = c;
+                              if (_sector != null &&
+                                  c != null &&
+                                  _sector!.companyId != null &&
+                                  _sector!.companyId != c.id) {
+                                _sector = null;
+                              }
+                            }),
+                          ),
+                          const SizedBox(height: 12),
+                          SearchableSelectField<BookingFormSector>(
+                            label: 'Sector',
+                            icon: Icons.hub_outlined,
+                            options: _sectorsForCompany,
+                            selected: _sector,
+                            displayString: (s) => s.name,
+                            searchText: (s) => s.searchText,
+                            onSelected: (s) => setState(() => _sector = s),
+                          ),
+                        ],
+                        const SizedBox(height: 12),
+                        _label('Status'),
+                        DropdownButtonFormField<String>(
+                          initialValue: _status,
+                          decoration: _decoration(),
+                          items: const [
+                            DropdownMenuItem(
+                              value: 'active',
+                              child: Text('Active'),
+                            ),
+                            DropdownMenuItem(
+                              value: 'inactive',
+                              child: Text('Inactive'),
+                            ),
+                          ],
+                          onChanged: (v) {
+                            if (v != null) setState(() => _status = v);
+                          },
                         ),
                       ],
                     ),

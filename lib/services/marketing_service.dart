@@ -49,6 +49,8 @@ class MarketingService {
   Future<ApiResult<Market>> createMarket({
     required String name,
     String? code,
+    int? companyId,
+    int? sectorId,
     String? divisionName,
     String? district,
     String? upazila,
@@ -72,6 +74,8 @@ class MarketingService {
       body: {
         'name': name,
         if (code != null && code.isNotEmpty) 'code': code,
+        if (companyId != null && companyId > 0) 'company_id': companyId,
+        if (sectorId != null && sectorId > 0) 'sector_id': sectorId,
         if (divisionName != null && divisionName.isNotEmpty)
           'division_name': divisionName,
         if (district != null && district.isNotEmpty) 'district': district,

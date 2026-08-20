@@ -138,6 +138,12 @@ class Market {
       notes: marketingNonEmpty(json['notes']),
     );
   }
+
+  @override
+  bool operator ==(Object other) => other is Market && other.id == id;
+
+  @override
+  int get hashCode => id.hashCode;
 }
 
 class PartyProduct {
@@ -403,6 +409,12 @@ class Party {
           marketingNonEmpty(json['marketName'] ?? json['market_name']),
     );
   }
+
+  @override
+  bool operator ==(Object other) => other is Party && other.id == id;
+
+  @override
+  int get hashCode => id.hashCode;
 }
 
 class VisitProduct {
@@ -632,6 +644,20 @@ class Visit {
           marketingNonEmpty(json['partyName'] ?? json['party_name']),
     );
   }
+
+  String get displayName {
+    final no = visitNo?.trim();
+    final type = (visitType ?? 'visit').replaceAll('_', ' ');
+    final date = visitDate ?? '';
+    final head = (no != null && no.isNotEmpty) ? no : '#$id';
+    return [head, type, date].where((e) => e.isNotEmpty).join(' · ');
+  }
+
+  @override
+  bool operator ==(Object other) => other is Visit && other.id == id;
+
+  @override
+  int get hashCode => id.hashCode;
 }
 
 class SurveyMetric {
@@ -705,7 +731,10 @@ class FarmSurvey {
     this.farmType,
     this.ageDays,
     this.quantity,
+    this.quantityUnitId,
+    this.chicksProductId,
     this.mortalityQuantity,
+    this.feedProductId,
     this.chicksBrand,
     this.birdCapacity,
     this.currentBirds,
@@ -741,6 +770,9 @@ class FarmSurvey {
   final String? farmType;
   final int? ageDays;
   final double? quantity;
+  final int? quantityUnitId;
+  final int? chicksProductId;
+  final int? feedProductId;
   final double? mortalityQuantity;
   final String? chicksBrand;
   final double? birdCapacity;
@@ -780,6 +812,15 @@ class FarmSurvey {
       farmType: marketingNonEmpty(json['farmType'] ?? json['farm_type']),
       ageDays: marketingParseInt(json['ageDays'] ?? json['age_days']),
       quantity: marketingParseDouble(json['quantity']),
+      quantityUnitId: marketingParseInt(
+        json['quantityUnitId'] ?? json['quantity_unit_id'],
+      ),
+      chicksProductId: marketingParseInt(
+        json['chicksProductId'] ?? json['chicks_product_id'],
+      ),
+      feedProductId: marketingParseInt(
+        json['feedProductId'] ?? json['feed_product_id'],
+      ),
       mortalityQuantity: marketingParseDouble(
         json['mortalityQuantity'] ?? json['mortality_quantity'],
       ),
@@ -848,6 +889,7 @@ class Followup {
     required this.partyId,
     required this.employeeId,
     this.visitId,
+    this.assignedToEmployeeId,
     this.dueDate,
     this.actionType,
     this.title,
@@ -863,6 +905,7 @@ class Followup {
   final int id;
   final int partyId;
   final int? visitId;
+  final int? assignedToEmployeeId;
   final int employeeId;
   final String? dueDate;
   final String? actionType;
@@ -893,6 +936,9 @@ class Followup {
       id: marketingParseInt(json['id']) ?? 0,
       partyId: marketingParseInt(json['partyId'] ?? json['party_id']) ?? 0,
       visitId: marketingParseInt(json['visitId'] ?? json['visit_id']),
+      assignedToEmployeeId: marketingParseInt(
+        json['assignedToEmployeeId'] ?? json['assigned_to_employee_id'],
+      ),
       employeeId:
           marketingParseInt(json['employeeId'] ?? json['employee_id']) ?? 0,
       dueDate: marketingNonEmpty(json['dueDate'] ?? json['due_date']),
