@@ -1,15 +1,20 @@
+import 'dart:io';
+
 import 'package:animate_do/animate_do.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 
 import '../../config/theme.dart';
+import '../../data/marketing_demo_masters.dart';
 import '../../models/marketing_models.dart';
 import '../../services/auth_service.dart';
 import '../../services/marketing_service.dart';
 import '../../widgets/api_empty_state.dart';
 import '../../widgets/filter_chip_row.dart';
 import '../../widgets/gradient_screen_header.dart';
+import '../../widgets/searchable_select_field.dart';
 import '../../widgets/section_card.dart';
 
 /// Create follow-up for a party, or list-mode hub for open follow-ups.
@@ -33,10 +38,17 @@ class _FollowupFormScreenState extends State<FollowupFormScreen> {
   final _title = TextEditingController();
   final _description = TextEditingController();
   final _action = TextEditingController();
+  final _notes = TextEditingController();
 
   DateTime? _dueDate;
   String _priority = 'medium';
+  String _status = 'open';
   bool _submitting = false;
+  MarketingDemoNamed? _assignedEmployee;
+  Visit? _selectedVisit;
+  List<Visit> _visits = const [];
+  bool _loadingVisits = false;
+  final List<XFile> _photos = [];
 
   bool _loadingList = false;
   String? _listError;
@@ -59,6 +71,8 @@ class _FollowupFormScreenState extends State<FollowupFormScreen> {
     super.initState();
     if (_listMode) {
       _loadList();
+    } else {
+      _loadVisits();
     }
   }
 
@@ -67,7 +81,26 @@ class _FollowupFormScreenState extends State<FollowupFormScreen> {
     _title.dispose();
     _description.dispose();
     _action.dispose();
+    _notes.dispose();
     super.dispose();
+  }
+
+  Future<void> _loadVisits() async {
+    final party = widget.party;
+    if (party == null) return;
+    setState(() => _loadingVisits = true);
+    final result = await _service.listVisits(partyId: party.id);
+    if (!mounted) return;
+    setState(() {
+      _visits = result.data ?? const [];
+      _loadingVisits = false;
+    });
+  }
+
+  Future<void> _pickPhotos() async {
+    final files = await ImagePicker().pickMultiImage(imageQuality: 85);
+    if (files.isEmpty) return;
+    setState(() => _photos.addAll(files));
   }
 
   Future<void> _loadList() async {
@@ -177,20 +210,41 @@ class _FollowupFormScreenState extends State<FollowupFormScreen> {
         'description': _description.text.trim(),
       if (_action.text.trim().isNotEmpty) 'action_type': _action.text.trim(),
       'priority': _priority,
-      'status': 'open',
+      'status': _status,
       if (_dueDate != null)
         'due_date': DateFormat('yyyy-MM-dd').format(_dueDate!),
+      if (_assignedEmployee != null)
+        'assigned_to_employee_id': _assignedEmployee!.id,
+      if (_selectedVisit != null) 'visit_id': _selectedVisit!.id,
+      if (_notes.text.trim().isNotEmpty) 'notes': _notes.text.trim(),
     };
 
     final result = await _service.createFollowup(payload);
     if (!mounted) return;
-    setState(() => _submitting = false);
-    if (!result.success) {
+    if (!result.success || result.data == null) {
+      setState(() => _submitting = false);
       _snack(result.message ?? 'Could not save follow-up.');
       return;
     }
+
+    final followup = result.data!;
+    if (_photos.isNotEmpty) {
+      final upload = await _service.uploadAttachments(
+        attachableType: 'followup',
+        attachableId: followup.id,
+        employeeId: employeeId,
+        photos: _photos.map((x) => File(x.path)).toList(),
+      );
+      if (!mounted) return;
+      if (!upload.success) {
+        _snack('Follow-up saved, but photo upload failed: ${upload.message}');
+      }
+    }
+
+    if (!mounted) return;
+    setState(() => _submitting = false);
     _snack('Follow-up saved.');
-    Navigator.of(context).pop(result.data);
+    Navigator.of(context).pop(followup);
   }
 
   void _snack(String msg) {
@@ -483,6 +537,42 @@ class _FollowupFormScreenState extends State<FollowupFormScreen> {
                       ),
                     ),
                     const SizedBox(height: 14),
+                    _label('Notes'),
+                    TextField(
+                      controller: _notes,
+                      maxLines: 2,
+                      decoration: _decoration(),
+                    ),
+                    const SizedBox(height: 14),
+                    SearchableSelectField<MarketingDemoNamed>(
+                      label: 'Assign to employee',
+                      icon: Icons.badge_outlined,
+                      options: MarketingDemoMasters.employees,
+                      selected: _assignedEmployee,
+                      displayString: (e) => e.displayName,
+                      searchText: (e) => e.searchText,
+                      subtitleFor: (e) => e.subtitle,
+                      onSelected: (e) =>
+                          setState(() => _assignedEmployee = e),
+                    ),
+                    const SizedBox(height: 14),
+                    if (_loadingVisits)
+                      const Padding(
+                        padding: EdgeInsets.symmetric(vertical: 12),
+                        child: Center(child: CircularProgressIndicator()),
+                      )
+                    else
+                      SearchableSelectField<Visit>(
+                        label: 'Related visit',
+                        icon: Icons.event_available_outlined,
+                        options: _visits,
+                        selected: _selectedVisit,
+                        displayString: (v) => v.displayName,
+                        searchText: (v) => v.displayName.toLowerCase(),
+                        onSelected: (v) =>
+                            setState(() => _selectedVisit = v),
+                      ),
+                    const SizedBox(height: 14),
                     _label('Due date'),
                     InkWell(
                       onTap: _pickDueDate,
@@ -528,6 +618,40 @@ class _FollowupFormScreenState extends State<FollowupFormScreen> {
                       onChanged: (v) {
                         if (v != null) setState(() => _priority = v);
                       },
+                    ),
+                    const SizedBox(height: 14),
+                    _label('Status'),
+                    DropdownButtonFormField<String>(
+                      initialValue: _status,
+                      decoration: _decoration(),
+                      items: const [
+                        DropdownMenuItem(value: 'open', child: Text('open')),
+                        DropdownMenuItem(
+                          value: 'in_progress',
+                          child: Text('in_progress'),
+                        ),
+                        DropdownMenuItem(
+                          value: 'completed',
+                          child: Text('completed'),
+                        ),
+                        DropdownMenuItem(
+                          value: 'cancelled',
+                          child: Text('cancelled'),
+                        ),
+                      ],
+                      onChanged: (v) {
+                        if (v != null) setState(() => _status = v);
+                      },
+                    ),
+                    const SizedBox(height: 14),
+                    OutlinedButton.icon(
+                      onPressed: _pickPhotos,
+                      icon: const Icon(Icons.photo_library_outlined),
+                      label: Text(
+                        _photos.isEmpty
+                            ? 'Add photos'
+                            : '${_photos.length} photo(s)',
+                      ),
                     ),
                     const SizedBox(height: 24),
                     SizedBox(

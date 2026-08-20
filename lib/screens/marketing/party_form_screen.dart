@@ -5,26 +5,40 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../../config/theme.dart';
+import '../../data/marketing_demo_masters.dart';
+import '../../models/booking_form_data_models.dart';
 import '../../models/marketing_models.dart';
 import '../../services/auth_service.dart';
 import '../../services/marketing_service.dart';
 import '../../services/sales_service.dart';
 import '../../utils/marketing_location_helper.dart';
 import '../../widgets/gradient_screen_header.dart';
+import '../../widgets/searchable_select_field.dart';
 import '../../widgets/section_card.dart';
 
 class _ProductRow {
   final name = TextEditingController();
+  final brand = TextEditingController();
   final demand = TextEditingController();
   final stock = TextEditingController();
+  final unitPrice = TextEditingController();
   final competitor = TextEditingController();
+  final notes = TextEditingController();
   String relationType = 'stock';
+  MarketingDemoProduct? product;
+  MarketingDemoNamed? category;
+  MarketingDemoNamed? unit;
+  BookingFormCompany? company;
+  bool isOurProduct = true;
 
   void dispose() {
     name.dispose();
+    brand.dispose();
     demand.dispose();
     stock.dispose();
+    unitPrice.dispose();
     competitor.dispose();
+    notes.dispose();
   }
 }
 
@@ -44,6 +58,8 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
   final _name = TextEditingController();
   final _tradeName = TextEditingController();
   final _contact = TextEditingController();
+  final _ownerName = TextEditingController();
+  final _code = TextEditingController();
   final _phone = TextEditingController();
   final _altPhone = TextEditingController();
   final _email = TextEditingController();
@@ -53,6 +69,7 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
   final _notes = TextEditingController();
   final _farmType = TextEditingController();
   final _capacity = TextEditingController();
+  final _businessYears = TextEditingController();
   final _creditLimit = TextEditingController();
 
   String _partyType = 'dealer';
@@ -60,12 +77,14 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
   String _leadStatus = 'new';
   List<Market> _markets = const [];
   List<Party> _dealers = const [];
-  List<BookingFormCompany> _companies = const [];
-  List<BookingFormSector> _sectors = const [];
-  int? _selectedMarketId;
-  int? _parentPartyId;
-  int? _selectedCompanyId;
-  int? _selectedSectorId;
+  List<BookingFormCompany> _companies = MarketingDemoMasters.companies;
+  List<BookingFormSector> _sectors = MarketingDemoMasters.sectors;
+  Market? _selectedMarket;
+  Party? _parentParty;
+  BookingFormCompany? _selectedCompany;
+  BookingFormSector? _selectedSector;
+  MarketingDemoNamed? _existingDealer;
+  MarketingDemoNamed? _capacityUnit;
   double? _lat;
   double? _lng;
   bool _loadingMarkets = true;
@@ -77,15 +96,26 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
   final List<_ProductRow> _products = [];
   final List<XFile> _photos = [];
 
-  static const _relationTypes = ['stock', 'demand', 'sells', 'uses', 'competitor'];
+  static const _relationTypes = [
+    'business',
+    'uses',
+    'sells',
+    'stock',
+    'demand',
+    'competitor',
+  ];
   static const _paymentModes = ['cash', 'credit', 'mixed', 'other'];
   static const _leadStatuses = ['new', 'warm', 'hot', 'converted', 'lost'];
 
   bool get _isFarm =>
       _partyType == 'farm' || _partyType == 'farmer';
 
-  List<BookingFormSector> get _sectorsForCompany =>
-      _sectors.where((s) => s.companyId == _selectedCompanyId).toList();
+  List<BookingFormSector> get _sectorsForCompany {
+    if (_selectedCompany == null) return _sectors;
+    final filtered =
+        _sectors.where((s) => s.companyId == _selectedCompany!.id).toList();
+    return filtered.isNotEmpty ? filtered : _sectors;
+  }
 
   @override
   void initState() {
@@ -109,6 +139,8 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
     _name.dispose();
     _tradeName.dispose();
     _contact.dispose();
+    _ownerName.dispose();
+    _code.dispose();
     _phone.dispose();
     _altPhone.dispose();
     _email.dispose();
@@ -118,6 +150,7 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
     _notes.dispose();
     _farmType.dispose();
     _capacity.dispose();
+    _businessYears.dispose();
     _creditLimit.dispose();
     for (final p in _products) {
       p.dispose();
@@ -140,10 +173,8 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
     setState(() {
       _loadingMasters = false;
       if (result.success && result.data != null) {
-        _companies = result.data!.companies;
-        _sectors = result.data!.sectors;
-      } else if (result.message != null) {
-        _snack(result.message!);
+        _companies = MarketingDemoMasters.companiesOr(result.data!.companies);
+        _sectors = MarketingDemoMasters.sectorsOr(result.data!.sectors);
       }
     });
   }
@@ -233,17 +264,36 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
 
     final products = <Map<String, dynamic>>[];
     for (final row in _products) {
-      final name = row.name.text.trim();
+      var name = row.name.text.trim();
+      if (name.isEmpty && row.product != null) {
+        name = row.product!.name;
+      }
       if (name.isEmpty) continue;
       products.add({
         'product_name': name,
         'relation_type': row.relationType,
+        if (row.product != null) 'product_id': row.product!.id,
+        if (row.category != null) 'product_category_id': row.category!.id,
+        if (row.category != null) 'category_name': row.category!.name,
+        if (row.company != null) 'company_id': row.company!.id,
+        if (row.unit != null) 'unit_id': row.unit!.id,
+        if (row.unit != null) 'unit': row.unit!.name,
+        if (row.brand.text.trim().isNotEmpty)
+          'brand_name': row.brand.text.trim(),
+        if (row.demand.text.trim().isNotEmpty)
+          'monthly_quantity': double.tryParse(row.demand.text.trim()),
         if (row.demand.text.trim().isNotEmpty)
           'demand_qty': double.tryParse(row.demand.text.trim()),
         if (row.stock.text.trim().isNotEmpty)
+          'current_stock': double.tryParse(row.stock.text.trim()),
+        if (row.stock.text.trim().isNotEmpty)
           'stock_qty': double.tryParse(row.stock.text.trim()),
+        if (row.unitPrice.text.trim().isNotEmpty)
+          'unit_price': double.tryParse(row.unitPrice.text.trim()),
         if (row.competitor.text.trim().isNotEmpty)
           'competitor_company': row.competitor.text.trim(),
+        'is_our_product': row.isOurProduct,
+        if (row.notes.text.trim().isNotEmpty) 'notes': row.notes.text.trim(),
       });
     }
 
@@ -252,8 +302,11 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
       'party_type': _partyType,
       'name': _name.text.trim(),
       if (_tradeName.text.trim().isNotEmpty) 'trade_name': _tradeName.text.trim(),
+      if (_code.text.trim().isNotEmpty) 'code': _code.text.trim(),
       if (_contact.text.trim().isNotEmpty)
         'contact_person': _contact.text.trim(),
+      if (_ownerName.text.trim().isNotEmpty)
+        'owner_name': _ownerName.text.trim(),
       if (_phone.text.trim().isNotEmpty) 'phone': _phone.text.trim(),
       if (_altPhone.text.trim().isNotEmpty) 'alt_phone': _altPhone.text.trim(),
       if (_email.text.trim().isNotEmpty) 'email': _email.text.trim(),
@@ -261,14 +314,18 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
       if (_tradeLicense.text.trim().isNotEmpty)
         'trade_license_no': _tradeLicense.text.trim(),
       if (_address.text.trim().isNotEmpty) 'address': _address.text.trim(),
-      if (_selectedMarketId != null) 'market_id': _selectedMarketId,
-      if (_isFarm && _parentPartyId != null) 'parent_party_id': _parentPartyId,
-      if (_selectedCompanyId != null) 'company_id': _selectedCompanyId,
-      if (_selectedSectorId != null) 'sector_id': _selectedSectorId,
+      if (_selectedMarket != null) 'market_id': _selectedMarket!.id,
+      if (_isFarm && _parentParty != null) 'parent_party_id': _parentParty!.id,
+      if (_existingDealer != null) 'existing_dealer_id': _existingDealer!.id,
+      if (_selectedCompany != null) 'company_id': _selectedCompany!.id,
+      if (_selectedSector != null) 'sector_id': _selectedSector!.id,
       if (_isFarm && _farmType.text.trim().isNotEmpty)
         'farm_type': _farmType.text.trim(),
       if (_isFarm && _capacity.text.trim().isNotEmpty)
         'capacity': double.tryParse(_capacity.text.trim()),
+      if (_capacityUnit != null) 'capacity_unit_id': _capacityUnit!.id,
+      if (_businessYears.text.trim().isNotEmpty)
+        'business_years': double.tryParse(_businessYears.text.trim()),
       if (_creditLimit.text.trim().isNotEmpty)
         'credit_limit': double.tryParse(_creditLimit.text.trim()),
       'payment_mode': _paymentMode,
@@ -408,7 +465,7 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
                               if (_isFarm && _dealers.isEmpty) {
                                 _loadDealers();
                               }
-                              if (!_isFarm) _parentPartyId = null;
+                              if (!_isFarm) _parentParty = null;
                             });
                           },
                         ),
@@ -425,92 +482,56 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
                           decoration: _decoration(hint: 'Optional'),
                         ),
                         const SizedBox(height: 14),
-                        Row(
-                          children: [
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  _label('Company'),
-                                  if (_loadingMasters)
-                                    const Padding(
-                                      padding: EdgeInsets.symmetric(vertical: 12),
-                                      child: LinearProgressIndicator(),
-                                    )
-                                  else
-                                    DropdownButtonFormField<int?>(
-                                      initialValue: _selectedCompanyId,
-                                      isExpanded: true,
-                                      decoration: _decoration(hint: 'Optional'),
-                                      items: [
-                                        const DropdownMenuItem<int?>(
-                                          value: null,
-                                          child: Text('None'),
-                                        ),
-                                        ..._companies.map(
-                                          (c) => DropdownMenuItem(
-                                            value: c.id,
-                                            child: Text(
-                                              c.displayName,
-                                              overflow: TextOverflow.ellipsis,
-                                            ),
-                                          ),
-                                        ),
-                                      ],
-                                      onChanged: (v) => setState(() {
-                                        _selectedCompanyId = v;
-                                        _selectedSectorId = null;
-                                      }),
-                                    ),
-                                ],
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  _label('Sector'),
-                                  if (_loadingMasters)
-                                    const Padding(
-                                      padding: EdgeInsets.symmetric(vertical: 12),
-                                      child: LinearProgressIndicator(),
-                                    )
-                                  else
-                                    DropdownButtonFormField<int?>(
-                                      initialValue: _selectedSectorId,
-                                      isExpanded: true,
-                                      decoration: _decoration(
-                                        hint: _sectorsForCompany.isEmpty
-                                            ? 'No sectors'
-                                            : 'Optional',
-                                      ),
-                                      items: [
-                                        const DropdownMenuItem<int?>(
-                                          value: null,
-                                          child: Text('None'),
-                                        ),
-                                        ..._sectorsForCompany.map(
-                                          (s) => DropdownMenuItem(
-                                            value: s.id,
-                                            child: Text(
-                                              s.name,
-                                              overflow: TextOverflow.ellipsis,
-                                            ),
-                                          ),
-                                        ),
-                                      ],
-                                      onChanged: _sectorsForCompany.isEmpty
-                                          ? null
-                                          : (v) => setState(
-                                                () => _selectedSectorId = v,
-                                              ),
-                                    ),
-                                ],
-                              ),
-                            ),
-                          ],
+                        _label('Code'),
+                        TextField(
+                          controller: _code,
+                          decoration: _decoration(hint: 'Party code'),
                         ),
+                        const SizedBox(height: 14),
+                        SearchableSelectField<MarketingDemoNamed>(
+                          label: 'Existing ERP dealer',
+                          icon: Icons.storefront_outlined,
+                          options: MarketingDemoMasters.dealers,
+                          selected: _existingDealer,
+                          displayString: (d) => d.displayName,
+                          searchText: (d) => d.searchText,
+                          subtitleFor: (d) => d.subtitle,
+                          onSelected: (d) =>
+                              setState(() => _existingDealer = d),
+                        ),
+                        const SizedBox(height: 14),
+                        if (_loadingMasters)
+                          const LinearProgressIndicator()
+                        else ...[
+                          SearchableSelectField<BookingFormCompany>(
+                            label: 'Company',
+                            icon: Icons.apartment_outlined,
+                            options: _companies,
+                            selected: _selectedCompany,
+                            displayString: (c) => c.displayName,
+                            searchText: (c) => c.displayName.toLowerCase(),
+                            onSelected: (c) => setState(() {
+                              _selectedCompany = c;
+                              if (_selectedSector != null &&
+                                  c != null &&
+                                  _selectedSector!.companyId != null &&
+                                  _selectedSector!.companyId != c.id) {
+                                _selectedSector = null;
+                              }
+                            }),
+                          ),
+                          const SizedBox(height: 14),
+                          SearchableSelectField<BookingFormSector>(
+                            label: 'Sector',
+                            icon: Icons.hub_outlined,
+                            options: _sectorsForCompany,
+                            selected: _selectedSector,
+                            displayString: (s) => s.name,
+                            searchText: (s) => s.searchText,
+                            onSelected: (s) =>
+                                setState(() => _selectedSector = s),
+                          ),
+                        ],
                       ],
                     ),
                   ),
@@ -524,6 +545,12 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
                         TextField(
                           controller: _contact,
                           decoration: _decoration(),
+                        ),
+                        const SizedBox(height: 14),
+                        _label('Owner name'),
+                        TextField(
+                          controller: _ownerName,
+                          decoration: _decoration(hint: 'Owner / proprietor'),
                         ),
                         const SizedBox(height: 14),
                         _label('Phone'),
@@ -575,23 +602,15 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
                               child: Center(child: CircularProgressIndicator()),
                             )
                           else
-                            DropdownButtonFormField<int?>(
-                              initialValue: _parentPartyId,
-                              decoration: _decoration(hint: 'Link dealer'),
-                              items: [
-                                const DropdownMenuItem<int?>(
-                                  value: null,
-                                  child: Text('None'),
-                                ),
-                                ..._dealers.map(
-                                  (d) => DropdownMenuItem(
-                                    value: d.id,
-                                    child: Text(d.displayName),
-                                  ),
-                                ),
-                              ],
-                              onChanged: (v) =>
-                                  setState(() => _parentPartyId = v),
+                            SearchableSelectField<Party>(
+                              label: 'Parent dealer',
+                              icon: Icons.account_tree_outlined,
+                              options: _dealers,
+                              selected: _parentParty,
+                              displayString: (d) => d.displayName,
+                              searchText: (d) => d.displayName.toLowerCase(),
+                              onSelected: (d) =>
+                                  setState(() => _parentParty = d),
                             ),
                           const SizedBox(height: 14),
                           _label('Farm type'),
@@ -608,7 +627,25 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
                             decoration: _decoration(),
                           ),
                           const SizedBox(height: 14),
+                          SearchableSelectField<MarketingDemoNamed>(
+                            label: 'Capacity unit',
+                            icon: Icons.straighten,
+                            options: MarketingDemoMasters.units,
+                            selected: _capacityUnit,
+                            displayString: (u) => u.displayName,
+                            searchText: (u) => u.searchText,
+                            onSelected: (u) =>
+                                setState(() => _capacityUnit = u),
+                          ),
+                          const SizedBox(height: 14),
                         ],
+                        _label('Business years'),
+                        TextField(
+                          controller: _businessYears,
+                          keyboardType: TextInputType.number,
+                          decoration: _decoration(),
+                        ),
+                        const SizedBox(height: 14),
                         _label('Credit limit'),
                         TextField(
                           controller: _creditLimit,
@@ -672,23 +709,15 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
                             child: Center(child: CircularProgressIndicator()),
                           )
                         else
-                          DropdownButtonFormField<int?>(
-                            initialValue: _selectedMarketId,
-                            decoration: _decoration(hint: 'Select market'),
-                            items: [
-                              const DropdownMenuItem<int?>(
-                                value: null,
-                                child: Text('None'),
-                              ),
-                              ..._markets.map(
-                                (m) => DropdownMenuItem(
-                                  value: m.id,
-                                  child: Text(m.displayName),
-                                ),
-                              ),
-                            ],
-                            onChanged: (v) =>
-                                setState(() => _selectedMarketId = v),
+                          SearchableSelectField<Market>(
+                            label: 'Market',
+                            icon: Icons.store_mall_directory_outlined,
+                            options: _markets,
+                            selected: _selectedMarket,
+                            displayString: (m) => m.displayName,
+                            searchText: (m) => m.displayName.toLowerCase(),
+                            onSelected: (m) =>
+                                setState(() => _selectedMarket = m),
                           ),
                         const SizedBox(height: 14),
                         if (_locationStatus != null) ...[
@@ -744,10 +773,42 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
                               ),
                               child: Column(
                                 children: [
+                                  SearchableSelectField<MarketingDemoProduct>(
+                                    label: 'Product',
+                                    icon: Icons.inventory_2_outlined,
+                                    options: MarketingDemoMasters.products,
+                                    selected: row.product,
+                                    displayString: (p) => p.displayName,
+                                    searchText: (p) => p.searchText,
+                                    subtitleFor: (p) => p.categoryName,
+                                    onSelected: (p) {
+                                      setState(() {
+                                        row.product = p;
+                                        if (p != null) {
+                                          row.name.text = p.name;
+                                          row.isOurProduct = p.ourProduct;
+                                          row.category =
+                                              MarketingDemoMasters.byId(
+                                            MarketingDemoMasters.categories,
+                                            p.categoryId,
+                                            (c) => c.id,
+                                          );
+                                          row.company =
+                                              MarketingDemoMasters.byId(
+                                            _companies,
+                                            p.companyId,
+                                            (c) => c.id,
+                                          );
+                                        }
+                                      });
+                                    },
+                                  ),
+                                  const SizedBox(height: 8),
                                   TextField(
                                     controller: row.name,
-                                    decoration:
-                                        _decoration(hint: 'Product name'),
+                                    decoration: _decoration(
+                                      hint: 'Product name (required)',
+                                    ),
                                   ),
                                   const SizedBox(height: 8),
                                   DropdownButtonFormField<String>(
@@ -769,14 +830,55 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
                                     },
                                   ),
                                   const SizedBox(height: 8),
+                                  SearchableSelectField<MarketingDemoNamed>(
+                                    label: 'Category',
+                                    icon: Icons.category_outlined,
+                                    options: MarketingDemoMasters.categories,
+                                    selected: row.category,
+                                    displayString: (c) => c.displayName,
+                                    searchText: (c) => c.searchText,
+                                    onSelected: (c) =>
+                                        setState(() => row.category = c),
+                                  ),
+                                  const SizedBox(height: 8),
+                                  SearchableSelectField<MarketingDemoNamed>(
+                                    label: 'Unit',
+                                    icon: Icons.straighten,
+                                    options: MarketingDemoMasters.units,
+                                    selected: row.unit,
+                                    displayString: (u) => u.displayName,
+                                    searchText: (u) => u.searchText,
+                                    onSelected: (u) =>
+                                        setState(() => row.unit = u),
+                                  ),
+                                  const SizedBox(height: 8),
+                                  SearchableSelectField<BookingFormCompany>(
+                                    label: 'Product company',
+                                    icon: Icons.apartment_outlined,
+                                    options: _companies,
+                                    selected: row.company,
+                                    displayString: (c) => c.displayName,
+                                    searchText: (c) =>
+                                        c.displayName.toLowerCase(),
+                                    onSelected: (c) =>
+                                        setState(() => row.company = c),
+                                  ),
+                                  const SizedBox(height: 8),
+                                  TextField(
+                                    controller: row.brand,
+                                    decoration:
+                                        _decoration(hint: 'Brand name'),
+                                  ),
+                                  const SizedBox(height: 8),
                                   Row(
                                     children: [
                                       Expanded(
                                         child: TextField(
                                           controller: row.demand,
                                           keyboardType: TextInputType.number,
-                                          decoration:
-                                              _decoration(hint: 'Demand'),
+                                          decoration: _decoration(
+                                            hint: 'Monthly / demand',
+                                          ),
                                         ),
                                       ),
                                       const SizedBox(width: 8),
@@ -792,10 +894,33 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
                                   ),
                                   const SizedBox(height: 8),
                                   TextField(
+                                    controller: row.unitPrice,
+                                    keyboardType: TextInputType.number,
+                                    decoration:
+                                        _decoration(hint: 'Unit price'),
+                                  ),
+                                  const SizedBox(height: 8),
+                                  TextField(
                                     controller: row.competitor,
                                     decoration: _decoration(
                                       hint: 'Competitor company',
                                     ),
+                                  ),
+                                  const SizedBox(height: 8),
+                                  SwitchListTile(
+                                    contentPadding: EdgeInsets.zero,
+                                    title: Text(
+                                      'Our product',
+                                      style: GoogleFonts.poppins(fontSize: 13),
+                                    ),
+                                    value: row.isOurProduct,
+                                    onChanged: (v) =>
+                                        setState(() => row.isOurProduct = v),
+                                  ),
+                                  TextField(
+                                    controller: row.notes,
+                                    decoration:
+                                        _decoration(hint: 'Product notes'),
                                   ),
                                   if (_products.length > 1)
                                     Align(

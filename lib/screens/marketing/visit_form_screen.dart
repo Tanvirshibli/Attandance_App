@@ -6,25 +6,43 @@ import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 
 import '../../config/theme.dart';
+import '../../data/marketing_demo_masters.dart';
+import '../../models/booking_form_data_models.dart';
 import '../../models/marketing_models.dart';
 import '../../services/auth_service.dart';
 import '../../services/marketing_service.dart';
+import '../../services/sales_service.dart';
 import '../../utils/marketing_location_helper.dart';
 import '../../widgets/gradient_screen_header.dart';
+import '../../widgets/searchable_select_field.dart';
 import '../../widgets/section_card.dart';
 
 class _ObsRow {
   final name = TextEditingController();
+  final brand = TextEditingController();
+  final competitor = TextEditingController();
   final stock = TextEditingController();
+  final demand = TextEditingController();
+  final quantity = TextEditingController();
   final order = TextEditingController();
   final price = TextEditingController();
+  final amount = TextEditingController();
+  final notes = TextEditingController();
   String observationType = 'stock';
+  MarketingDemoProduct? product;
+  MarketingDemoNamed? unit;
 
   void dispose() {
     name.dispose();
+    brand.dispose();
+    competitor.dispose();
     stock.dispose();
+    demand.dispose();
+    quantity.dispose();
     order.dispose();
     price.dispose();
+    amount.dispose();
+    notes.dispose();
   }
 }
 
@@ -40,6 +58,7 @@ class VisitFormScreen extends StatefulWidget {
 class _VisitFormScreenState extends State<VisitFormScreen> {
   final MarketingService _service = MarketingService();
   final AuthService _authService = AuthService();
+  final SalesService _salesService = SalesService();
   final _objective = TextEditingController();
   final _findings = TextEditingController();
   final _result = TextEditingController();
@@ -50,10 +69,16 @@ class _VisitFormScreenState extends State<VisitFormScreen> {
 
   String _visitType = 'regular';
   List<Market> _markets = const [];
-  int? _selectedMarketId;
+  List<BookingFormCompany> _companies = MarketingDemoMasters.companies;
+  List<BookingFormSector> _sectors = MarketingDemoMasters.sectors;
+  Market? _selectedMarket;
+  BookingFormCompany? _selectedCompany;
+  BookingFormSector? _selectedSector;
   DateTime? _nextVisitDate;
   double? _lat;
   double? _lng;
+  bool _geoVerified = false;
+  late final String _clientUuid;
   bool _loadingMarkets = true;
   bool _resolvingLocation = true;
   String? _locationStatus;
@@ -74,19 +99,24 @@ class _VisitFormScreenState extends State<VisitFormScreen> {
     'other',
   ];
   static const _observationTypes = [
+    'uses',
+    'sells',
     'stock',
     'demand',
     'order',
-    'price',
     'competitor',
+    'sample',
+    'price',
     'other',
   ];
 
   @override
   void initState() {
     super.initState();
-    _selectedMarketId = widget.party.marketId;
+    _clientUuid = marketingNewClientUuid();
+    _selectedMarket = null;
     _loadMarkets();
+    _loadMasters();
     _autoFillLocation();
   }
 
@@ -111,6 +141,22 @@ class _VisitFormScreenState extends State<VisitFormScreen> {
     setState(() {
       _markets = result.data ?? const [];
       _loadingMarkets = false;
+      _selectedMarket = MarketingDemoMasters.byId(
+        _markets,
+        widget.party.marketId,
+        (m) => m.id,
+      );
+    });
+  }
+
+  Future<void> _loadMasters() async {
+    final result = await _salesService.fetchBookingFormData();
+    if (!mounted) return;
+    setState(() {
+      if (result.success && result.data != null) {
+        _companies = MarketingDemoMasters.companiesOr(result.data!.companies);
+        _sectors = MarketingDemoMasters.sectorsOr(result.data!.sectors);
+      }
     });
   }
 
@@ -133,6 +179,7 @@ class _VisitFormScreenState extends State<VisitFormScreen> {
       setState(() {
         _lat = snap.latitude;
         _lng = snap.longitude;
+        _geoVerified = true;
         _resolvingLocation = false;
         _locationStatus =
             'Check-in location ready (${snap.latitude.toStringAsFixed(5)}, ${snap.longitude.toStringAsFixed(5)})';
@@ -156,6 +203,7 @@ class _VisitFormScreenState extends State<VisitFormScreen> {
     }
     _lat = snap.latitude;
     _lng = snap.longitude;
+    _geoVerified = true;
   }
 
   Future<void> _pickPhotos() async {
@@ -188,35 +236,60 @@ class _VisitFormScreenState extends State<VisitFormScreen> {
 
     final products = <Map<String, dynamic>>[];
     for (final row in _products) {
-      final name = row.name.text.trim();
+      var name = row.name.text.trim();
+      if (name.isEmpty && row.product != null) name = row.product!.name;
       if (name.isEmpty) continue;
       products.add({
         'product_name': name,
         'observation_type': row.observationType,
+        if (row.product != null) 'product_id': row.product!.id,
+        if (row.unit != null) 'unit_id': row.unit!.id,
+        if (row.unit != null) 'unit': row.unit!.name,
+        if (row.brand.text.trim().isNotEmpty) 'brand_name': row.brand.text.trim(),
+        if (row.competitor.text.trim().isNotEmpty)
+          'competitor_company': row.competitor.text.trim(),
+        if (row.quantity.text.trim().isNotEmpty)
+          'quantity': double.tryParse(row.quantity.text.trim()),
+        if (row.demand.text.trim().isNotEmpty)
+          'demand_quantity': double.tryParse(row.demand.text.trim()),
+        if (row.stock.text.trim().isNotEmpty)
+          'stock_quantity': double.tryParse(row.stock.text.trim()),
         if (row.stock.text.trim().isNotEmpty)
           'observed_stock': double.tryParse(row.stock.text.trim()),
         if (row.order.text.trim().isNotEmpty)
           'order_qty': double.tryParse(row.order.text.trim()),
         if (row.price.text.trim().isNotEmpty)
+          'unit_price': double.tryParse(row.price.text.trim()),
+        if (row.price.text.trim().isNotEmpty)
           'price': double.tryParse(row.price.text.trim()),
+        if (row.amount.text.trim().isNotEmpty)
+          'amount': double.tryParse(row.amount.text.trim()),
+        if (row.notes.text.trim().isNotEmpty) 'notes': row.notes.text.trim(),
       });
     }
 
     final now = DateTime.now();
+    final objective = _objective.text.trim();
+    final resultText = _result.text.trim();
     final payload = <String, dynamic>{
       'party_id': widget.party.id,
       'employee_id': employeeId,
       'visit_date': DateFormat('yyyy-MM-dd').format(now),
       'visit_type': _visitType,
-      if (_selectedMarketId != null) 'market_id': _selectedMarketId,
+      'client_uuid': _clientUuid,
+      'geo_verified': _geoVerified,
+      if (_selectedMarket != null) 'market_id': _selectedMarket!.id,
+      if (_selectedCompany != null) 'company_id': _selectedCompany!.id,
+      if (_selectedSector != null) 'sector_id': _selectedSector!.id,
       'check_in_at': now.toIso8601String(),
       if (_lat != null) 'check_in_lat': _lat,
       if (_lng != null) 'check_in_lng': _lng,
-      if (_objective.text.trim().isNotEmpty) 'objective': _objective.text.trim(),
-      if (_objective.text.trim().isNotEmpty) 'purpose': _objective.text.trim(),
+      if (objective.isNotEmpty) 'objective': objective,
+      if (objective.isNotEmpty && objective.length <= 120) 'purpose': objective,
       if (_findings.text.trim().isNotEmpty) 'findings': _findings.text.trim(),
-      if (_result.text.trim().isNotEmpty) 'result': _result.text.trim(),
-      if (_result.text.trim().isNotEmpty) 'outcome': _result.text.trim(),
+      if (resultText.isNotEmpty) 'result': resultText,
+      if (resultText.isNotEmpty && resultText.length <= 120)
+        'outcome': resultText,
       if (_nextPlan.text.trim().isNotEmpty) 'next_plan': _nextPlan.text.trim(),
       if (_nextVisitDate != null)
         'next_visit_date': DateFormat('yyyy-MM-dd').format(_nextVisitDate!),
@@ -381,33 +454,53 @@ class _VisitFormScreenState extends State<VisitFormScreen> {
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
                         _sectionTitle('Visit details'),
-                        _label('Market'),
                         if (_loadingMarkets)
                           const Padding(
                             padding: EdgeInsets.symmetric(vertical: 12),
                             child: Center(child: CircularProgressIndicator()),
                           )
                         else
-                          DropdownButtonFormField<int?>(
-                            initialValue: _selectedMarketId,
-                            decoration: _decoration(hint: 'Select market'),
-                            items: [
-                              const DropdownMenuItem<int?>(
-                                value: null,
-                                child: Text('None'),
-                              ),
-                              ..._markets.map(
-                                (m) => DropdownMenuItem(
-                                  value: m.id,
-                                  child: Text(m.displayName),
-                                ),
-                              ),
-                            ],
-                            onChanged: locked
-                                ? null
-                                : (v) =>
-                                    setState(() => _selectedMarketId = v),
+                          SearchableSelectField<Market>(
+                            label: 'Market',
+                            icon: Icons.store_mall_directory_outlined,
+                            options: _markets,
+                            selected: _selectedMarket,
+                            displayString: (m) => m.displayName,
+                            searchText: (m) => m.displayName.toLowerCase(),
+                            enabled: !locked,
+                            onSelected: (m) =>
+                                setState(() => _selectedMarket = m),
                           ),
+                        const SizedBox(height: 14),
+                        SearchableSelectField<BookingFormCompany>(
+                          label: 'Company',
+                          icon: Icons.apartment_outlined,
+                          options: _companies,
+                          selected: _selectedCompany,
+                          displayString: (c) => c.displayName,
+                          searchText: (c) => c.displayName.toLowerCase(),
+                          enabled: !locked,
+                          onSelected: (c) =>
+                              setState(() => _selectedCompany = c),
+                        ),
+                        const SizedBox(height: 14),
+                        SearchableSelectField<BookingFormSector>(
+                          label: 'Sector',
+                          icon: Icons.hub_outlined,
+                          options: _selectedCompany == null
+                              ? _sectors
+                              : _sectors
+                                  .where(
+                                    (s) => s.companyId == _selectedCompany!.id,
+                                  )
+                                  .toList(),
+                          selected: _selectedSector,
+                          displayString: (s) => s.name,
+                          searchText: (s) => s.searchText,
+                          enabled: !locked,
+                          onSelected: (s) =>
+                              setState(() => _selectedSector = s),
+                        ),
                         const SizedBox(height: 14),
                         _label('Visit type'),
                         DropdownButtonFormField<String>(
@@ -545,6 +638,33 @@ class _VisitFormScreenState extends State<VisitFormScreen> {
                           maxLines: 2,
                           decoration: _decoration(),
                         ),
+                        const SizedBox(height: 14),
+                        SwitchListTile(
+                          contentPadding: EdgeInsets.zero,
+                          title: Text(
+                            'GPS verified',
+                            style: GoogleFonts.poppins(fontSize: 13),
+                          ),
+                          subtitle: Text(
+                            'Set when check-in coordinates are captured',
+                            style: GoogleFonts.poppins(
+                              fontSize: 11,
+                              color: AppColors.textSecondary,
+                            ),
+                          ),
+                          value: _geoVerified,
+                          onChanged: locked
+                              ? null
+                              : (v) => setState(() => _geoVerified = v),
+                        ),
+                        _label('Client UUID'),
+                        Text(
+                          _clientUuid,
+                          style: GoogleFonts.poppins(
+                            fontSize: 12,
+                            color: AppColors.textSecondary,
+                          ),
+                        ),
                       ],
                     ),
                   ),
@@ -580,6 +700,24 @@ class _VisitFormScreenState extends State<VisitFormScreen> {
                               ),
                               child: Column(
                                 children: [
+                                  SearchableSelectField<MarketingDemoProduct>(
+                                    label: 'Product',
+                                    icon: Icons.inventory_2_outlined,
+                                    options: MarketingDemoMasters.products,
+                                    selected: row.product,
+                                    displayString: (p) => p.displayName,
+                                    searchText: (p) => p.searchText,
+                                    enabled: !locked,
+                                    onSelected: (p) {
+                                      setState(() {
+                                        row.product = p;
+                                        if (p != null) {
+                                          row.name.text = p.name;
+                                        }
+                                      });
+                                    },
+                                  ),
+                                  const SizedBox(height: 8),
                                   TextField(
                                     controller: row.name,
                                     enabled: !locked,
@@ -611,6 +749,33 @@ class _VisitFormScreenState extends State<VisitFormScreen> {
                                           },
                                   ),
                                   const SizedBox(height: 8),
+                                  SearchableSelectField<MarketingDemoNamed>(
+                                    label: 'Unit',
+                                    icon: Icons.straighten,
+                                    options: MarketingDemoMasters.units,
+                                    selected: row.unit,
+                                    displayString: (u) => u.displayName,
+                                    searchText: (u) => u.searchText,
+                                    enabled: !locked,
+                                    onSelected: (u) =>
+                                        setState(() => row.unit = u),
+                                  ),
+                                  const SizedBox(height: 8),
+                                  TextField(
+                                    controller: row.brand,
+                                    enabled: !locked,
+                                    decoration:
+                                        _decoration(hint: 'Brand name'),
+                                  ),
+                                  const SizedBox(height: 8),
+                                  TextField(
+                                    controller: row.competitor,
+                                    enabled: !locked,
+                                    decoration: _decoration(
+                                      hint: 'Competitor company',
+                                    ),
+                                  ),
+                                  const SizedBox(height: 8),
                                   Row(
                                     children: [
                                       Expanded(
@@ -625,6 +790,30 @@ class _VisitFormScreenState extends State<VisitFormScreen> {
                                       const SizedBox(width: 8),
                                       Expanded(
                                         child: TextField(
+                                          controller: row.demand,
+                                          enabled: !locked,
+                                          keyboardType: TextInputType.number,
+                                          decoration:
+                                              _decoration(hint: 'Demand'),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 8),
+                                  Row(
+                                    children: [
+                                      Expanded(
+                                        child: TextField(
+                                          controller: row.quantity,
+                                          enabled: !locked,
+                                          keyboardType: TextInputType.number,
+                                          decoration:
+                                              _decoration(hint: 'Qty'),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Expanded(
+                                        child: TextField(
                                           controller: row.order,
                                           enabled: !locked,
                                           keyboardType: TextInputType.number,
@@ -632,17 +821,38 @@ class _VisitFormScreenState extends State<VisitFormScreen> {
                                               _decoration(hint: 'Order qty'),
                                         ),
                                       ),
-                                      const SizedBox(width: 8),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 8),
+                                  Row(
+                                    children: [
                                       Expanded(
                                         child: TextField(
                                           controller: row.price,
                                           enabled: !locked,
                                           keyboardType: TextInputType.number,
                                           decoration:
-                                              _decoration(hint: 'Price'),
+                                              _decoration(hint: 'Unit price'),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Expanded(
+                                        child: TextField(
+                                          controller: row.amount,
+                                          enabled: !locked,
+                                          keyboardType: TextInputType.number,
+                                          decoration:
+                                              _decoration(hint: 'Amount'),
                                         ),
                                       ),
                                     ],
+                                  ),
+                                  const SizedBox(height: 8),
+                                  TextField(
+                                    controller: row.notes,
+                                    enabled: !locked,
+                                    decoration:
+                                        _decoration(hint: 'Line notes'),
                                   ),
                                 ],
                               ),

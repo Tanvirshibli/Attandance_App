@@ -6,10 +6,12 @@ import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 
 import '../../config/theme.dart';
+import '../../data/marketing_demo_masters.dart';
 import '../../models/marketing_models.dart';
 import '../../services/auth_service.dart';
 import '../../services/marketing_service.dart';
 import '../../widgets/gradient_screen_header.dart';
+import '../../widgets/searchable_select_field.dart';
 import '../../widgets/section_card.dart';
 
 class FarmSurveyFormScreen extends StatefulWidget {
@@ -43,6 +45,12 @@ class _FarmSurveyFormScreenState extends State<FarmSurveyFormScreen> {
   final _diseaseDetails = TextEditingController();
   final _problems = TextEditingController();
   final _recommendation = TextEditingController();
+  final _productionPercent = TextEditingController();
+  final _landArea = TextEditingController();
+  final _fertilizerKg = TextEditingController();
+  final _dailyEggs = TextEditingController();
+  final _crackedEgg = TextEditingController();
+  final _pondArea = TextEditingController();
   final _flockAge = TextEditingController();
   final _mortalityPct = TextEditingController();
   final _feedBags = TextEditingController();
@@ -53,7 +61,19 @@ class _FarmSurveyFormScreenState extends State<FarmSurveyFormScreen> {
   int _economic = 3;
   bool _diseasePresent = false;
   bool _submitting = false;
+  String _surveyType = 'poultry';
+  MarketingDemoNamed? _quantityUnit;
+  MarketingDemoProduct? _chicksProduct;
+  MarketingDemoProduct? _feedProduct;
   final List<XFile> _photos = [];
+
+  static const _surveyTypes = [
+    'poultry',
+    'fertilizer',
+    'egg',
+    'fish',
+    'other',
+  ];
 
   @override
   void dispose() {
@@ -75,6 +95,12 @@ class _FarmSurveyFormScreenState extends State<FarmSurveyFormScreen> {
     _diseaseDetails.dispose();
     _problems.dispose();
     _recommendation.dispose();
+    _productionPercent.dispose();
+    _landArea.dispose();
+    _fertilizerKg.dispose();
+    _dailyEggs.dispose();
+    _crackedEgg.dispose();
+    _pondArea.dispose();
     _flockAge.dispose();
     _mortalityPct.dispose();
     _feedBags.dispose();
@@ -109,6 +135,7 @@ class _FarmSurveyFormScreenState extends State<FarmSurveyFormScreen> {
       final numVal = double.tryParse(raw);
       metrics.add({
         'metric_key': key,
+        'metric_code': key,
         'metric_label': label,
         if (numVal != null) 'value_number': numVal else 'value_text': raw,
         'unit': ?unit,
@@ -118,17 +145,31 @@ class _FarmSurveyFormScreenState extends State<FarmSurveyFormScreen> {
     addMetric('flock_age_days', 'Flock age', _flockAge, unit: 'days');
     addMetric('mortality_pct', 'Mortality', _mortalityPct, unit: '%');
     addMetric('feed_bag_stock', 'Feed bag stock', _feedBags, unit: 'bags');
+    addMetric('LAND_AREA_ACRE', 'Cultivated land', _landArea, unit: 'acre');
+    addMetric(
+      'MONTHLY_FERTILIZER_KG',
+      'Monthly fertilizer',
+      _fertilizerKg,
+      unit: 'kg',
+    );
+    addMetric('DAILY_EGG_PRODUCTION', 'Daily egg production', _dailyEggs);
+    addMetric('CRACKED_EGG_PERCENT', 'Cracked egg', _crackedEgg, unit: '%');
+    addMetric('POND_AREA_DECIMAL', 'Pond area', _pondArea, unit: 'decimal');
 
     final payload = <String, dynamic>{
       'party_id': widget.party.id,
       'employee_id': employeeId,
       if (widget.visitId != null) 'visit_id': widget.visitId,
       'survey_date': DateFormat('yyyy-MM-dd').format(DateTime.now()),
+      'survey_type': _surveyType,
       if (_farmType.text.trim().isNotEmpty) 'farm_type': _farmType.text.trim(),
       if (_ageDays.text.trim().isNotEmpty)
         'age_days': int.tryParse(_ageDays.text.trim()),
       if (_quantity.text.trim().isNotEmpty)
         'quantity': double.tryParse(_quantity.text.trim()),
+      if (_quantityUnit != null) 'quantity_unit_id': _quantityUnit!.id,
+      if (_chicksProduct != null) 'chicks_product_id': _chicksProduct!.id,
+      if (_feedProduct != null) 'feed_product_id': _feedProduct!.id,
       if (_mortality.text.trim().isNotEmpty)
         'mortality_quantity': double.tryParse(_mortality.text.trim()),
       if (_chicksBrand.text.trim().isNotEmpty)
@@ -150,6 +191,9 @@ class _FarmSurveyFormScreenState extends State<FarmSurveyFormScreen> {
         'avg_body_weight_kg': double.tryParse(_bodyWeight.text.trim()),
       if (_uniformity.text.trim().isNotEmpty)
         'uniformity_percent': double.tryParse(_uniformity.text.trim()),
+      if (_productionPercent.text.trim().isNotEmpty)
+        'production_percent':
+            double.tryParse(_productionPercent.text.trim()),
       'biosecurity_rating': _biosecurity,
       'management_rating': _management,
       'technical_support_rating': _technical,
@@ -280,6 +324,23 @@ class _FarmSurveyFormScreenState extends State<FarmSurveyFormScreen> {
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
                         _sectionTitle('Farm basics'),
+                        _label('Survey type'),
+                        DropdownButtonFormField<String>(
+                          initialValue: _surveyType,
+                          decoration: _decoration(),
+                          items: _surveyTypes
+                              .map(
+                                (t) => DropdownMenuItem(
+                                  value: t,
+                                  child: Text(t),
+                                ),
+                              )
+                              .toList(),
+                          onChanged: (v) {
+                            if (v != null) setState(() => _surveyType = v);
+                          },
+                        ),
+                        const SizedBox(height: 14),
                         _label('Farm type'),
                         TextField(
                           controller: _farmType,
@@ -330,6 +391,27 @@ class _FarmSurveyFormScreenState extends State<FarmSurveyFormScreen> {
                         TextField(
                           controller: _feedBrand,
                           decoration: _decoration(),
+                        ),
+                        const SizedBox(height: 14),
+                        SearchableSelectField<MarketingDemoProduct>(
+                          label: 'Chicks product',
+                          icon: Icons.egg_outlined,
+                          options: MarketingDemoMasters.products,
+                          selected: _chicksProduct,
+                          displayString: (p) => p.displayName,
+                          searchText: (p) => p.searchText,
+                          onSelected: (p) =>
+                              setState(() => _chicksProduct = p),
+                        ),
+                        const SizedBox(height: 14),
+                        SearchableSelectField<MarketingDemoProduct>(
+                          label: 'Feed product',
+                          icon: Icons.inventory_2_outlined,
+                          options: MarketingDemoMasters.products,
+                          selected: _feedProduct,
+                          displayString: (p) => p.displayName,
+                          searchText: (p) => p.searchText,
+                          onSelected: (p) => setState(() => _feedProduct = p),
                         ),
                       ],
                     ),
@@ -473,6 +555,24 @@ class _FarmSurveyFormScreenState extends State<FarmSurveyFormScreen> {
                           keyboardType: TextInputType.number,
                           decoration: _decoration(),
                         ),
+                        const SizedBox(height: 12),
+                        _label('Production (%)'),
+                        TextField(
+                          controller: _productionPercent,
+                          keyboardType: TextInputType.number,
+                          decoration: _decoration(),
+                        ),
+                        const SizedBox(height: 12),
+                        SearchableSelectField<MarketingDemoNamed>(
+                          label: 'Quantity unit',
+                          icon: Icons.straighten,
+                          options: MarketingDemoMasters.units,
+                          selected: _quantityUnit,
+                          displayString: (u) => u.displayName,
+                          searchText: (u) => u.searchText,
+                          onSelected: (u) =>
+                              setState(() => _quantityUnit = u),
+                        ),
                       ],
                     ),
                   ),
@@ -577,6 +677,41 @@ class _FarmSurveyFormScreenState extends State<FarmSurveyFormScreen> {
                         _label('Feed bag stock'),
                         TextField(
                           controller: _feedBags,
+                          keyboardType: TextInputType.number,
+                          decoration: _decoration(),
+                        ),
+                        const SizedBox(height: 12),
+                        _label('Cultivated land (acre)'),
+                        TextField(
+                          controller: _landArea,
+                          keyboardType: TextInputType.number,
+                          decoration: _decoration(),
+                        ),
+                        const SizedBox(height: 12),
+                        _label('Monthly fertilizer (kg)'),
+                        TextField(
+                          controller: _fertilizerKg,
+                          keyboardType: TextInputType.number,
+                          decoration: _decoration(),
+                        ),
+                        const SizedBox(height: 12),
+                        _label('Daily egg production'),
+                        TextField(
+                          controller: _dailyEggs,
+                          keyboardType: TextInputType.number,
+                          decoration: _decoration(),
+                        ),
+                        const SizedBox(height: 12),
+                        _label('Cracked egg (%)'),
+                        TextField(
+                          controller: _crackedEgg,
+                          keyboardType: TextInputType.number,
+                          decoration: _decoration(),
+                        ),
+                        const SizedBox(height: 12),
+                        _label('Pond area (decimal)'),
+                        TextField(
+                          controller: _pondArea,
                           keyboardType: TextInputType.number,
                           decoration: _decoration(),
                         ),
