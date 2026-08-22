@@ -30,7 +30,7 @@ class MarketingService {
     return '$base$fallbackPath';
   }
 
-  Future<ApiResult<List<Market>>> listMarkets({String? q}) async {
+  Future<ApiResult<List<Market>>> listMarkets({String? q, int? limit}) async {
     if (!await isMarketingEnabled()) {
       return ApiResult.fail('feature_disabled');
     }
@@ -41,6 +41,7 @@ class MarketingService {
     final uri = Uri.parse(base).replace(
       queryParameters: {
         if (q != null && q.trim().isNotEmpty) 'q': q.trim(),
+        if (limit != null && limit > 0) 'limit': '$limit',
       },
     );
     return _getList(uri, Market.fromJson);
@@ -99,6 +100,7 @@ class MarketingService {
     String? q,
     String? status,
     int? marketId,
+    int? limit,
   }) async {
     if (!await isMarketingEnabled()) {
       return ApiResult.fail('feature_disabled');
@@ -120,6 +122,9 @@ class MarketingService {
     }
     if (marketId != null && marketId > 0) {
       params['market_id'] = '$marketId';
+    }
+    if (limit != null && limit > 0) {
+      params['limit'] = '$limit';
     }
     final uri = Uri.parse(base).replace(queryParameters: params);
     return _getList(uri, Party.fromJson);
