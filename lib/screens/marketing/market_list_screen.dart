@@ -8,7 +8,7 @@ import '../../services/marketing_service.dart';
 import '../../widgets/api_empty_state.dart';
 import '../../widgets/gradient_screen_header.dart';
 import '../../widgets/section_card.dart';
-import 'market_form_screen.dart';
+import 'market_detail_screen.dart';
 
 class MarketListScreen extends StatefulWidget {
   const MarketListScreen({super.key});
@@ -60,29 +60,10 @@ class _MarketListScreenState extends State<MarketListScreen> {
     });
   }
 
-  Future<void> _openCreate() async {
-    final created = await Navigator.of(context).push<Market>(
-      MaterialPageRoute(builder: (_) => const MarketFormScreen()),
-    );
-    if (created != null) _load();
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.background,
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: _openCreate,
-        backgroundColor: AppColors.primary,
-        icon: const Icon(Icons.add, color: Colors.white),
-        label: Text(
-          'New Market',
-          style: GoogleFonts.poppins(
-            fontWeight: FontWeight.w600,
-            color: Colors.white,
-          ),
-        ),
-      ),
       body: RefreshIndicator(
         onRefresh: _load,
         child: CustomScrollView(
@@ -152,7 +133,7 @@ class _MarketListScreenState extends State<MarketListScreen> {
               )
             else
               SliverPadding(
-                padding: const EdgeInsets.fromLTRB(20, 16, 20, 100),
+                padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
                 sliver: SliverList(
                   delegate: SliverChildBuilderDelegate(
                     (context, index) {
@@ -163,38 +144,54 @@ class _MarketListScreenState extends State<MarketListScreen> {
                         child: Padding(
                           padding: const EdgeInsets.only(bottom: 10),
                           child: SectionCard(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  m.displayName,
-                                  style: GoogleFonts.poppins(
-                                    fontWeight: FontWeight.w600,
-                                    fontSize: 15,
+                            padding: EdgeInsets.zero,
+                            child: InkWell(
+                              onTap: () async {
+                                await Navigator.of(context).push(
+                                  MaterialPageRoute(
+                                    builder: (_) =>
+                                        MarketDetailScreen(market: m),
                                   ),
+                                );
+                                _load();
+                              },
+                              borderRadius: BorderRadius.circular(20),
+                              child: Padding(
+                                padding: const EdgeInsets.all(16),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      m.displayName,
+                                      style: GoogleFonts.poppins(
+                                        fontWeight: FontWeight.w600,
+                                        fontSize: 15,
+                                      ),
+                                    ),
+                                    if (loc.isNotEmpty) ...[
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        loc,
+                                        style: GoogleFonts.poppins(
+                                          fontSize: 12,
+                                          color: AppColors.textSecondary,
+                                        ),
+                                      ),
+                                    ],
+                                    if (m.status != null) ...[
+                                      const SizedBox(height: 6),
+                                      Text(
+                                        m.status!,
+                                        style: GoogleFonts.poppins(
+                                          fontSize: 11,
+                                          color: AppColors.info,
+                                          fontWeight: FontWeight.w500,
+                                        ),
+                                      ),
+                                    ],
+                                  ],
                                 ),
-                                if (loc.isNotEmpty) ...[
-                                  const SizedBox(height: 4),
-                                  Text(
-                                    loc,
-                                    style: GoogleFonts.poppins(
-                                      fontSize: 12,
-                                      color: AppColors.textSecondary,
-                                    ),
-                                  ),
-                                ],
-                                if (m.status != null) ...[
-                                  const SizedBox(height: 6),
-                                  Text(
-                                    m.status!,
-                                    style: GoogleFonts.poppins(
-                                      fontSize: 11,
-                                      color: AppColors.info,
-                                      fontWeight: FontWeight.w500,
-                                    ),
-                                  ),
-                                ],
-                              ],
+                              ),
                             ),
                           ),
                         ),

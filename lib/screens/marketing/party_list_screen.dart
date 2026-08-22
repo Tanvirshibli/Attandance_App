@@ -11,12 +11,16 @@ import '../../widgets/filter_chip_row.dart';
 import '../../widgets/gradient_screen_header.dart';
 import '../../widgets/section_card.dart';
 import 'party_detail_screen.dart';
-import 'party_form_screen.dart';
 
 class PartyListScreen extends StatefulWidget {
-  const PartyListScreen({super.key, this.initialPartyType});
+  const PartyListScreen({
+    super.key,
+    this.initialPartyType,
+    this.marketId,
+  });
 
   final String? initialPartyType;
+  final int? marketId;
 
   @override
   State<PartyListScreen> createState() => _PartyListScreenState();
@@ -66,6 +70,7 @@ class _PartyListScreenState extends State<PartyListScreen> {
       partyType: _typeFilter == 'All' ? null : _typeFilter,
       q: _searchController.text,
       status: _statusFilter,
+      marketId: widget.marketId,
     );
 
     if (!mounted) return;
@@ -107,29 +112,9 @@ class _PartyListScreenState extends State<PartyListScreen> {
             ? 'Farms'
             : 'Parties';
 
+    final lockType = widget.initialPartyType != null;
     return Scaffold(
       backgroundColor: AppColors.background,
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () async {
-          await Navigator.of(context).push(
-            MaterialPageRoute(
-              builder: (_) => PartyFormScreen(
-                initialPartyType: widget.initialPartyType ?? 'dealer',
-              ),
-            ),
-          );
-          _load();
-        },
-        backgroundColor: AppColors.primary,
-        icon: const Icon(Icons.add_rounded, color: Colors.white),
-        label: Text(
-          'Add',
-          style: GoogleFonts.poppins(
-            fontWeight: FontWeight.w600,
-            color: Colors.white,
-          ),
-        ),
-      ),
       body: RefreshIndicator(
         onRefresh: _load,
         child: CustomScrollView(
@@ -167,24 +152,26 @@ class _PartyListScreenState extends State<PartyListScreen> {
                         ),
                       ),
                     ),
-                    const SizedBox(height: 10),
-                    Text(
-                      'Type',
-                      style: GoogleFonts.poppins(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w500,
-                        color: AppColors.textSecondary,
+                    if (!lockType) ...[
+                      const SizedBox(height: 10),
+                      Text(
+                        'Type',
+                        style: GoogleFonts.poppins(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w500,
+                          color: AppColors.textSecondary,
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: 6),
-                    FilterChipRow(
-                      options: _typeOptions,
-                      selected: _typeFilter,
-                      onSelected: (v) {
-                        setState(() => _typeFilter = v);
-                        _load();
-                      },
-                    ),
+                      const SizedBox(height: 6),
+                      FilterChipRow(
+                        options: _typeOptions,
+                        selected: _typeFilter,
+                        onSelected: (v) {
+                          setState(() => _typeFilter = v);
+                          _load();
+                        },
+                      ),
+                    ],
                     const SizedBox(height: 8),
                     Text(
                       'Status',
@@ -241,7 +228,7 @@ class _PartyListScreenState extends State<PartyListScreen> {
               )
             else
               SliverPadding(
-                padding: const EdgeInsets.fromLTRB(20, 16, 20, 100),
+                padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
                 sliver: SliverList(
                   delegate: SliverChildBuilderDelegate(
                     (context, index) {
