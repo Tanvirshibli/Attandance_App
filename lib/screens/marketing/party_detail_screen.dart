@@ -1,5 +1,4 @@
 import 'package:animate_do/animate_do.dart';
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
@@ -9,6 +8,7 @@ import '../../services/marketing_service.dart';
 import '../../widgets/api_empty_state.dart';
 import '../../widgets/gradient_screen_header.dart';
 import '../../widgets/section_card.dart';
+import 'farm_survey_detail_screen.dart';
 import 'farm_survey_form_screen.dart';
 import 'followup_form_screen.dart';
 import 'visit_form_screen.dart';
@@ -27,7 +27,10 @@ class _PartyDetailScreenState extends State<PartyDetailScreen> {
   final MarketingService _service = MarketingService();
   Party? _party;
   bool _loading = true;
+  bool _loadingRecords = true;
   String? _error;
+  List<FarmSurvey> _surveys = const [];
+  List<Visit> _visits = const [];
 
   @override
   void initState() {
@@ -54,24 +57,42 @@ class _PartyDetailScreenState extends State<PartyDetailScreen> {
       _party = result.data;
       _loading = false;
     });
+    await _loadRecords();
   }
 
-  Widget _actionChip({
-    required IconData icon,
-    required String label,
-    required Color color,
-    required VoidCallback onTap,
-  }) {
-    return ActionChip(
-      avatar: Icon(icon, size: 18, color: color),
-      label: Text(
-        label,
-        style: GoogleFonts.poppins(fontSize: 12, fontWeight: FontWeight.w500),
+  Future<void> _loadRecords() async {
+    final party = _party;
+    if (party == null) return;
+    setState(() => _loadingRecords = true);
+    if (party.isFarm) {
+      final result = await _service.listFarmSurveys(partyId: party.id);
+      if (!mounted) return;
+      setState(() {
+        _surveys = result.data ?? const [];
+        _loadingRecords = false;
+      });
+      return;
+    }
+    final result = await _service.listVisits(partyId: party.id);
+    if (!mounted) return;
+    setState(() {
+      _visits = result.data ?? const [];
+      _loadingRecords = false;
+    });
+  }
+
+  Future<void> _postVisit() async {
+    final party = _party;
+    if (party == null) return;
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => party.isFarm
+            ? FarmSurveyFormScreen(party: party)
+            : VisitFormScreen(party: party),
       ),
-      onPressed: onTap,
-      backgroundColor: color.withValues(alpha: 0.1),
-      side: BorderSide(color: color.withValues(alpha: 0.25)),
     );
+    if (!mounted) return;
+    _loadRecords();
   }
 
   @override
@@ -117,213 +138,168 @@ class _PartyDetailScreenState extends State<PartyDetailScreen> {
                 padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
                 sliver: SliverList(
                   delegate: SliverChildListDelegate([
-                    FadeInUp(
-                      child: SectionCard(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            _row('Name', party.name),
-                            if (party.tradeName != null)
-                              _row('Trade name', party.tradeName!),
-                            if (party.contactPerson != null)
-                              _row('Contact', party.contactPerson!),
-                            if (party.phone != null) _row('Phone', party.phone!),
-                            if (party.address != null)
-                              _row('Address', party.address!),
-                            if (party.marketName != null)
-                              _row('Market', party.marketName!),
-                            if (party.lat != null && party.lng != null)
-                              _row(
-                                'GPS',
-                                '${party.lat!.toStringAsFixed(5)}, ${party.lng!.toStringAsFixed(5)}',
-                              ),
-                            if (party.notes != null) _row('Notes', party.notes!),
-                          ],
-                        ),
+                    SectionCard(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          if (party.ownerName != null)
+                            _row('Owner', party.ownerName!),
+                          if (party.phone != null) _row('Contact', party.phone!),
+                          if (party.address != null)
+                            _row('Address', party.address!),
+                          if (party.parentPartyName != null)
+                            _row('Dealer', party.parentPartyName!),
+                          if (party.businessYears != null)
+                            _row('Farming years', '${party.businessYears}'),
+                        ],
                       ),
                     ),
                     const SizedBox(height: 12),
-                    FadeInUp(
-                      delay: const Duration(milliseconds: 60),
-                      child: SectionCard(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'Actions',
+                    Row(
+                      children: [
+                        Expanded(
+                          child: ElevatedButton.icon(
+                            onPressed: _postVisit,
+                            icon: const Icon(Icons.add, color: Colors.white),
+                            label: Text(
+                              'Post a visit',
                               style: GoogleFonts.poppins(
                                 fontWeight: FontWeight.w600,
-                                fontSize: 14,
+                                color: Colors.white,
                               ),
                             ),
-                            const SizedBox(height: 10),
-                            Wrap(
-                              spacing: 8,
-                              runSpacing: 8,
-                              children: [
-                                _actionChip(
-                                  icon: Icons.route_outlined,
-                                  label: 'New Visit',
-                                  color: AppColors.info,
-                                  onTap: () async {
-                                    await Navigator.of(context).push(
-                                      MaterialPageRoute(
-                                        builder: (_) =>
-                                            VisitFormScreen(party: party),
-                                      ),
-                                    );
-                                    _load();
-                                  },
-                                ),
-                                if (party.isFarm)
-                                  _actionChip(
-                                    icon: Icons.assessment_outlined,
-                                    label: 'Farm Survey',
-                                    color: AppColors.accent,
-                                    onTap: () async {
-                                      await Navigator.of(context).push(
-                                        MaterialPageRoute(
-                                          builder: (_) => FarmSurveyFormScreen(
-                                            party: party,
-                                          ),
-                                        ),
-                                      );
-                                      _load();
-                                    },
-                                  ),
-                                _actionChip(
-                                  icon: Icons.event_note_outlined,
-                                  label: 'Follow-up',
-                                  color: AppColors.warning,
-                                  onTap: () async {
-                                    await Navigator.of(context).push(
-                                      MaterialPageRoute(
-                                        builder: (_) => FollowupFormScreen(
-                                          party: party,
-                                        ),
-                                      ),
-                                    );
-                                    _load();
-                                  },
-                                ),
-                              ],
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: party.isFarm
+                                  ? AppColors.accent
+                                  : AppColors.primary,
+                              minimumSize: const Size.fromHeight(48),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(14),
+                              ),
                             ),
-                          ],
+                          ),
                         ),
+                        const SizedBox(width: 10),
+                        OutlinedButton(
+                          onPressed: () async {
+                            await Navigator.of(context).push(
+                              MaterialPageRoute(
+                                builder: (_) =>
+                                    FollowupFormScreen(party: party),
+                              ),
+                            );
+                          },
+                          style: OutlinedButton.styleFrom(
+                            minimumSize: const Size(48, 48),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(14),
+                            ),
+                          ),
+                          child: const Icon(Icons.event_note_outlined),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                    Text(
+                      party.isFarm ? 'Visit reports' : 'Visits',
+                      style: GoogleFonts.poppins(
+                        fontWeight: FontWeight.w600,
+                        fontSize: 14,
                       ),
                     ),
-                    if (party.products.isNotEmpty) ...[
-                      const SizedBox(height: 12),
-                      FadeInUp(
-                        delay: const Duration(milliseconds: 100),
-                        child: SectionCard(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                'Products',
-                                style: GoogleFonts.poppins(
-                                  fontWeight: FontWeight.w600,
-                                  fontSize: 14,
-                                ),
-                              ),
-                              const SizedBox(height: 8),
-                              ...party.products.map(
-                                (p) => Padding(
-                                  padding: const EdgeInsets.only(bottom: 8),
-                                  child: Row(
-                                    children: [
-                                      Expanded(
-                                        child: Text(
-                                          p.productName,
-                                          style: GoogleFonts.poppins(
-                                            fontSize: 13,
-                                            fontWeight: FontWeight.w500,
-                                          ),
-                                        ),
+                    const SizedBox(height: 10),
+                    if (_loadingRecords)
+                      const Padding(
+                        padding: EdgeInsets.symmetric(vertical: 24),
+                        child: Center(child: CircularProgressIndicator()),
+                      )
+                    else if (party.isFarm && _surveys.isEmpty)
+                      const ApiEmptyState(
+                        icon: Icons.assignment_outlined,
+                        title: 'No visit reports yet',
+                        subtitle: 'Post a visit to record this farm report.',
+                      )
+                    else if (!party.isFarm && _visits.isEmpty)
+                      const ApiEmptyState(
+                        icon: Icons.route_outlined,
+                        title: 'No visits yet',
+                        subtitle: 'Post a visit for this dealer.',
+                      )
+                    else if (party.isFarm)
+                      ...List.generate(_surveys.length, (index) {
+                        final survey = _surveys[index];
+                        return FadeInUp(
+                          delay: Duration(milliseconds: 30 * index),
+                          child: Padding(
+                            padding: const EdgeInsets.only(bottom: 10),
+                            child: SectionCard(
+                              padding: EdgeInsets.zero,
+                              child: ListTile(
+                                onTap: () async {
+                                  await Navigator.of(context).push(
+                                    MaterialPageRoute(
+                                      builder: (_) => FarmSurveyDetailScreen(
+                                        surveyId: survey.id,
+                                        initial: survey,
                                       ),
-                                      Text(
-                                        [
-                                          if (p.demandQty != null)
-                                            'D:${p.demandQty}',
-                                          if (p.stockQty != null)
-                                            'S:${p.stockQty}',
-                                          if (p.competitorBrand != null)
-                                            p.competitorBrand!,
-                                        ].join(' · '),
-                                        style: GoogleFonts.poppins(
-                                          fontSize: 11,
-                                          color: AppColors.textSecondary,
-                                        ),
-                                      ),
-                                    ],
+                                    ),
+                                  );
+                                },
+                                title: Text(
+                                  survey.displayTitle,
+                                  style: GoogleFonts.poppins(
+                                    fontWeight: FontWeight.w600,
+                                    fontSize: 14,
                                   ),
                                 ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ],
-                    if (party.attachments.isNotEmpty) ...[
-                      const SizedBox(height: 12),
-                      FadeInUp(
-                        delay: const Duration(milliseconds: 140),
-                        child: SectionCard(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                'Photos',
-                                style: GoogleFonts.poppins(
-                                  fontWeight: FontWeight.w600,
-                                  fontSize: 14,
+                                subtitle: Text(
+                                  [
+                                    if (survey.quantity != null)
+                                      'Qty ${survey.quantity}',
+                                    if (survey.ageDays != null)
+                                      'Age ${survey.ageDays}d',
+                                    if (survey.status != null) survey.status!,
+                                  ].join(' · '),
+                                  style: GoogleFonts.poppins(fontSize: 12),
                                 ),
+                                trailing: const Icon(Icons.chevron_right),
                               ),
-                              const SizedBox(height: 10),
-                              SizedBox(
-                                height: 88,
-                                child: ListView.separated(
-                                  scrollDirection: Axis.horizontal,
-                                  itemCount: party.attachments.length,
-                                  separatorBuilder: (_, _) =>
-                                      const SizedBox(width: 8),
-                                  itemBuilder: (context, i) {
-                                    final att = party.attachments[i];
-                                    final url = att.displayUrl;
-                                    return ClipRRect(
-                                      borderRadius: BorderRadius.circular(12),
-                                      child: url == null
-                                          ? Container(
-                                              width: 88,
-                                              color: AppColors.background,
-                                              child: const Icon(
-                                                Icons.image_outlined,
-                                              ),
-                                            )
-                                          : CachedNetworkImage(
-                                              imageUrl: url,
-                                              width: 88,
-                                              height: 88,
-                                              fit: BoxFit.cover,
-                                              errorWidget: (_, _, _) =>
-                                                  Container(
-                                                width: 88,
-                                                color: AppColors.background,
-                                                child: const Icon(
-                                                  Icons.broken_image_outlined,
-                                                ),
-                                              ),
-                                            ),
-                                    );
-                                  },
-                                ),
-                              ),
-                            ],
+                            ),
                           ),
-                        ),
-                      ),
-                    ],
+                        );
+                      })
+                    else
+                      ...List.generate(_visits.length, (index) {
+                        final visit = _visits[index];
+                        return FadeInUp(
+                          delay: Duration(milliseconds: 30 * index),
+                          child: Padding(
+                            padding: const EdgeInsets.only(bottom: 10),
+                            child: SectionCard(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    visit.displayName,
+                                    style: GoogleFonts.poppins(
+                                      fontWeight: FontWeight.w600,
+                                      fontSize: 14,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    visit.status ?? '—',
+                                    style: GoogleFonts.poppins(
+                                      fontSize: 12,
+                                      color: AppColors.textSecondary,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        );
+                      }),
                   ]),
                 ),
               ),
@@ -340,7 +316,7 @@ class _PartyDetailScreenState extends State<PartyDetailScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           SizedBox(
-            width: 100,
+            width: 110,
             child: Text(
               label,
               style: GoogleFonts.poppins(
