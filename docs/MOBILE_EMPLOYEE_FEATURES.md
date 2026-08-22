@@ -163,6 +163,12 @@ Handoff for backend teams: **[SALES_AND_PAYMENTS_API_CONTRACT.md](SALES_AND_PAYM
 - Success tick is pinned to the **center of the rounded guide**
 - Step badge, coaching, and check-in status sit in one horizontally centered strip **above** the guide (including GPS “Capturing location…”)
 
+### Separate visit forms and farm autocomplete (v2.2.3+65)
+
+- Farm visit report, dealer visit, and market visit are three separate screens and APIs
+- Farm report: dealer info read-only; breed/DOC/etc. use typing-supported autocomplete dropdowns
+- Market detail adds **Post a visit** with party picker in that market
+
 ### Markets hub purple panel fix (v2.2.3+64)
 
 - Markets section uses purple (`AppColors.secondary`) instead of info blue so it no longer matches Dealers at low tint

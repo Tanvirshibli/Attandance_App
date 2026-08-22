@@ -4,6 +4,8 @@ Last updated: August 22, 2026
 
 Field data collection for **markets**, **dealers**, and **farms** in Attandance_App, backed by ZKTeco `/api/v1/mobile/marketing/*` (no JWT — same pattern as geo). Employee identity uses profile `canonicalEmployeeId` (`employees.id`).
 
+**v2.2.3+65:** Three separate visit forms — **Farm visit report** (`POST /farm-surveys`, farm party only), **Dealer visit** (`POST /visits`, dealer party), **Market visit** (`POST /visits`, market fixed + party picker). Farm report: dealer block read-only from parent party; breed/DOC/etc. use type-to-search autocomplete (`SearchableTextField`). Dealer/market visits no longer offer `survey` type.
+
 **v2.2.3+64:** Markets hub panel uses purple (`AppColors.secondary`) so it is visually distinct from Dealers (blue primary). Previous builds used `AppColors.info`, which matched primary at low tint.
 
 **v2.2.3+63:** Hub sections use distinct tinted panels (Farms green, Dealers primary blue, Markets purple). Farm visit report accepts **free-text** breed, DOC/feed company, shed, curtain, floor, territory, and zone with demo suggestion chips (CB, Provita, PPHL, Open shed, Cloth, Concrete house, zones A/B/C, etc.). Labels clarify units (avg feed g/bird, avg B/W grams, space sq ft). Editable farming years; visit type and temperature range stored in `extra_data`. Home Recent Attendance badge no longer overlaps check-in/out times.
@@ -28,8 +30,14 @@ Hub sections (Farms → Dealers → Markets). Each section title row has compact
 |---------|--------|----------|-------------|
 | Farms | `PartyFormScreen(farm)` | `PartyListScreen(farm)` | `PartyDetailScreen` → Post visit report |
 | Dealers | `PartyFormScreen(dealer)` | `PartyListScreen(dealer)` | `PartyDetailScreen` → Post visit |
-| Markets | `MarketFormScreen` | `MarketListScreen` | `MarketDetailScreen` |
+| Markets | `MarketFormScreen` | `MarketListScreen` | `MarketDetailScreen` → Post visit |
 | Follow-ups | — | `FollowupFormScreen` (list mode) | — |
+
+| Visit entry | Screen | API |
+|-------------|--------|-----|
+| Farm party → Post a visit | `FarmSurveyFormScreen` | `POST /farm-surveys` |
+| Dealer party → Post a visit | `DealerVisitFormScreen` | `POST /visits` |
+| Market detail → Post a visit | `MarketVisitFormScreen` (pick party in market) | `POST /visits` |
 
 ---
 
@@ -106,7 +114,9 @@ Searchable company and sector; status `active` / `inactive`; name, code, geo add
 7. Auto location on open → `lat`/`lng` + address prefill (editable). No Capture GPS button.
 8. Optional multi-photo gallery → attachments `attachable_type=party`.
 
-### Visit
+### Visit (dealer or market)
+
+**Dealer visit** opens from a dealer record; **Market visit** opens from market detail (market fixed, searchable party picker). Both use `POST /visits` with `status: in_progress`. Visit types: `regular`, `order`, `collection`, `technical_support`, `complaint`, `dealer_opening`, `other` — **not** `survey` (farm report only). Visit type field is type-to-search autocomplete.
 
 Create with `status: in_progress` (not completed). Sends `visit_type`, live `market_id`, company/sector, `objective` / `purpose`, `findings`, `result` / `outcome`, `next_plan`, `next_visit_date`, `order_amount`, `collection_amount`, auto-generated `client_uuid`, `geo_verified` (defaults true when GPS is present), check-in GPS.
 
@@ -118,11 +128,11 @@ Check-in coords are auto-captured on form open (and retried on submit); no Check
 
 Opened from a farm record (**Post a visit**). Title is **Farm visit report**. One `createFarmSurvey` call; if `visit_id` is omitted the backend creates a completed `mkt_visits` row (`visit_type=survey`) with check-in GPS when sent.
 
-Read-only from the opened farm: farm name, owner, address, contact, farming years. Date defaults to today (editable). Reporting officer is the logged-in profile name. Dealer name/address/contact prefills from the parent dealer when present; otherwise a searchable **live** dealer list (never a fake `dealer_party_id`).
+Read-only from the opened farm: farm name, owner, address, contact, **farming years**, **dealer name/address/contact** (from parent party — not editable). Date defaults to today (editable). Reporting officer is the logged-in profile name + designation.
 
-Free-text fields with demo suggestion chips: visit type, breed, DOC company, feed company, shed design, curtain, floor, territory, zone. Typed values are sent to the existing string columns (`breed`, `doc_company`, `feed_company`, etc.); chips come from `marketing_demo_masters.dart` (CB, Provita, PPHL, Open shed, Cloth, Concrete house, zones A/B/C, …).
+Type-to-search autocomplete (`SearchableTextField`) for visit type, breed, DOC company, feed company, shed design, curtain, floor, territory, zone. Typed values are sent to existing string columns; suggestions from `marketing_demo_masters.dart`. Custom text allowed.
 
-Editable **farming years** on the visit form (not read-only from party). Reporting officer shows profile name + designation. Visit type and avg temperature range (e.g. `28-30`) store in `extra_data` (`visit_type_label`, `avg_temperature_note`, `reporting_officer_designation`). Detail screen shows those keys when present.
+`dealer_party_id` and `farming_years` come from the farm party's parent dealer link and `business_years` — not from form pickers. Visit type and avg temperature range (e.g. `28-30`) store in `extra_data`. Detail screen shows those keys when present.
 
 Computed when quantity + total mortality are filled: mortality % and rest of bird (user can override). Ratings stay 1–5 (biosecurity, management, technical support, economical solvency). Photos use `attachable_type=survey`.
 

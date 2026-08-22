@@ -9,6 +9,7 @@ import '../../services/marketing_service.dart';
 import '../../widgets/api_empty_state.dart';
 import '../../widgets/gradient_screen_header.dart';
 import '../../widgets/section_card.dart';
+import 'market_visit_form_screen.dart';
 import 'party_detail_screen.dart';
 
 class MarketDetailScreen extends StatefulWidget {
@@ -58,6 +59,29 @@ class _MarketDetailScreenState extends State<MarketDetailScreen> {
     });
   }
 
+  Future<void> _postVisit() async {
+    if (_parties.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Add a dealer or farm to this market before posting a visit.',
+          ),
+        ),
+      );
+      return;
+    }
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => MarketVisitFormScreen(
+          market: widget.market,
+          partiesInMarket: _parties,
+        ),
+      ),
+    );
+    if (!mounted) return;
+    _load();
+  }
+
   @override
   Widget build(BuildContext context) {
     final market = widget.market;
@@ -97,6 +121,31 @@ class _MarketDetailScreenState extends State<MarketDetailScreen> {
                             fontSize: 12,
                             color: AppColors.info,
                             fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
+                      if (!_loading && _error == null && _parties.isNotEmpty) ...[
+                        const SizedBox(height: 14),
+                        SizedBox(
+                          width: double.infinity,
+                          height: 44,
+                          child: ElevatedButton.icon(
+                            onPressed: _postVisit,
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: AppColors.secondary,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                            ),
+                            icon: const Icon(Icons.add_location_alt_outlined,
+                                color: Colors.white, size: 20),
+                            label: Text(
+                              'Post a visit',
+                              style: GoogleFonts.poppins(
+                                fontWeight: FontWeight.w600,
+                                color: Colors.white,
+                              ),
+                            ),
                           ),
                         ),
                       ],
