@@ -163,7 +163,7 @@ Handoff for backend teams: **[SALES_AND_PAYMENTS_API_CONTRACT.md](SALES_AND_PAYM
 - Success tick is pinned to the **center of the rounded guide**
 - Step badge, coaching, and check-in status sit in one horizontally centered strip **above** the guide (including GPS “Capturing location…”)
 
-### Separate visit forms and farm autocomplete (v2.2.3+65)
+### Separate visit forms and farm autocomplete (v2.2.3+66)
 
 - Farm visit report, dealer visit, and market visit are three separate screens and APIs
 - Farm report: dealer info read-only; breed/DOC/etc. use typing-supported autocomplete dropdowns

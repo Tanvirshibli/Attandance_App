@@ -4,7 +4,7 @@ Last updated: August 22, 2026
 
 Field data collection for **markets**, **dealers**, and **farms** in Attandance_App, backed by ZKTeco `/api/v1/mobile/marketing/*` (no JWT — same pattern as geo). Employee identity uses profile `canonicalEmployeeId` (`employees.id`).
 
-**v2.2.3+65:** Three separate visit forms — **Farm visit report** (`POST /farm-surveys`, farm party only), **Dealer visit** (`POST /visits`, dealer party), **Market visit** (`POST /visits`, market fixed + party picker). Farm report: dealer block read-only from parent party; breed/DOC/etc. use type-to-search autocomplete (`SearchableTextField`). Dealer/market visits no longer offer `survey` type.
+**v2.2.3+66:** Three separate visit forms — **Farm visit report** (`POST /farm-surveys`, farm party only), **Dealer visit** (`POST /visits`, dealer party), **Market visit** (`POST /visits`, market fixed + party picker). Farm report: dealer block read-only from parent party; breed/DOC/etc. use type-to-search autocomplete (`SearchableTextField`). Dealer/market visits no longer offer `survey` type.
 
 **v2.2.3+64:** Markets hub panel uses purple (`AppColors.secondary`) so it is visually distinct from Dealers (blue primary). Previous builds used `AppColors.info`, which matched primary at low tint.
 
