@@ -26,7 +26,7 @@ On **every cold start and when returning from background**, the app checks notif
 - HR Benefits (payslips, loans, PF, mess, compensation, post payment — demo by default)
 - Sales Info (live overall + module breakdown; Post sale with searchable dealer list)
 - Vehicles (fleet list → Maintenance / Trips per vehicle; unfiltered)
-- Farm & Dealer (field collection: dealers, farms, visits, surveys, follow-ups)
+- Farm & Dealer (hub Create / View all cards; farm visit report; dealer visits; follow-ups)
 - Geo Tracking (Google Maps; status only — no on/off toggle; auto-enabled after first-launch permissions; full-screen map with exit)
 
 ---
@@ -105,12 +105,13 @@ Handoff for backend teams: **[SALES_AND_PAYMENTS_API_CONTRACT.md](SALES_AND_PAYM
 
 ### Farm & Dealer (marketing)
 
-- Services tile → hub (Markets, Dealers, Farms, Visits, Follow-ups) + New Market / New Dealer / New Farm FABs
-- Create forms collect the **full Phase-1 field set** the current marketing API accepts (v2.2.3+59). ID fields are type-to-search (`SearchableSelectField`)
-- Live lists for `market_id` / parent party / `visit_id` (FK-checked). Demo catalog for ERP dealer, product, unit, and assigned employee IDs until live master APIs exist
+- Services tile → hub cards **Markets / Dealers / Farms** (each **Create** + **View all**) and Follow-ups. No FABs and no standalone Visits tile
+- Farm record: visit-report list + **Post a visit** (paper farm visit report). Dealer record: visit list + **Post a visit** (stock/order visit form). Market record: parties in that market
+- Create forms collect the **full Phase-1 field set** the current marketing API accepts (v2.2.3+59). Farm visit report paper fields ship in **v2.2.3+60**. ID fields are type-to-search (`SearchableSelectField`)
+- Live lists for `market_id` / parent party / `dealer_party_id` / `visit_id` (FK-checked). Demo catalog for ERP dealer, product, unit, assigned employee, breed, DOC/feed, shed, territory, and zone until live master APIs exist
 - Party create: `employee_id` required; **Company/Sector** from Sales `GET /api/booking-person-books/form-data` (demo fallback if empty); farms can link parent dealer; products, photos
-- Create forms **auto-fill GPS + address** (no Capture GPS / Check-in GPS buttons); visits start `in_progress` with auto check-in; check-out completes visit; farm survey + follow-ups from party detail
-- ZKTeco `/api/v1/mobile/marketing/*` including `visits/{id}/check-in|check-out` (no JWT); flag `marketing.enabled`
+- Create forms **auto-fill GPS + address** (no Capture GPS / Check-in GPS buttons); dealer visits start `in_progress` with auto check-in; farm visit report auto-creates a completed survey visit when `visit_id` is omitted
+- ZKTeco `/api/v1/mobile/marketing/*` including `GET /farm-surveys/{id}` and `visits/{id}/check-in|check-out` (no JWT); flag `marketing.enabled`
 - Attachments stay photos only (`photos[]`). See [FARM_DEALER_MOBILE.md](FARM_DEALER_MOBILE.md) for endpoint keys and payloads
 
 ### Post booking Zone dropdown (v2.2.3+44)
@@ -161,6 +162,13 @@ Handoff for backend teams: **[SALES_AND_PAYMENTS_API_CONTRACT.md](SALES_AND_PAYM
 
 - Success tick is pinned to the **center of the rounded guide**
 - Step badge, coaching, and check-in status sit in one horizontally centered strip **above** the guide (including GPS “Capturing location…”)
+
+### Farm visit report and hub cards (v2.2.3+60)
+
+- Hub: Markets / Dealers / Farms each have **Create** and **View all**; Follow-ups remains a row; FABs and the Visits tile are gone
+- Farm **Post a visit** is the paper farm visit report (hatch/receiving, breed, DOC/feed, mortality math, shed, ratings, territory/zone). Submit is one `POST /farm-surveys`; backend creates the survey visit
+- Dealer **Post a visit** stays the existing stock/order visit form
+- Market detail lists parties filtered by `market_id`
 
 ### Farm & Dealer Phase-1 forms (v2.2.3+59)
 

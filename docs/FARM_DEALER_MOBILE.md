@@ -1,8 +1,10 @@
 # Farm & Dealer Mobile Module
 
-Last updated: August 20, 2026
+Last updated: August 22, 2026
 
 Field data collection for **markets**, **dealers**, and **farms** in Attandance_App, backed by ZKTeco `/api/v1/mobile/marketing/*` (no JWT — same pattern as geo). Employee identity uses profile `canonicalEmployeeId` (`employees.id`).
+
+**v2.2.3+60:** Farm & Dealer hub uses expandable **Create** / **View all** cards (no FABs, no standalone Visits tile). Farm records open the paper **Farm visit report** (rewritten farm survey). Dealer records still use the stock/order visit form. Posting a visit lives on the farm or dealer record page.
 
 **v2.2.3+59:** Create forms collect the full Phase-1 field set the current marketing API already accepts. ID fields are type-to-search (`SearchableSelectField`). Live lists are used for markets, parties, and visits (FK-checked). Demo catalog fills ERP-style IDs (dealers, products, units, employees) until live master APIs exist. Company / sector prefer Sales `GET /api/booking-person-books/form-data` (Bearer); demo companies/sectors fill the picker when that list is empty.
 
@@ -14,18 +16,16 @@ Create forms auto-capture GPS + reverse-geocode address fields (no manual Captur
 
 Services tab → **Farm & Dealer** → `MarketingHubScreen`
 
-Hub tiles:
+Hub cards (Create + View all on each; no FABs):
 
-| Tile | Screen |
-|------|--------|
-| Markets | `MarketListScreen` → create via `MarketFormScreen` |
-| Dealers | `PartyListScreen(partyType: dealer)` |
-| Farms | `PartyListScreen(partyType: farm)` |
-| Visits | `VisitListScreen` |
-| Follow-ups | `FollowupFormScreen` (list mode) |
-| FAB New Dealer / New Farm / New Market | `PartyFormScreen` / `MarketFormScreen` |
+| Card | Create | View all |
+|------|--------|----------|
+| Markets | `MarketFormScreen` | `MarketListScreen` → `MarketDetailScreen` (parties in that market) |
+| Dealers | `PartyFormScreen(dealer)` | `PartyListScreen(dealer)` → `PartyDetailScreen` |
+| Farms | `PartyFormScreen(farm)` | `PartyListScreen(farm)` → `PartyDetailScreen` |
+| Follow-ups | — | `FollowupFormScreen` (list mode) |
 
-From party detail: **New Visit**, **Farm Survey** (farms), **Follow-up**, photo gallery.
+Farm detail lists farm visit reports and **Post a visit** opens `FarmSurveyFormScreen` (title **Farm visit report**). Dealer detail lists visits and **Post a visit** opens `VisitFormScreen`. Follow-up stays a secondary action on the record page.
 
 ---
 
@@ -51,7 +51,7 @@ All marketing paths resolve via `EndpointConfigService` (ZKTeco base). Fallbacks
 | `marketing.visit.create` | POST | `/api/v1/mobile/marketing/visits` |
 | `marketing.visit.checkIn` | POST | `/api/v1/mobile/marketing/visits/{id}/check-in` |
 | `marketing.visit.checkOut` | POST | `/api/v1/mobile/marketing/visits/{id}/check-out` |
-| `marketing.surveys` | GET | `/api/v1/mobile/marketing/farm-surveys` |
+| `marketing.surveys` | GET | `/api/v1/mobile/marketing/farm-surveys` (show: `GET …/farm-surveys/{id}`) |
 | `marketing.survey.create` | POST | `/api/v1/mobile/marketing/farm-surveys` |
 | `marketing.followups` | GET | `/api/v1/mobile/marketing/followups` |
 | `marketing.followup.create` | POST | `/api/v1/mobile/marketing/followups` |
@@ -76,8 +76,8 @@ Opaque ints (`existing_dealer_id`, `product_id`, `unit_id`, `company_id`, `assig
 These IDs **must exist in ZKTeco** or create fails:
 
 - `market_id` → `exists:mkt_markets,id`
-- `parent_party_id` / `party_id` → `exists:mkt_parties,id`
-- `visit_id` → `exists:mkt_visits,id`
+- `parent_party_id` / `party_id` / `dealer_party_id` → `exists:mkt_parties,id`
+- `visit_id` → `exists:mkt_visits,id` (farm visit report omits this; backend creates a `visit_type=survey` row)
 
 The app type-to-search **live** marketing lists for those. If the list is empty, the field is left unset. Fake market/party/visit IDs are never sent.
 
@@ -110,13 +110,17 @@ Observation types: `uses|sells|stock|demand|order|competitor|sample|price|other`
 
 Check-in coords are auto-captured on form open (and retried on submit); no Check-in GPS button. After save, UI offers **Complete / check-out** → `POST .../check-out` with auto GPS (and optional findings/amounts). `completeVisit` in the service delegates to `checkOutVisit`.
 
-### Farm survey
+### Farm visit report (farm survey)
 
-`survey_type` (`poultry|fertilizer|egg|fish|other`); `production_percent`; searchable `quantity_unit_id`, `chicks_product_id`, `feed_product_id`. Poultry analytics + 1–5 ratings kept.
+Opened from a farm record (**Post a visit**). Title is **Farm visit report**. One `createFarmSurvey` call; if `visit_id` is omitted the backend creates a completed `mkt_visits` row (`visit_type=survey`) with check-in GPS when sent.
 
-Optional extra metrics (sent only when filled) with both `metric_key` and `metric_code`: `flock_age_days`, `mortality_pct`, `feed_bag_stock`, `LAND_AREA_ACRE`, `MONTHLY_FERTILIZER_KG`, `DAILY_EGG_PRODUCTION`, `CRACKED_EGG_PERCENT`, `POND_AREA_DECIMAL`.
+Read-only from the opened farm: farm name, owner, address, contact, farming years. Date defaults to today (editable). Reporting officer is the logged-in profile name. Dealer name/address/contact prefills from the parent dealer when present; otherwise a searchable **live** dealer list (never a fake `dealer_party_id`).
 
-Photos use `attachable_type=survey` (not `farm_survey`). Optional `visitId` from constructor.
+Demo dropdowns (until live masters exist): breed, DOC company, feed company, shed design, curtain, floor, territory, zone. Live Sales companies are preferred for DOC/feed company when `fetchBookingFormData()` returns them.
+
+Computed when quantity + total mortality are filled: mortality % and rest of bird (user can override). Ratings stay 1–5 (biosecurity, management, technical support, economical solvency). Photos use `attachable_type=survey`.
+
+Paper field map: hatch / receiving date+time, breed, DOC + feed company, quantity, age, mortalities, rest of bird, feed intake, production %, FCR, total + avg body weight, bag weight, shed / curtain / floor / feeder / drinker / temp / space, diseases, problems, remarks (`notes`), comments, territory, zone.
 
 ### Follow-up
 
@@ -144,6 +148,8 @@ Fields:
 | Units | KG, Bag, Pcs, Acre, Decimal |
 | Employees | Sales officer 1001–1003 |
 | Companies / sectors | Peoples Poultry & Hatchery Ltd, Peoples Feed (used only when Sales form-data is empty) |
+| Breed / DOC / feed / shed / curtain / floor | Cobb 500, Peoples Hatchery, Peoples Feed, Open / Semi-closed / Closed, … |
+| Territory / zone | Munshiganj East, Dhaka South, … |
 
 Selecting a product fills `product_name` and related category/company when those IDs match the catalog.
 
@@ -160,7 +166,7 @@ Selecting a product fills `product_name` and related category/company when those
 | `lib/services/marketing_service.dart` | HTTP client (check-in/out, update party/followup) |
 | `lib/services/sales_service.dart` | `fetchBookingFormData()` for company/sector masters |
 | `lib/widgets/searchable_select_field.dart` | Type-to-search dropdown (shared with Post booking) |
-| `lib/screens/marketing/*` | Hub, lists, forms, detail |
+| `lib/screens/marketing/*` | Hub cards, lists, market/party records, farm visit report, visit form |
 | `lib/services/endpoint_config_service.dart` | Keys + `marketing.enabled` + `sales.booking.formData` |
 | `lib/screens/employee_services_hub_screen.dart` | Services tile |
 
@@ -170,8 +176,9 @@ Selecting a product fills `product_name` and related category/company when those
 
 | Resource | Params |
 |----------|--------|
-| Parties | `employee_id`, `party_type`, `q`, `status` |
+| Parties | `employee_id`, `party_type`, `market_id`, `q`, `status` |
 | Visits | `employee_id`, `party_id`, `status` |
+| Farm surveys | `employee_id`, `party_id`, `from`, `to` |
 | Follow-ups | `employee_id`, `party_id`, `status` |
 | Markets | `q` (optional) |
 
