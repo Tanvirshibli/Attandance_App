@@ -12,14 +12,13 @@ import '../../services/auth_service.dart';
 import '../../services/marketing_service.dart';
 import '../../utils/marketing_location_helper.dart';
 import '../../widgets/gradient_screen_header.dart';
-import '../../widgets/searchable_select_field.dart';
+import '../../widgets/searchable_text_field.dart';
 import '../../widgets/section_card.dart';
 
 class FarmSurveyFormScreen extends StatefulWidget {
-  const FarmSurveyFormScreen({super.key, required this.party, this.visitId});
+  const FarmSurveyFormScreen({super.key, required this.party});
 
   final Party party;
-  final int? visitId;
 
   @override
   State<FarmSurveyFormScreen> createState() => _FarmSurveyFormScreenState();
@@ -35,7 +34,6 @@ class _FarmSurveyFormScreenState extends State<FarmSurveyFormScreen> {
   TimeOfDay? _receivingTime;
 
   final _visitType = TextEditingController(text: 'Regular farm visit');
-  final _farmingYears = TextEditingController();
   final _breed = TextEditingController();
   final _docCompany = TextEditingController();
   final _feedCompany = TextEditingController();
@@ -76,8 +74,6 @@ class _FarmSurveyFormScreenState extends State<FarmSurveyFormScreen> {
   bool _computing = false;
   String _officerName = '';
   String _officerDesignation = '';
-  List<Party> _dealers = const [];
-  Party? _dealer;
   double? _lat;
   double? _lng;
   bool _geoVerified = false;
@@ -95,7 +91,6 @@ class _FarmSurveyFormScreenState extends State<FarmSurveyFormScreen> {
   @override
   void dispose() {
     _visitType.dispose();
-    _farmingYears.dispose();
     _breed.dispose();
     _docCompany.dispose();
     _feedCompany.dispose();
@@ -131,23 +126,10 @@ class _FarmSurveyFormScreenState extends State<FarmSurveyFormScreen> {
 
   Future<void> _loadContext() async {
     final profile = await _authService.getCurrentUserProfile();
-    final dealers = await _service.listParties(
-      employeeId: profile?.canonicalEmployeeId,
-      partyType: 'dealer',
-    );
     if (!mounted) return;
     setState(() {
       _officerName = profile?.name ?? '';
       _officerDesignation = profile?.designation ?? '';
-      _dealers = dealers.data ?? const [];
-      _dealer = MarketingDemoMasters.byId(
-        _dealers,
-        widget.party.parentPartyId,
-        (p) => p.id,
-      );
-      if (widget.party.businessYears != null) {
-        _farmingYears.text = widget.party.businessYears!.toStringAsFixed(0);
-      }
     });
   }
 
@@ -226,11 +208,11 @@ class _FarmSurveyFormScreenState extends State<FarmSurveyFormScreen> {
         'reporting_officer_designation': _officerDesignation,
     };
 
+    final farm = widget.party;
     final payload = <String, dynamic>{
-      'party_id': widget.party.id,
+      'party_id': farm.id,
       'employee_id': employeeId,
-      if (widget.visitId != null) 'visit_id': widget.visitId,
-      if (_dealer != null) 'dealer_party_id': _dealer!.id,
+      if (farm.parentPartyId != null) 'dealer_party_id': farm.parentPartyId,
       'survey_date': DateFormat('yyyy-MM-dd').format(_surveyDate),
       'survey_type': 'poultry',
       if (_hatchDate != null)
@@ -245,8 +227,7 @@ class _FarmSurveyFormScreenState extends State<FarmSurveyFormScreen> {
         'doc_company': _textValue(_docCompany),
       if (_textValue(_feedCompany) != null)
         'feed_company': _textValue(_feedCompany),
-      if (_textValue(_farmingYears) != null)
-        'farming_years': double.tryParse(_farmingYears.text.trim()),
+      if (farm.businessYears != null) 'farming_years': farm.businessYears,
       if (_textValue(_quantity) != null)
         'quantity': double.tryParse(_quantity.text.trim()),
       if (_textValue(_ageDays) != null)
@@ -394,39 +375,19 @@ class _FarmSurveyFormScreenState extends State<FarmSurveyFormScreen> {
     );
   }
 
-  Widget _demoTextField({
+  Widget _suggestField({
     required String label,
     required TextEditingController controller,
     required List<String> suggestions,
     String? hint,
     TextInputType keyboardType = TextInputType.text,
   }) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        _label(label),
-        TextField(
-          controller: controller,
-          keyboardType: keyboardType,
-          decoration: _decoration(hint: hint),
-        ),
-        if (suggestions.isNotEmpty) ...[
-          const SizedBox(height: 8),
-          Wrap(
-            spacing: 6,
-            runSpacing: 6,
-            children: suggestions
-                .map(
-                  (s) => ActionChip(
-                    label: Text(s, style: GoogleFonts.poppins(fontSize: 11)),
-                    onPressed: () => setState(() => controller.text = s),
-                  ),
-                )
-                .toList(),
-          ),
-        ],
-        const SizedBox(height: 12),
-      ],
+    return SearchableTextField(
+      label: label,
+      controller: controller,
+      suggestions: suggestions,
+      hintText: hint ?? 'Type or pick…',
+      keyboardType: keyboardType,
     );
   }
 
@@ -476,7 +437,7 @@ class _FarmSurveyFormScreenState extends State<FarmSurveyFormScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        _demoTextField(
+                        _suggestField(
                           label: 'Visit type',
                           controller: _visitType,
                           suggestions: MarketingDemoMasters.visitTypes,
@@ -498,33 +459,13 @@ class _FarmSurveyFormScreenState extends State<FarmSurveyFormScreen> {
                         ),
                         _readOnly('Address', farm.address),
                         _readOnly('Contact No.', farm.phone),
-                        _label('Farming years'),
-                        TextField(
-                          controller: _farmingYears,
-                          keyboardType: TextInputType.number,
-                          decoration: _decoration(hint: 'Years'),
-                        ),
-                        const SizedBox(height: 12),
-                        SearchableSelectField<Party>(
-                          label: 'Name of dealer',
-                          icon: Icons.storefront_outlined,
-                          options: _dealers,
-                          selected: _dealer,
-                          displayString: (d) => d.displayName,
-                          searchText: (d) =>
-                              '${d.displayName} ${d.phone ?? ''} ${d.address ?? ''}'
-                                  .toLowerCase(),
-                          onSelected: (d) => setState(() => _dealer = d),
-                        ),
-                        const SizedBox(height: 12),
                         _readOnly(
-                          'Dealer address',
-                          _dealer?.address ?? farm.parentPartyAddress,
+                          'Farming years',
+                          farm.businessYears?.toStringAsFixed(0),
                         ),
-                        _readOnly(
-                          'Dealer contact',
-                          _dealer?.phone ?? farm.parentPartyPhone,
-                        ),
+                        _readOnly('Name of dealer', farm.parentPartyName),
+                        _readOnly('Dealer address', farm.parentPartyAddress),
+                        _readOnly('Dealer contact', farm.parentPartyPhone),
                       ],
                     ),
                   ),
@@ -576,21 +517,21 @@ class _FarmSurveyFormScreenState extends State<FarmSurveyFormScreen> {
                           ),
                         ),
                         const SizedBox(height: 12),
-                        _demoTextField(
+                        _suggestField(
                           label: 'Breed',
                           controller: _breed,
                           suggestions: _namedSuggestions(
                             MarketingDemoMasters.breeds,
                           ),
                         ),
-                        _demoTextField(
+                        _suggestField(
                           label: 'DOC company',
                           controller: _docCompany,
                           suggestions: _namedSuggestions(
                             MarketingDemoMasters.docCompanies,
                           ),
                         ),
-                        _demoTextField(
+                        _suggestField(
                           label: 'Feed company',
                           controller: _feedCompany,
                           suggestions: _namedSuggestions(
@@ -703,21 +644,21 @@ class _FarmSurveyFormScreenState extends State<FarmSurveyFormScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        _demoTextField(
+                        _suggestField(
                           label: 'Shed design',
                           controller: _shedDesign,
                           suggestions: _namedSuggestions(
                             MarketingDemoMasters.shedDesigns,
                           ),
                         ),
-                        _demoTextField(
+                        _suggestField(
                           label: 'Curtain',
                           controller: _curtain,
                           suggestions: _namedSuggestions(
                             MarketingDemoMasters.curtains,
                           ),
                         ),
-                        _demoTextField(
+                        _suggestField(
                           label: 'Floor',
                           controller: _floor,
                           suggestions: _namedSuggestions(
@@ -831,14 +772,14 @@ class _FarmSurveyFormScreenState extends State<FarmSurveyFormScreen> {
                       children: [
                         _readOnly('Reporting officer', _officerName),
                         _readOnly('Designation', _officerDesignation),
-                        _demoTextField(
+                        _suggestField(
                           label: 'Territory',
                           controller: _territory,
                           suggestions: _namedSuggestions(
                             MarketingDemoMasters.territories,
                           ),
                         ),
-                        _demoTextField(
+                        _suggestField(
                           label: 'Zone',
                           controller: _zone,
                           suggestions: _namedSuggestions(
