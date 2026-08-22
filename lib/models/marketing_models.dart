@@ -293,6 +293,9 @@ class Party {
     this.products = const [],
     this.attachments = const [],
     this.marketName,
+    this.parentPartyName,
+    this.parentPartyPhone,
+    this.parentPartyAddress,
   });
 
   final int id;
@@ -330,6 +333,9 @@ class Party {
   final List<PartyProduct> products;
   final List<Attachment> attachments;
   final String? marketName;
+  final String? parentPartyName;
+  final String? parentPartyPhone;
+  final String? parentPartyAddress;
 
   bool get isFarm =>
       partyType.toLowerCase() == 'farm' ||
@@ -407,6 +413,15 @@ class Party {
           .toList(),
       marketName: marketName ??
           marketingNonEmpty(json['marketName'] ?? json['market_name']),
+      parentPartyName: marketingNonEmpty(
+        json['parentPartyName'] ?? json['parent_party_name'],
+      ),
+      parentPartyPhone: marketingNonEmpty(
+        json['parentPartyPhone'] ?? json['parent_party_phone'],
+      ),
+      parentPartyAddress: marketingNonEmpty(
+        json['parentPartyAddress'] ?? json['parent_party_address'],
+      ),
     );
   }
 
@@ -726,25 +741,48 @@ class FarmSurvey {
     required this.employeeId,
     this.publicId,
     this.visitId,
+    this.dealerPartyId,
+    this.dealerPartyName,
+    this.partyName,
     this.surveyDate,
     this.surveyType,
+    this.hatchDate,
+    this.receivingDate,
+    this.receivingTime,
+    this.breed,
+    this.docCompany,
+    this.feedCompany,
+    this.farmingYears,
     this.farmType,
     this.ageDays,
     this.quantity,
     this.quantityUnitId,
     this.chicksProductId,
     this.mortalityQuantity,
+    this.totalMortality,
+    this.presentMortality,
+    this.mortalityPercent,
+    this.restOfBirds,
     this.feedProductId,
     this.chicksBrand,
     this.birdCapacity,
     this.currentBirds,
     this.housingType,
+    this.shedDesign,
+    this.curtainType,
+    this.floorType,
+    this.feederQty,
+    this.drinkerQty,
+    this.avgTemperature,
+    this.spaceNote,
     this.feedBrand,
     this.totalFeedIntakeKg,
     this.avgFeedIntakeKg,
     this.productionPercent,
     this.fcr,
     this.avgBodyWeightKg,
+    this.totalBodyWeightKg,
+    this.bagWeightKg,
     this.uniformityPercent,
     this.biosecurityRating,
     this.managementRating,
@@ -755,6 +793,9 @@ class FarmSurvey {
     this.problems,
     this.recommendation,
     this.notes,
+    this.comments,
+    this.territory,
+    this.zone,
     this.status,
     this.metrics = const [],
     this.attachments = const [],
@@ -763,10 +804,20 @@ class FarmSurvey {
   final int id;
   final String? publicId;
   final int partyId;
+  final String? partyName;
   final int? visitId;
+  final int? dealerPartyId;
+  final String? dealerPartyName;
   final int employeeId;
   final String? surveyDate;
   final String? surveyType;
+  final String? hatchDate;
+  final String? receivingDate;
+  final String? receivingTime;
+  final String? breed;
+  final String? docCompany;
+  final String? feedCompany;
+  final double? farmingYears;
   final String? farmType;
   final int? ageDays;
   final double? quantity;
@@ -774,16 +825,29 @@ class FarmSurvey {
   final int? chicksProductId;
   final int? feedProductId;
   final double? mortalityQuantity;
+  final double? totalMortality;
+  final double? presentMortality;
+  final double? mortalityPercent;
+  final double? restOfBirds;
   final String? chicksBrand;
   final double? birdCapacity;
   final double? currentBirds;
   final String? housingType;
+  final String? shedDesign;
+  final String? curtainType;
+  final String? floorType;
+  final double? feederQty;
+  final double? drinkerQty;
+  final double? avgTemperature;
+  final String? spaceNote;
   final String? feedBrand;
   final double? totalFeedIntakeKg;
   final double? avgFeedIntakeKg;
   final double? productionPercent;
   final double? fcr;
   final double? avgBodyWeightKg;
+  final double? totalBodyWeightKg;
+  final double? bagWeightKg;
   final double? uniformityPercent;
   final int? biosecurityRating;
   final int? managementRating;
@@ -794,9 +858,21 @@ class FarmSurvey {
   final String? problems;
   final String? recommendation;
   final String? notes;
+  final String? comments;
+  final String? territory;
+  final String? zone;
   final String? status;
   final List<SurveyMetric> metrics;
   final List<Attachment> attachments;
+
+  String get displayTitle {
+    final date = surveyDate ?? '';
+    final breedLabel = breed?.trim();
+    if (breedLabel != null && breedLabel.isNotEmpty) {
+      return [date, breedLabel].where((e) => e.isNotEmpty).join(' · ');
+    }
+    return date.isNotEmpty ? date : 'Farm visit report';
+  }
 
   factory FarmSurvey.fromJson(Map<String, dynamic> json) {
     final values = json['values'] ?? json['metrics'];
@@ -804,11 +880,33 @@ class FarmSurvey {
       id: marketingParseInt(json['id']) ?? 0,
       publicId: marketingNonEmpty(json['publicId'] ?? json['public_id']),
       partyId: marketingParseInt(json['partyId'] ?? json['party_id']) ?? 0,
+      partyName: marketingNonEmpty(json['partyName'] ?? json['party_name']),
       visitId: marketingParseInt(json['visitId'] ?? json['visit_id']),
+      dealerPartyId: marketingParseInt(
+        json['dealerPartyId'] ?? json['dealer_party_id'],
+      ),
+      dealerPartyName: marketingNonEmpty(
+        json['dealerPartyName'] ?? json['dealer_party_name'],
+      ),
       employeeId:
           marketingParseInt(json['employeeId'] ?? json['employee_id']) ?? 0,
       surveyDate: marketingNonEmpty(json['surveyDate'] ?? json['survey_date']),
       surveyType: marketingNonEmpty(json['surveyType'] ?? json['survey_type']),
+      hatchDate: marketingNonEmpty(json['hatchDate'] ?? json['hatch_date']),
+      receivingDate: marketingNonEmpty(
+        json['receivingDate'] ?? json['receiving_date'],
+      ),
+      receivingTime: marketingNonEmpty(
+        json['receivingTime'] ?? json['receiving_time'],
+      ),
+      breed: marketingNonEmpty(json['breed']),
+      docCompany: marketingNonEmpty(json['docCompany'] ?? json['doc_company']),
+      feedCompany: marketingNonEmpty(
+        json['feedCompany'] ?? json['feed_company'],
+      ),
+      farmingYears: marketingParseDouble(
+        json['farmingYears'] ?? json['farming_years'],
+      ),
       farmType: marketingNonEmpty(json['farmType'] ?? json['farm_type']),
       ageDays: marketingParseInt(json['ageDays'] ?? json['age_days']),
       quantity: marketingParseDouble(json['quantity']),
@@ -824,6 +922,18 @@ class FarmSurvey {
       mortalityQuantity: marketingParseDouble(
         json['mortalityQuantity'] ?? json['mortality_quantity'],
       ),
+      totalMortality: marketingParseDouble(
+        json['totalMortality'] ?? json['total_mortality'],
+      ),
+      presentMortality: marketingParseDouble(
+        json['presentMortality'] ?? json['present_mortality'],
+      ),
+      mortalityPercent: marketingParseDouble(
+        json['mortalityPercent'] ?? json['mortality_percent'],
+      ),
+      restOfBirds: marketingParseDouble(
+        json['restOfBirds'] ?? json['rest_of_birds'],
+      ),
       chicksBrand: marketingNonEmpty(
         json['chicksBrand'] ?? json['chicks_brand'],
       ),
@@ -836,6 +946,19 @@ class FarmSurvey {
       housingType: marketingNonEmpty(
         json['housingType'] ?? json['housing_type'],
       ),
+      shedDesign: marketingNonEmpty(json['shedDesign'] ?? json['shed_design']),
+      curtainType: marketingNonEmpty(
+        json['curtainType'] ?? json['curtain_type'],
+      ),
+      floorType: marketingNonEmpty(json['floorType'] ?? json['floor_type']),
+      feederQty: marketingParseDouble(json['feederQty'] ?? json['feeder_qty']),
+      drinkerQty: marketingParseDouble(
+        json['drinkerQty'] ?? json['drinker_qty'],
+      ),
+      avgTemperature: marketingParseDouble(
+        json['avgTemperature'] ?? json['avg_temperature'],
+      ),
+      spaceNote: marketingNonEmpty(json['spaceNote'] ?? json['space_note']),
       feedBrand: marketingNonEmpty(json['feedBrand'] ?? json['feed_brand']),
       totalFeedIntakeKg: marketingParseDouble(
         json['totalFeedIntakeKg'] ?? json['total_feed_intake_kg'],
@@ -849,6 +972,12 @@ class FarmSurvey {
       fcr: marketingParseDouble(json['fcr']),
       avgBodyWeightKg: marketingParseDouble(
         json['avgBodyWeightKg'] ?? json['avg_body_weight_kg'],
+      ),
+      totalBodyWeightKg: marketingParseDouble(
+        json['totalBodyWeightKg'] ?? json['total_body_weight_kg'],
+      ),
+      bagWeightKg: marketingParseDouble(
+        json['bagWeightKg'] ?? json['bag_weight_kg'],
       ),
       uniformityPercent: marketingParseDouble(
         json['uniformityPercent'] ?? json['uniformity_percent'],
@@ -874,6 +1003,9 @@ class FarmSurvey {
       problems: marketingNonEmpty(json['problems']),
       recommendation: marketingNonEmpty(json['recommendation']),
       notes: marketingNonEmpty(json['notes']),
+      comments: marketingNonEmpty(json['comments']),
+      territory: marketingNonEmpty(json['territory']),
+      zone: marketingNonEmpty(json['zone']),
       status: marketingNonEmpty(json['status']),
       metrics: marketingMapList(values).map(SurveyMetric.fromJson).toList(),
       attachments: marketingMapList(json['attachments'])

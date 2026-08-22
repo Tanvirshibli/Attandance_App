@@ -98,6 +98,7 @@ class MarketingService {
     String? partyType,
     String? q,
     String? status,
+    int? marketId,
   }) async {
     if (!await isMarketingEnabled()) {
       return ApiResult.fail('feature_disabled');
@@ -116,6 +117,9 @@ class MarketingService {
     if (q != null && q.trim().isNotEmpty) params['q'] = q.trim();
     if (status != null && status.isNotEmpty && status.toLowerCase() != 'all') {
       params['status'] = status.toLowerCase();
+    }
+    if (marketId != null && marketId > 0) {
+      params['market_id'] = '$marketId';
     }
     final uri = Uri.parse(base).replace(queryParameters: params);
     return _getList(uri, Party.fromJson);
@@ -266,6 +270,38 @@ class MarketingService {
       lng: marketingParseDouble(updates?['check_out_lng'] ?? updates?['lng']),
       extra: extra,
     );
+  }
+
+  Future<ApiResult<List<FarmSurvey>>> listFarmSurveys({
+    int? employeeId,
+    int? partyId,
+  }) async {
+    if (!await isMarketingEnabled()) {
+      return ApiResult.fail('feature_disabled');
+    }
+    final base = await _url(
+      'marketing.surveys',
+      '/api/v1/mobile/marketing/farm-surveys',
+    );
+    final params = <String, String>{};
+    if (employeeId != null && employeeId > 0) {
+      params['employee_id'] = '$employeeId';
+    }
+    if (partyId != null && partyId > 0) params['party_id'] = '$partyId';
+    final uri = Uri.parse(base).replace(queryParameters: params);
+    return _getList(uri, FarmSurvey.fromJson);
+  }
+
+  Future<ApiResult<FarmSurvey>> getFarmSurvey(int surveyId) async {
+    if (!await isMarketingEnabled()) {
+      return ApiResult.fail('feature_disabled');
+    }
+    if (surveyId <= 0) return ApiResult.fail('Invalid survey.');
+    final base = await _url(
+      'marketing.surveys',
+      '/api/v1/mobile/marketing/farm-surveys',
+    );
+    return _getObject(Uri.parse('$base/$surveyId'), FarmSurvey.fromJson);
   }
 
   Future<ApiResult<FarmSurvey>> createFarmSurvey(
