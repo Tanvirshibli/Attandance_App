@@ -4,6 +4,8 @@ Last updated: August 22, 2026
 
 Field data collection for **markets**, **dealers**, and **farms** in Attandance_App, backed by ZKTeco `/api/v1/mobile/marketing/*` (no JWT — same pattern as geo). Employee identity uses profile `canonicalEmployeeId` (`employees.id`).
 
+**v2.2.3+67:** Farm visit report detail shows uploaded photo thumbnails (tap to zoom). Form uses one **Production% / FCR** field (e.g. `85% / 1.87` or `1.87`); parsed into API columns with raw value in `extra_data.production_fcr_note`.
+
 **v2.2.3+66:** Three separate visit forms — **Farm visit report** (`POST /farm-surveys`, farm party only), **Dealer visit** (`POST /visits`, dealer party), **Market visit** (`POST /visits`, market fixed + party picker). Farm report: dealer block read-only from parent party; breed/DOC/etc. use type-to-search autocomplete (`SearchableTextField`). Dealer/market visits no longer offer `survey` type.
 
 **v2.2.3+64:** Markets hub panel uses purple (`AppColors.secondary`) so it is visually distinct from Dealers (blue primary). Previous builds used `AppColors.info`, which matched primary at low tint.
@@ -134,9 +136,9 @@ Type-to-search autocomplete (`SearchableTextField`) for visit type, breed, DOC c
 
 `dealer_party_id` and `farming_years` come from the farm party's parent dealer link and `business_years` — not from form pickers. Visit type and avg temperature range (e.g. `28-30`) store in `extra_data`. Detail screen shows those keys when present.
 
-Computed when quantity + total mortality are filled: mortality % and rest of bird (user can override). Ratings stay 1–5 (biosecurity, management, technical support, economical solvency). Photos use `attachable_type=survey`.
+Computed when quantity + total mortality are filled: mortality % and rest of bird (user can override). **Production% / FCR** is one form field (paper-aligned); values parse to `production_percent` / `fcr` with raw text in `extra_data.production_fcr_note`. Detail screen shows photo thumbnails from survey attachments. Ratings stay 1–5 (biosecurity, management, technical support, economical solvency). Photos use `attachable_type=survey`.
 
-Paper field map: hatch / receiving date+time, breed, DOC + feed company, quantity, age, mortalities, rest of bird, feed intake (kg + avg g/bird), production %, FCR, total + avg body weight (grams), bag weight, shed / curtain / floor / feeder / drinker / temp / space (sq ft), diseases, problems, remarks (`notes`), comments, territory, zone.
+Paper field map: hatch / receiving date+time, breed, DOC + feed company, quantity, age, mortalities, rest of bird, feed intake (kg + avg g/bird), production% / FCR (single field), total + avg body weight (grams), bag weight, shed / curtain / floor / feeder / drinker / temp / space (sq ft), diseases, problems, remarks (`notes`), comments, territory, zone.
 
 ### Follow-up
 
