@@ -7,7 +7,6 @@ import 'package:intl/intl.dart';
 
 import '../../config/theme.dart';
 import '../../data/marketing_demo_masters.dart';
-import '../../models/booking_form_data_models.dart';
 import '../../models/marketing_models.dart';
 import '../../services/auth_service.dart';
 import '../../services/marketing_service.dart';
@@ -15,9 +14,50 @@ import '../../services/sales_service.dart';
 import '../../utils/marketing_location_helper.dart';
 import '../../widgets/gradient_screen_header.dart';
 import '../../widgets/searchable_select_field.dart';
+import '../../widgets/searchable_text_field.dart';
 import '../../widgets/section_card.dart';
 
-class _ObsRow {
+/// Visit types for dealer and market visits (farm surveys use a separate form).
+const kPartyVisitTypes = [
+  'regular',
+  'order',
+  'collection',
+  'technical_support',
+  'complaint',
+  'dealer_opening',
+  'other',
+];
+
+const kObservationTypes = [
+  'uses',
+  'sells',
+  'stock',
+  'demand',
+  'order',
+  'competitor',
+  'sample',
+  'price',
+  'other',
+];
+
+String displayVisitType(String value) => value.replaceAll('_', ' ');
+
+String normalizeVisitType(String input) {
+  final trimmed = input.trim();
+  if (trimmed.isEmpty) return 'regular';
+  final compact = trimmed.toLowerCase().replaceAll(' ', '_');
+  for (final t in kPartyVisitTypes) {
+    if (t == compact || displayVisitType(t) == trimmed.toLowerCase()) {
+      return t;
+    }
+  }
+  return compact;
+}
+
+List<String> get kPartyVisitTypeLabels =>
+    kPartyVisitTypes.map(displayVisitType).toList();
+
+class VisitObsRow {
   final name = TextEditingController();
   final brand = TextEditingController();
   final competitor = TextEditingController();
@@ -46,16 +86,32 @@ class _ObsRow {
   }
 }
 
-class VisitFormScreen extends StatefulWidget {
-  const VisitFormScreen({super.key, required this.party});
+enum VisitFormMode { dealer, market }
 
-  final Party party;
+/// Shared visit form for dealer and market entry points.
+class SharedVisitFormScreen extends StatefulWidget {
+  const SharedVisitFormScreen.dealer({super.key, required this.party})
+      : mode = VisitFormMode.dealer,
+        market = null,
+        partiesInMarket = null;
+
+  const SharedVisitFormScreen.market({
+    super.key,
+    required this.market,
+    required this.partiesInMarket,
+  })  : mode = VisitFormMode.market,
+        party = null;
+
+  final VisitFormMode mode;
+  final Party? party;
+  final Market? market;
+  final List<Party>? partiesInMarket;
 
   @override
-  State<VisitFormScreen> createState() => _VisitFormScreenState();
+  State<SharedVisitFormScreen> createState() => _SharedVisitFormScreenState();
 }
 
-class _VisitFormScreenState extends State<VisitFormScreen> {
+class _SharedVisitFormScreenState extends State<SharedVisitFormScreen> {
   final MarketingService _service = MarketingService();
   final AuthService _authService = AuthService();
   final SalesService _salesService = SalesService();
@@ -66,12 +122,13 @@ class _VisitFormScreenState extends State<VisitFormScreen> {
   final _notes = TextEditingController();
   final _orderAmount = TextEditingController();
   final _collectionAmount = TextEditingController();
+  final _visitType = TextEditingController(text: 'regular');
 
-  String _visitType = 'regular';
   List<Market> _markets = const [];
   List<BookingFormCompany> _companies = MarketingDemoMasters.companies;
   List<BookingFormSector> _sectors = MarketingDemoMasters.sectors;
   Market? _selectedMarket;
+  Party? _selectedParty;
   BookingFormCompany? _selectedCompany;
   BookingFormSector? _selectedSector;
   DateTime? _nextVisitDate;
@@ -85,37 +142,33 @@ class _VisitFormScreenState extends State<VisitFormScreen> {
   bool _submitting = false;
   bool _checkingOut = false;
   Visit? _savedVisit;
-  final List<_ObsRow> _products = [_ObsRow()];
+  final List<VisitObsRow> _products = [VisitObsRow()];
   final List<XFile> _photos = [];
 
-  static const _visitTypes = [
-    'regular',
-    'survey',
-    'order',
-    'collection',
-    'technical_support',
-    'complaint',
-    'dealer_opening',
-    'other',
-  ];
-  static const _observationTypes = [
-    'uses',
-    'sells',
-    'stock',
-    'demand',
-    'order',
-    'competitor',
-    'sample',
-    'price',
-    'other',
-  ];
+  bool get _isDealer => widget.mode == VisitFormMode.dealer;
+  bool get _locked => _savedVisit != null;
+
+  String get _headerTitle {
+    if (_locked) return 'Visit in progress';
+    return _isDealer ? 'Dealer visit' : 'Market visit';
+  }
+
+  String get _headerSubtitle {
+    if (_isDealer) return widget.party!.displayName;
+    return widget.market!.displayName;
+  }
 
   @override
   void initState() {
     super.initState();
     _clientUuid = marketingNewClientUuid();
-    _selectedMarket = null;
-    _loadMarkets();
+    if (_isDealer) {
+      _selectedParty = widget.party;
+      _loadMarkets();
+    } else {
+      _selectedMarket = widget.market;
+      _loadingMarkets = false;
+    }
     _loadMasters();
     _autoFillLocation();
   }
@@ -129,6 +182,7 @@ class _VisitFormScreenState extends State<VisitFormScreen> {
     _notes.dispose();
     _orderAmount.dispose();
     _collectionAmount.dispose();
+    _visitType.dispose();
     for (final p in _products) {
       p.dispose();
     }
@@ -143,7 +197,7 @@ class _VisitFormScreenState extends State<VisitFormScreen> {
       _loadingMarkets = false;
       _selectedMarket = MarketingDemoMasters.byId(
         _markets,
-        widget.party.marketId,
+        widget.party!.marketId,
         (m) => m.id,
       );
     });
@@ -223,6 +277,12 @@ class _VisitFormScreenState extends State<VisitFormScreen> {
   }
 
   Future<void> _submit() async {
+    final party = _selectedParty;
+    if (party == null) {
+      _snack('Select a party to visit.');
+      return;
+    }
+
     final profile = await _authService.getCurrentUserProfile();
     final employeeId = profile?.canonicalEmployeeId;
     if (employeeId == null || employeeId <= 0) {
@@ -231,7 +291,6 @@ class _VisitFormScreenState extends State<VisitFormScreen> {
     }
 
     setState(() => _submitting = true);
-
     await _ensureCheckInCoords();
 
     final products = <Map<String, dynamic>>[];
@@ -271,11 +330,12 @@ class _VisitFormScreenState extends State<VisitFormScreen> {
     final now = DateTime.now();
     final objective = _objective.text.trim();
     final resultText = _result.text.trim();
+    final visitType = normalizeVisitType(_visitType.text);
     final payload = <String, dynamic>{
-      'party_id': widget.party.id,
+      'party_id': party.id,
       'employee_id': employeeId,
       'visit_date': DateFormat('yyyy-MM-dd').format(now),
-      'visit_type': _visitType,
+      'visit_type': visitType,
       'client_uuid': _clientUuid,
       'geo_verified': _geoVerified,
       if (_selectedMarket != null) 'market_id': _selectedMarket!.id,
@@ -419,6 +479,22 @@ class _VisitFormScreenState extends State<VisitFormScreen> {
     );
   }
 
+  Widget _readOnly(String label, String? value) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _label(label),
+          Text(
+            (value == null || value.trim().isEmpty) ? '—' : value,
+            style: GoogleFonts.poppins(fontSize: 14),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _sectionTitle(String text) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
@@ -435,14 +511,14 @@ class _VisitFormScreenState extends State<VisitFormScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final locked = _savedVisit != null;
+    final parties = widget.partiesInMarket ?? const [];
     return Scaffold(
       backgroundColor: AppColors.background,
       body: Column(
         children: [
           GradientScreenHeader(
-            title: locked ? 'Visit in progress' : 'New Visit',
-            subtitle: widget.party.displayName,
+            title: _headerTitle,
+            subtitle: _headerSubtitle,
           ),
           Expanded(
             child: SingleChildScrollView(
@@ -454,24 +530,50 @@ class _VisitFormScreenState extends State<VisitFormScreen> {
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
                         _sectionTitle('Visit details'),
-                        if (_loadingMarkets)
-                          const Padding(
-                            padding: EdgeInsets.symmetric(vertical: 12),
-                            child: Center(child: CircularProgressIndicator()),
-                          )
-                        else
-                          SearchableSelectField<Market>(
-                            label: 'Market',
-                            icon: Icons.store_mall_directory_outlined,
-                            options: _markets,
-                            selected: _selectedMarket,
-                            displayString: (m) => m.displayName,
-                            searchText: (m) => m.displayName.toLowerCase(),
-                            enabled: !locked,
-                            onSelected: (m) =>
-                                setState(() => _selectedMarket = m),
+                        if (!_isDealer) ...[
+                          _readOnly('Market', widget.market!.displayName),
+                          if (widget.market!.address != null)
+                            _readOnly('Market address', widget.market!.address),
+                          const SizedBox(height: 8),
+                          SearchableSelectField<Party>(
+                            label: 'Party to visit',
+                            icon: Icons.person_outline,
+                            options: parties,
+                            selected: _selectedParty,
+                            displayString: (p) => p.displayName,
+                            searchText: (p) =>
+                                '${p.displayName} ${p.partyType} ${p.phone ?? ''}'
+                                    .toLowerCase(),
+                            enabled: !_locked,
+                            validator: (v) =>
+                                v == null ? 'Select a party' : null,
+                            onSelected: (p) =>
+                                setState(() => _selectedParty = p),
                           ),
-                        const SizedBox(height: 14),
+                          const SizedBox(height: 14),
+                        ],
+                        if (_isDealer) ...[
+                          _readOnly('Dealer', widget.party!.displayName),
+                          const SizedBox(height: 8),
+                          if (_loadingMarkets)
+                            const Padding(
+                              padding: EdgeInsets.symmetric(vertical: 12),
+                              child: Center(child: CircularProgressIndicator()),
+                            )
+                          else
+                            SearchableSelectField<Market>(
+                              label: 'Market',
+                              icon: Icons.store_mall_directory_outlined,
+                              options: _markets,
+                              selected: _selectedMarket,
+                              displayString: (m) => m.displayName,
+                              searchText: (m) => m.displayName.toLowerCase(),
+                              enabled: !_locked,
+                              onSelected: (m) =>
+                                  setState(() => _selectedMarket = m),
+                            ),
+                          const SizedBox(height: 14),
+                        ],
                         SearchableSelectField<BookingFormCompany>(
                           label: 'Company',
                           icon: Icons.apartment_outlined,
@@ -479,7 +581,7 @@ class _VisitFormScreenState extends State<VisitFormScreen> {
                           selected: _selectedCompany,
                           displayString: (c) => c.displayName,
                           searchText: (c) => c.displayName.toLowerCase(),
-                          enabled: !locked,
+                          enabled: !_locked,
                           onSelected: (c) =>
                               setState(() => _selectedCompany = c),
                         ),
@@ -497,36 +599,23 @@ class _VisitFormScreenState extends State<VisitFormScreen> {
                           selected: _selectedSector,
                           displayString: (s) => s.name,
                           searchText: (s) => s.searchText,
-                          enabled: !locked,
+                          enabled: !_locked,
                           onSelected: (s) =>
                               setState(() => _selectedSector = s),
                         ),
                         const SizedBox(height: 14),
-                        _label('Visit type'),
-                        DropdownButtonFormField<String>(
-                          initialValue: _visitType,
-                          decoration: _decoration(),
-                          items: _visitTypes
-                              .map(
-                                (t) => DropdownMenuItem(
-                                  value: t,
-                                  child: Text(t.replaceAll('_', ' ')),
-                                ),
-                              )
-                              .toList(),
-                          onChanged: locked
-                              ? null
-                              : (v) {
-                                  if (v != null) {
-                                    setState(() => _visitType = v);
-                                  }
-                                },
+                        SearchableTextField(
+                          label: 'Visit type',
+                          controller: _visitType,
+                          suggestions: kPartyVisitTypeLabels,
+                          hintText: 'Type or pick visit type',
+                          enabled: !_locked,
+                          icon: Icons.category_outlined,
                         ),
-                        const SizedBox(height: 14),
                         _label('Objective'),
                         TextField(
                           controller: _objective,
-                          enabled: !locked,
+                          enabled: !_locked,
                           decoration:
                               _decoration(hint: 'e.g. Stock check, order'),
                         ),
@@ -653,7 +742,7 @@ class _VisitFormScreenState extends State<VisitFormScreen> {
                             ),
                           ),
                           value: _geoVerified,
-                          onChanged: locked
+                          onChanged: _locked
                               ? null
                               : (v) => setState(() => _geoVerified = v),
                         ),
@@ -678,10 +767,10 @@ class _VisitFormScreenState extends State<VisitFormScreen> {
                             Expanded(
                               child: _sectionTitle('Product observations'),
                             ),
-                            if (!locked)
+                            if (!_locked)
                               TextButton.icon(
                                 onPressed: () => setState(
-                                  () => _products.add(_ObsRow()),
+                                  () => _products.add(VisitObsRow()),
                                 ),
                                 icon: const Icon(Icons.add, size: 18),
                                 label: const Text('Add'),
@@ -707,7 +796,7 @@ class _VisitFormScreenState extends State<VisitFormScreen> {
                                     selected: row.product,
                                     displayString: (p) => p.displayName,
                                     searchText: (p) => p.searchText,
-                                    enabled: !locked,
+                                    enabled: !_locked,
                                     onSelected: (p) {
                                       setState(() {
                                         row.product = p;
@@ -720,7 +809,7 @@ class _VisitFormScreenState extends State<VisitFormScreen> {
                                   const SizedBox(height: 8),
                                   TextField(
                                     controller: row.name,
-                                    enabled: !locked,
+                                    enabled: !_locked,
                                     decoration:
                                         _decoration(hint: 'Product name'),
                                   ),
@@ -730,7 +819,7 @@ class _VisitFormScreenState extends State<VisitFormScreen> {
                                     decoration: _decoration(
                                       hint: 'Observation type',
                                     ),
-                                    items: _observationTypes
+                                    items: kObservationTypes
                                         .map(
                                           (t) => DropdownMenuItem(
                                             value: t,
@@ -738,7 +827,7 @@ class _VisitFormScreenState extends State<VisitFormScreen> {
                                           ),
                                         )
                                         .toList(),
-                                    onChanged: locked
+                                    onChanged: _locked
                                         ? null
                                         : (v) {
                                             if (v != null) {
@@ -756,21 +845,21 @@ class _VisitFormScreenState extends State<VisitFormScreen> {
                                     selected: row.unit,
                                     displayString: (u) => u.displayName,
                                     searchText: (u) => u.searchText,
-                                    enabled: !locked,
+                                    enabled: !_locked,
                                     onSelected: (u) =>
                                         setState(() => row.unit = u),
                                   ),
                                   const SizedBox(height: 8),
                                   TextField(
                                     controller: row.brand,
-                                    enabled: !locked,
+                                    enabled: !_locked,
                                     decoration:
                                         _decoration(hint: 'Brand name'),
                                   ),
                                   const SizedBox(height: 8),
                                   TextField(
                                     controller: row.competitor,
-                                    enabled: !locked,
+                                    enabled: !_locked,
                                     decoration: _decoration(
                                       hint: 'Competitor company',
                                     ),
@@ -781,7 +870,7 @@ class _VisitFormScreenState extends State<VisitFormScreen> {
                                       Expanded(
                                         child: TextField(
                                           controller: row.stock,
-                                          enabled: !locked,
+                                          enabled: !_locked,
                                           keyboardType: TextInputType.number,
                                           decoration:
                                               _decoration(hint: 'Stock'),
@@ -791,7 +880,7 @@ class _VisitFormScreenState extends State<VisitFormScreen> {
                                       Expanded(
                                         child: TextField(
                                           controller: row.demand,
-                                          enabled: !locked,
+                                          enabled: !_locked,
                                           keyboardType: TextInputType.number,
                                           decoration:
                                               _decoration(hint: 'Demand'),
@@ -805,7 +894,7 @@ class _VisitFormScreenState extends State<VisitFormScreen> {
                                       Expanded(
                                         child: TextField(
                                           controller: row.quantity,
-                                          enabled: !locked,
+                                          enabled: !_locked,
                                           keyboardType: TextInputType.number,
                                           decoration:
                                               _decoration(hint: 'Qty'),
@@ -815,7 +904,7 @@ class _VisitFormScreenState extends State<VisitFormScreen> {
                                       Expanded(
                                         child: TextField(
                                           controller: row.order,
-                                          enabled: !locked,
+                                          enabled: !_locked,
                                           keyboardType: TextInputType.number,
                                           decoration:
                                               _decoration(hint: 'Order qty'),
@@ -829,7 +918,7 @@ class _VisitFormScreenState extends State<VisitFormScreen> {
                                       Expanded(
                                         child: TextField(
                                           controller: row.price,
-                                          enabled: !locked,
+                                          enabled: !_locked,
                                           keyboardType: TextInputType.number,
                                           decoration:
                                               _decoration(hint: 'Unit price'),
@@ -839,7 +928,7 @@ class _VisitFormScreenState extends State<VisitFormScreen> {
                                       Expanded(
                                         child: TextField(
                                           controller: row.amount,
-                                          enabled: !locked,
+                                          enabled: !_locked,
                                           keyboardType: TextInputType.number,
                                           decoration:
                                               _decoration(hint: 'Amount'),
@@ -850,7 +939,7 @@ class _VisitFormScreenState extends State<VisitFormScreen> {
                                   const SizedBox(height: 8),
                                   TextField(
                                     controller: row.notes,
-                                    enabled: !locked,
+                                    enabled: !_locked,
                                     decoration:
                                         _decoration(hint: 'Line notes'),
                                   ),
@@ -859,7 +948,7 @@ class _VisitFormScreenState extends State<VisitFormScreen> {
                             ),
                           );
                         }),
-                        if (!locked) ...[
+                        if (!_locked) ...[
                           const SizedBox(height: 8),
                           OutlinedButton.icon(
                             onPressed: _pickPhotos,
@@ -872,7 +961,7 @@ class _VisitFormScreenState extends State<VisitFormScreen> {
                           ),
                         ],
                         const SizedBox(height: 24),
-                        if (!locked)
+                        if (!_locked)
                           SizedBox(
                             height: 50,
                             child: ElevatedButton(

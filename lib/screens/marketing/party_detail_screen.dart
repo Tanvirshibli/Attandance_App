@@ -11,7 +11,7 @@ import '../../widgets/section_card.dart';
 import 'farm_survey_detail_screen.dart';
 import 'farm_survey_form_screen.dart';
 import 'followup_form_screen.dart';
-import 'visit_form_screen.dart';
+import 'dealer_visit_form_screen.dart';
 
 class PartyDetailScreen extends StatefulWidget {
   const PartyDetailScreen({super.key, required this.partyId, this.initialParty});
@@ -88,7 +88,7 @@ class _PartyDetailScreenState extends State<PartyDetailScreen> {
       MaterialPageRoute(
         builder: (_) => party.isFarm
             ? FarmSurveyFormScreen(party: party)
-            : VisitFormScreen(party: party),
+            : DealerVisitFormScreen(party: party),
       ),
     );
     if (!mounted) return;
