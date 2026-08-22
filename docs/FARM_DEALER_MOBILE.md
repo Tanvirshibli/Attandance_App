@@ -4,6 +4,8 @@ Last updated: August 22, 2026
 
 Field data collection for **markets**, **dealers**, and **farms** in Attandance_App, backed by ZKTeco `/api/v1/mobile/marketing/*` (no JWT — same pattern as geo). Employee identity uses profile `canonicalEmployeeId` (`employees.id`).
 
+**v2.2.3+62:** Hub sections use distinct tinted panels (Farms green, Dealers primary, Markets info). Farm visit report accepts **free-text** breed, DOC/feed company, shed, curtain, floor, territory, and zone with demo suggestion chips (CB, Provita, PPHL, Open shed, Cloth, Concrete house, zones A/B/C, etc.). Labels clarify units (avg feed g/bird, avg B/W grams, space sq ft). Editable farming years; visit type and temperature range stored in `extra_data`. Home Recent Attendance badge no longer overlaps check-in/out times.
+
 **v2.2.3+61:** Renamed to **Farms, Dealers and Markets**. Hub sections (Farms → Dealers → Markets) show top **5** preview rows; compact **Create** (+) and **View all** (list) icon buttons sit on the title row. Tap a preview row for the record page; pull-to-refresh reloads previews.
 
 **v2.2.3+60:** Farm & Dealer hub uses expandable **Create** / **View all** cards (no FABs, no standalone Visits tile). Farm records open the paper **Farm visit report** (rewritten farm survey). Dealer records still use the stock/order visit form. Posting a visit lives on the farm or dealer record page.
@@ -116,11 +118,13 @@ Opened from a farm record (**Post a visit**). Title is **Farm visit report**. On
 
 Read-only from the opened farm: farm name, owner, address, contact, farming years. Date defaults to today (editable). Reporting officer is the logged-in profile name. Dealer name/address/contact prefills from the parent dealer when present; otherwise a searchable **live** dealer list (never a fake `dealer_party_id`).
 
-Demo dropdowns (until live masters exist): breed, DOC company, feed company, shed design, curtain, floor, territory, zone. Live Sales companies are preferred for DOC/feed company when `fetchBookingFormData()` returns them.
+Free-text fields with demo suggestion chips: visit type, breed, DOC company, feed company, shed design, curtain, floor, territory, zone. Typed values are sent to the existing string columns (`breed`, `doc_company`, `feed_company`, etc.); chips come from `marketing_demo_masters.dart` (CB, Provita, PPHL, Open shed, Cloth, Concrete house, zones A/B/C, …).
+
+Editable **farming years** on the visit form (not read-only from party). Reporting officer shows profile name + designation. Visit type and avg temperature range (e.g. `28-30`) store in `extra_data` (`visit_type_label`, `avg_temperature_note`, `reporting_officer_designation`). Detail screen shows those keys when present.
 
 Computed when quantity + total mortality are filled: mortality % and rest of bird (user can override). Ratings stay 1–5 (biosecurity, management, technical support, economical solvency). Photos use `attachable_type=survey`.
 
-Paper field map: hatch / receiving date+time, breed, DOC + feed company, quantity, age, mortalities, rest of bird, feed intake, production %, FCR, total + avg body weight, bag weight, shed / curtain / floor / feeder / drinker / temp / space, diseases, problems, remarks (`notes`), comments, territory, zone.
+Paper field map: hatch / receiving date+time, breed, DOC + feed company, quantity, age, mortalities, rest of bird, feed intake (kg + avg g/bird), production %, FCR, total + avg body weight (grams), bag weight, shed / curtain / floor / feeder / drinker / temp / space (sq ft), diseases, problems, remarks (`notes`), comments, territory, zone.
 
 ### Follow-up
 

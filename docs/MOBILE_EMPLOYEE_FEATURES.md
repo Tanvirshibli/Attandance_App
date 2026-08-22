@@ -163,6 +163,12 @@ Handoff for backend teams: **[SALES_AND_PAYMENTS_API_CONTRACT.md](SALES_AND_PAYM
 - Success tick is pinned to the **center of the rounded guide**
 - Step badge, coaching, and check-in status sit in one horizontally centered strip **above** the guide (including GPS “Capturing location…”)
 
+### Hub colors, attendance layout, farm visit free-text (v2.2.3+62)
+
+- Farms / Dealers / Markets hub sections each have a distinct tinted panel and left accent border
+- Home Recent Attendance: status badge sits beside the weekday; check-in/out times no longer overlap the badge
+- Farm visit report: free-text breed, DOC/feed, shed, curtain, floor, territory, zone with demo chips; editable farming years; unit hints (g/bird, grams, sq ft); visit type and temperature in `extra_data`
+
 ### Farms, Dealers and Markets hub previews (v2.2.3+61)
 
 - Services tile and hub title renamed **Farms, Dealers and Markets**
