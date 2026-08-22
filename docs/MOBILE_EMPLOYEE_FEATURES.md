@@ -163,6 +163,10 @@ Handoff for backend teams: **[SALES_AND_PAYMENTS_API_CONTRACT.md](SALES_AND_PAYM
 - Success tick is pinned to the **center of the rounded guide**
 - Step badge, coaching, and check-in status sit in one horizontally centered strip **above** the guide (including GPS “Capturing location…”)
 
+### Markets hub purple panel fix (v2.2.3+64)
+
+- Markets section uses purple (`AppColors.secondary`) instead of info blue so it no longer matches Dealers at low tint
+
 ### Hub colors, attendance layout, farm visit free-text (v2.2.3+63)
 
 - Farms / Dealers / Markets hub sections each have a distinct tinted panel and left accent border

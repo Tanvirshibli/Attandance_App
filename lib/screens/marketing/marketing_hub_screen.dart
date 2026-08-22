@@ -236,7 +236,7 @@ class _MarketingHubScreenState extends State<MarketingHubScreen> {
                       child: _HubGroupCard(
                         icon: Icons.store_mall_directory_outlined,
                         label: 'Markets',
-                        color: AppColors.info,
+                        color: AppColors.secondary,
                         createTooltip: 'Create market',
                         viewTooltip: 'View all markets',
                         loading: _loadingPreviews,
@@ -634,7 +634,7 @@ class _MarketPreviewList extends StatelessWidget {
                   const Icon(
                     Icons.store_mall_directory_outlined,
                     size: 18,
-                    color: AppColors.info,
+                    color: AppColors.secondary,
                   ),
                   const SizedBox(width: 10),
                   Expanded(
