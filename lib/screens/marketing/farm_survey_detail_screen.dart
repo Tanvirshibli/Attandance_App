@@ -1,3 +1,4 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
@@ -118,8 +119,7 @@ class _FarmSurveyDetailScreenState extends State<FarmSurveyDetailScreen> {
                         _row('Rest of bird', _n(survey.restOfBirds)),
                         _row('Total feed intake', _n(survey.totalFeedIntakeKg)),
                         _row('Av. feed intake', _n(survey.avgFeedIntakeKg)),
-                        _row('Production %', _n(survey.productionPercent)),
-                        _row('FCR', _n(survey.fcr)),
+                        _row('Production% / FCR', _productionFcrDisplay(survey)),
                         _row('Total body weight', _n(survey.totalBodyWeightKg)),
                         _row('Av. B/W', _n(survey.avgBodyWeightKg)),
                         _row('Per bag weight', _n(survey.bagWeightKg)),
@@ -151,6 +151,7 @@ class _FarmSurveyDetailScreenState extends State<FarmSurveyDetailScreen> {
                           'Reporting designation',
                           survey.extraData?['reporting_officer_designation']?.toString(),
                         ),
+                        _photoSection(survey),
                       ],
                     ),
                   ),
@@ -163,6 +164,96 @@ class _FarmSurveyDetailScreenState extends State<FarmSurveyDetailScreen> {
   }
 
   String? _n(num? v) => v?.toString();
+
+  String? _productionFcrDisplay(FarmSurvey survey) {
+    final note = survey.extraData?['production_fcr_note']?.toString();
+    if (note != null && note.trim().isNotEmpty) return note.trim();
+    final prod = survey.productionPercent;
+    final fcr = survey.fcr;
+    if (prod != null && fcr != null) return '$prod% / $fcr';
+    if (fcr != null) return fcr.toString();
+    if (prod != null) return '$prod%';
+    return null;
+  }
+
+  Widget _photoSection(FarmSurvey survey) {
+    final photos = survey.attachments
+        .where((a) => a.displayUrl != null && a.displayUrl!.isNotEmpty)
+        .toList();
+    if (photos.isEmpty) return const SizedBox.shrink();
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Photos',
+            style: GoogleFonts.poppins(
+              fontSize: 12,
+              fontWeight: FontWeight.w500,
+              color: AppColors.textSecondary,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: photos.map((attachment) {
+              final url = attachment.displayUrl!;
+              return GestureDetector(
+                onTap: () => _openPhotoViewer(url),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(10),
+                  child: SizedBox(
+                    width: 120,
+                    height: 120,
+                    child: CachedNetworkImage(
+                      imageUrl: url,
+                      fit: BoxFit.cover,
+                      placeholder: (context, url) => Container(
+                        color: AppColors.background,
+                        child: const Center(
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
+                      ),
+                      errorWidget: (context, url, error) => Container(
+                        color: AppColors.background,
+                        child: const Icon(Icons.broken_image_outlined),
+                      ),
+                    ),
+                  ),
+                ),
+              );
+            }).toList(),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _openPhotoViewer(String url) {
+    showDialog<void>(
+      context: context,
+      builder: (context) => Dialog(
+        insetPadding: const EdgeInsets.all(16),
+        child: InteractiveViewer(
+          child: AspectRatio(
+            aspectRatio: 1,
+            child: CachedNetworkImage(
+              imageUrl: url,
+              fit: BoxFit.contain,
+              placeholder: (context, url) => const Center(
+                child: CircularProgressIndicator(),
+              ),
+              errorWidget: (context, url, error) =>
+                  const Icon(Icons.broken_image_outlined),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 
   Widget _row(String label, String? value) {
     if (value == null || value.trim().isEmpty) {

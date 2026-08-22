@@ -15,6 +15,25 @@ import '../../widgets/gradient_screen_header.dart';
 import '../../widgets/searchable_text_field.dart';
 import '../../widgets/section_card.dart';
 
+({double? productionPercent, double? fcr}) parseProductionFcr(String raw) {
+  final trimmed = raw.trim();
+  if (trimmed.isEmpty) {
+    return (productionPercent: null, fcr: null);
+  }
+  if (trimmed.contains('/')) {
+    final parts = trimmed.split('/');
+    final left = parts.first.trim().replaceAll('%', '');
+    final right =
+        parts.length > 1 ? parts.sublist(1).join('/').trim() : '';
+    return (
+      productionPercent: double.tryParse(left),
+      fcr: right.isNotEmpty ? double.tryParse(right) : null,
+    );
+  }
+  final value = double.tryParse(trimmed.replaceAll('%', ''));
+  return (productionPercent: null, fcr: value);
+}
+
 class FarmSurveyFormScreen extends StatefulWidget {
   const FarmSurveyFormScreen({super.key, required this.party});
 
@@ -50,8 +69,7 @@ class _FarmSurveyFormScreenState extends State<FarmSurveyFormScreen> {
   final _restOfBirds = TextEditingController();
   final _totalFeed = TextEditingController();
   final _avgFeed = TextEditingController();
-  final _productionPercent = TextEditingController();
-  final _fcr = TextEditingController();
+  final _productionFcr = TextEditingController();
   final _totalBodyWeight = TextEditingController();
   final _avgBodyWeight = TextEditingController();
   final _bagWeight = TextEditingController();
@@ -107,8 +125,7 @@ class _FarmSurveyFormScreenState extends State<FarmSurveyFormScreen> {
     _restOfBirds.dispose();
     _totalFeed.dispose();
     _avgFeed.dispose();
-    _productionPercent.dispose();
-    _fcr.dispose();
+    _productionFcr.dispose();
     _totalBodyWeight.dispose();
     _avgBodyWeight.dispose();
     _bagWeight.dispose();
@@ -199,11 +216,16 @@ class _FarmSurveyFormScreenState extends State<FarmSurveyFormScreen> {
     }
     setState(() => _submitting = true);
 
+    final productionFcrRaw = _textValue(_productionFcr);
+    final parsedProductionFcr =
+        productionFcrRaw != null ? parseProductionFcr(productionFcrRaw) : null;
+
     final extraData = <String, dynamic>{
       if (_textValue(_visitType) != null)
         'visit_type_label': _textValue(_visitType),
       if (_textValue(_avgTemp) != null)
         'avg_temperature_note': _textValue(_avgTemp),
+      'production_fcr_note': ?productionFcrRaw,
       if (_officerDesignation.isNotEmpty)
         'reporting_officer_designation': _officerDesignation,
     };
@@ -246,9 +268,9 @@ class _FarmSurveyFormScreenState extends State<FarmSurveyFormScreen> {
         'total_feed_intake_kg': double.tryParse(_totalFeed.text.trim()),
       if (_textValue(_avgFeed) != null)
         'avg_feed_intake_kg': double.tryParse(_avgFeed.text.trim()),
-      if (_textValue(_productionPercent) != null)
-        'production_percent': double.tryParse(_productionPercent.text.trim()),
-      if (_textValue(_fcr) != null) 'fcr': double.tryParse(_fcr.text.trim()),
+      if (parsedProductionFcr?.productionPercent != null)
+        'production_percent': parsedProductionFcr!.productionPercent,
+      if (parsedProductionFcr?.fcr != null) 'fcr': parsedProductionFcr!.fcr,
       if (_textValue(_totalBodyWeight) != null)
         'total_body_weight_kg': double.tryParse(_totalBodyWeight.text.trim()),
       if (_textValue(_avgBodyWeight) != null)
@@ -602,18 +624,10 @@ class _FarmSurveyFormScreenState extends State<FarmSurveyFormScreen> {
                           decoration: _decoration(hint: 'grams per bird'),
                         ),
                         const SizedBox(height: 12),
-                        _label('Production %'),
+                        _label('Production% / FCR'),
                         TextField(
-                          controller: _productionPercent,
-                          keyboardType: TextInputType.number,
-                          decoration: _decoration(),
-                        ),
-                        const SizedBox(height: 12),
-                        _label('FCR'),
-                        TextField(
-                          controller: _fcr,
-                          keyboardType: TextInputType.number,
-                          decoration: _decoration(),
+                          controller: _productionFcr,
+                          decoration: _decoration(hint: 'e.g. 85% / 1.87'),
                         ),
                         const SizedBox(height: 12),
                         _label('Total body weight (kg)'),
