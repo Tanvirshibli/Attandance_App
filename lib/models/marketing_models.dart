@@ -799,6 +799,7 @@ class FarmSurvey {
     this.status,
     this.metrics = const [],
     this.attachments = const [],
+    this.extraData,
   });
 
   final int id;
@@ -864,6 +865,7 @@ class FarmSurvey {
   final String? status;
   final List<SurveyMetric> metrics;
   final List<Attachment> attachments;
+  final Map<String, dynamic>? extraData;
 
   String get displayTitle {
     final date = surveyDate ?? '';
@@ -1011,6 +1013,11 @@ class FarmSurvey {
       attachments: marketingMapList(json['attachments'])
           .map(Attachment.fromJson)
           .toList(),
+      extraData: json['extraData'] is Map
+          ? Map<String, dynamic>.from(json['extraData'] as Map)
+          : json['extra_data'] is Map
+              ? Map<String, dynamic>.from(json['extra_data'] as Map)
+              : null,
     );
   }
 }
