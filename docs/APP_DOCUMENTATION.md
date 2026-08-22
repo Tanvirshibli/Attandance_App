@@ -41,6 +41,8 @@
 
 > August 20, 2026 Farm & Dealer (v2.2.3+59): Create forms collect the full Phase-1 marketing field set. ID fields are type-to-search (live markets/parties/visits; demo ERP masters). See `docs/FARM_DEALER_MOBILE.md`.
 
+> August 22, 2026 Farm visit report (v2.2.3+60): Farm & Dealer hub Create / View all cards (no FABs). Farm records post the paper farm visit report; dealer records keep the stock/order visit form. See `docs/FARM_DEALER_MOBILE.md`.
+
 ---
 
 ## Table of Contents
@@ -268,7 +270,7 @@ Manifest URL baked at build time from `rocket launcher/config/github.env` → `U
 | **Tabs** | Home, Attendance, Alerts, Profile, Services |
 | **Nav Bar** | Custom `Row` of `GestureDetector` items with animated containers, rounded corners on the bar itself |
 | **Screen Stack** | `IndexedStack` — all screens stay alive |
-| **Services tab** | `EmployeeServicesHubScreen(showAsTabRoot: true)` — hub for Attendance Report, Leave, Payments, Sales Info, Vehicles (fleet → Maintenance / Trips), Farm & Dealer (Phase-1 create forms, searchable IDs), Geo Tracking |
+| **Services tab** | `EmployeeServicesHubScreen(showAsTabRoot: true)` — hub for Attendance Report, Leave, Payments, Sales Info, Vehicles (fleet → Maintenance / Trips), Farm & Dealer (Create / View all cards; farm visit report), Geo Tracking |
 | **Resume** | Refreshes ZKTeco `app-config` via `EndpointConfigService.refreshConfig()` |
 
 ### 6.3 HomeScreen (`home_screen.dart`)
