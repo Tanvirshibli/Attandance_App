@@ -12,6 +12,11 @@ class AttendanceTile extends StatelessWidget {
     final status = record['status'] as String;
     final statusColor = _getStatusColor(status);
     final statusIcon = _getStatusIcon(status);
+    final badge = _StatusBadge(
+      status: status,
+      statusColor: statusColor,
+      statusIcon: statusIcon,
+    );
 
     return Container(
       padding: const EdgeInsets.all(16),
@@ -27,8 +32,8 @@ class AttendanceTile extends StatelessWidget {
         ],
       ),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Date column
           Container(
             width: 48,
             height: 48,
@@ -60,89 +65,88 @@ class AttendanceTile extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 14),
-
-          // Info
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  record['day'] as String,
-                  style: GoogleFonts.poppins(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w500,
-                    color: AppColors.textPrimary,
-                  ),
-                ),
-                const SizedBox(height: 2),
                 Row(
                   children: [
-                    if (record['checkIn'] != '--') ...[
-                      Icon(Icons.login_rounded,
-                          size: 12, color: AppColors.textHint),
-                      const SizedBox(width: 4),
-                      Text(
-                        record['checkIn'] as String,
+                    Expanded(
+                      child: Text(
+                        record['day'] as String,
                         style: GoogleFonts.poppins(
-                          fontSize: 11,
-                          color: AppColors.textHint,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w500,
+                          color: AppColors.textPrimary,
                         ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                       ),
-                      const SizedBox(width: 12),
-                      Icon(Icons.logout_rounded,
-                          size: 12, color: AppColors.textHint),
-                      const SizedBox(width: 4),
-                      Text(
-                        record['checkOut'] as String,
-                        style: GoogleFonts.poppins(
-                          fontSize: 11,
-                          color: AppColors.textHint,
-                        ),
-                      ),
-                    ] else
-                      Text(
-                        status == 'weekend'
-                            ? 'Weekend'
-                            : status == 'leave'
-                                ? 'On Leave'
-                            : status == 'requested'
-                              ? 'Awaiting approval'
-                                : 'Absent',
-                        style: GoogleFonts.poppins(
-                          fontSize: 11,
-                          color: AppColors.textHint,
-                        ),
-                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    badge,
                   ],
                 ),
-              ],
-            ),
-          ),
-
-          // Status badge
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-            decoration: BoxDecoration(
-              color: statusColor.withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(statusIcon, size: 12, color: statusColor),
-                const SizedBox(width: 4),
-                Text(
-                  _capitalise(status),
-                  style: GoogleFonts.poppins(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w500,
-                    color: statusColor,
-                  ),
-                ),
+                const SizedBox(height: 4),
+                _buildTimeRow(status),
               ],
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildTimeRow(String status) {
+    if (record['checkIn'] != '--') {
+      return Wrap(
+        spacing: 12,
+        runSpacing: 4,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.login_rounded, size: 12, color: AppColors.textHint),
+              const SizedBox(width: 4),
+              Text(
+                record['checkIn'] as String,
+                style: GoogleFonts.poppins(
+                  fontSize: 11,
+                  color: AppColors.textHint,
+                ),
+              ),
+            ],
+          ),
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.logout_rounded, size: 12, color: AppColors.textHint),
+              const SizedBox(width: 4),
+              Text(
+                record['checkOut'] as String,
+                style: GoogleFonts.poppins(
+                  fontSize: 11,
+                  color: AppColors.textHint,
+                ),
+              ),
+            ],
+          ),
+        ],
+      );
+    }
+
+    return Text(
+      status == 'weekend'
+          ? 'Weekend'
+          : status == 'leave'
+              ? 'On Leave'
+              : status == 'requested'
+                  ? 'Awaiting approval'
+                  : 'Absent',
+      style: GoogleFonts.poppins(
+        fontSize: 11,
+        color: AppColors.textHint,
       ),
     );
   }
@@ -197,7 +201,46 @@ class AttendanceTile extends StatelessWidget {
     final month = int.parse(dateStr.split('-')[1]);
     return months[month];
   }
+}
 
-  String _capitalise(String s) =>
-      s.isEmpty ? s : '${s[0].toUpperCase()}${s.substring(1)}';
+class _StatusBadge extends StatelessWidget {
+  const _StatusBadge({
+    required this.status,
+    required this.statusColor,
+    required this.statusIcon,
+  });
+
+  final String status;
+  final Color statusColor;
+  final IconData statusIcon;
+
+  @override
+  Widget build(BuildContext context) {
+    final label = status.isEmpty
+        ? status
+        : '${status[0].toUpperCase()}${status.substring(1)}';
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: statusColor.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(statusIcon, size: 12, color: statusColor),
+          const SizedBox(width: 4),
+          Text(
+            label,
+            style: GoogleFonts.poppins(
+              fontSize: 10,
+              fontWeight: FontWeight.w500,
+              color: statusColor,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }

@@ -199,7 +199,7 @@ class _MarketingHubScreenState extends State<MarketingHubScreen> {
                         ),
                       ),
                     ),
-                    const SizedBox(height: 12),
+                    const SizedBox(height: 16),
                     FadeInUp(
                       delay: const Duration(milliseconds: 80),
                       child: _HubGroupCard(
@@ -230,7 +230,7 @@ class _MarketingHubScreenState extends State<MarketingHubScreen> {
                         ),
                       ),
                     ),
-                    const SizedBox(height: 12),
+                    const SizedBox(height: 16),
                     FadeInUp(
                       delay: const Duration(milliseconds: 120),
                       child: _HubGroupCard(
@@ -352,7 +352,22 @@ class _HubGroupCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SectionCard(
+    return Container(
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(20),
+        border: Border(
+          left: BorderSide(color: color, width: 4),
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: AppColors.shadow.withValues(alpha: 0.05),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -362,7 +377,7 @@ class _HubGroupCard extends StatelessWidget {
                 width: 40,
                 height: 40,
                 decoration: BoxDecoration(
-                  color: color.withValues(alpha: 0.12),
+                  color: color.withValues(alpha: 0.18),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Icon(icon, color: color, size: 22),
@@ -374,6 +389,7 @@ class _HubGroupCard extends StatelessWidget {
                   style: GoogleFonts.poppins(
                     fontSize: 15,
                     fontWeight: FontWeight.w600,
+                    color: color,
                   ),
                 ),
               ),
