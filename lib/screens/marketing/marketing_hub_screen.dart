@@ -12,7 +12,6 @@ import 'market_form_screen.dart';
 import 'market_list_screen.dart';
 import 'party_form_screen.dart';
 import 'party_list_screen.dart';
-import 'visit_list_screen.dart';
 
 class MarketingHubScreen extends StatefulWidget {
   const MarketingHubScreen({super.key});
@@ -49,69 +48,13 @@ class _MarketingHubScreenState extends State<MarketingHubScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.background,
-      floatingActionButton: !_enabled || _loading
-          ? null
-          : Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                FloatingActionButton.extended(
-                  heroTag: 'new_market',
-                  onPressed: () => _open(const MarketFormScreen()),
-                  backgroundColor: AppColors.info,
-                  icon: const Icon(Icons.add_business, color: Colors.white),
-                  label: Text(
-                    'New Market',
-                    style: GoogleFonts.poppins(
-                      fontWeight: FontWeight.w600,
-                      color: Colors.white,
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 10),
-                FloatingActionButton.extended(
-                  heroTag: 'new_farm',
-                  onPressed: () => _open(
-                    const PartyFormScreen(initialPartyType: 'farm'),
-                  ),
-                  backgroundColor: AppColors.accent,
-                  icon: const Icon(Icons.agriculture, color: Colors.white),
-                  label: Text(
-                    'New Farm',
-                    style: GoogleFonts.poppins(
-                      fontWeight: FontWeight.w600,
-                      color: Colors.white,
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 10),
-                FloatingActionButton.extended(
-                  heroTag: 'new_dealer',
-                  onPressed: () => _open(
-                    const PartyFormScreen(initialPartyType: 'dealer'),
-                  ),
-                  backgroundColor: AppColors.primary,
-                  icon: const Icon(
-                    Icons.storefront_outlined,
-                    color: Colors.white,
-                  ),
-                  label: Text(
-                    'New Dealer',
-                    style: GoogleFonts.poppins(
-                      fontWeight: FontWeight.w600,
-                      color: Colors.white,
-                    ),
-                  ),
-                ),
-              ],
-            ),
       body: CustomScrollView(
         physics: const BouncingScrollPhysics(),
         slivers: [
           const SliverToBoxAdapter(
             child: GradientScreenHeader(
               title: 'Farm & Dealer',
-              subtitle: 'Markets, dealers, farms, visits & follow-ups',
+              subtitle: 'Create or view markets, dealers and farms',
             ),
           ),
           if (_loading)
@@ -135,68 +78,112 @@ class _MarketingHubScreenState extends State<MarketingHubScreen> {
             )
           else
             SliverPadding(
-              padding: const EdgeInsets.fromLTRB(20, 16, 20, 160),
-              sliver: SliverGrid(
-                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: 2,
-                  mainAxisSpacing: 12,
-                  crossAxisSpacing: 12,
-                  childAspectRatio: 0.95,
-                ),
+              padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
+              sliver: SliverList(
                 delegate: SliverChildListDelegate([
                   FadeInUp(
                     delay: const Duration(milliseconds: 40),
-                    child: _HubTile(
+                    child: _HubGroupCard(
                       icon: Icons.store_mall_directory_outlined,
                       label: 'Markets',
-                      subtitle: 'List & create',
                       color: AppColors.info,
-                      onTap: () => _open(const MarketListScreen()),
+                      createLabel: 'Create market',
+                      viewLabel: 'View all markets',
+                      onCreate: () => _open(const MarketFormScreen()),
+                      onView: () => _open(const MarketListScreen()),
                     ),
                   ),
+                  const SizedBox(height: 12),
                   FadeInUp(
                     delay: const Duration(milliseconds: 80),
-                    child: _HubTile(
+                    child: _HubGroupCard(
                       icon: Icons.storefront_outlined,
                       label: 'Dealers',
-                      subtitle: 'Accounts & credit',
                       color: AppColors.primary,
-                      onTap: () => _open(
+                      createLabel: 'Create dealer',
+                      viewLabel: 'View all dealers',
+                      onCreate: () => _open(
+                        const PartyFormScreen(initialPartyType: 'dealer'),
+                      ),
+                      onView: () => _open(
                         const PartyListScreen(initialPartyType: 'dealer'),
                       ),
                     ),
                   ),
+                  const SizedBox(height: 12),
                   FadeInUp(
                     delay: const Duration(milliseconds: 120),
-                    child: _HubTile(
+                    child: _HubGroupCard(
                       icon: Icons.agriculture_outlined,
                       label: 'Farms',
-                      subtitle: 'Surveys & capacity',
                       color: AppColors.accent,
-                      onTap: () => _open(
+                      createLabel: 'Create farm',
+                      viewLabel: 'View all farms',
+                      onCreate: () => _open(
+                        const PartyFormScreen(initialPartyType: 'farm'),
+                      ),
+                      onView: () => _open(
                         const PartyListScreen(initialPartyType: 'farm'),
                       ),
                     ),
                   ),
+                  const SizedBox(height: 12),
                   FadeInUp(
                     delay: const Duration(milliseconds: 160),
-                    child: _HubTile(
-                      icon: Icons.route_outlined,
-                      label: 'Visits',
-                      subtitle: 'Check-in & out',
-                      color: AppColors.primaryDark,
-                      onTap: () => _open(const VisitListScreen()),
-                    ),
-                  ),
-                  FadeInUp(
-                    delay: const Duration(milliseconds: 200),
-                    child: _HubTile(
-                      icon: Icons.event_note_outlined,
-                      label: 'Follow-ups',
-                      subtitle: 'Tasks & reminders',
-                      color: AppColors.warning,
-                      onTap: () => _open(
-                        const FollowupFormScreen(showListMode: true),
+                    child: SectionCard(
+                      padding: EdgeInsets.zero,
+                      child: InkWell(
+                        onTap: () => _open(
+                          const FollowupFormScreen(showListMode: true),
+                        ),
+                        borderRadius: BorderRadius.circular(20),
+                        child: Padding(
+                          padding: const EdgeInsets.all(16),
+                          child: Row(
+                            children: [
+                              Container(
+                                width: 48,
+                                height: 48,
+                                decoration: BoxDecoration(
+                                  color: AppColors.warning.withValues(
+                                    alpha: 0.12,
+                                  ),
+                                  borderRadius: BorderRadius.circular(14),
+                                ),
+                                child: const Icon(
+                                  Icons.event_note_outlined,
+                                  color: AppColors.warning,
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      'Follow-ups',
+                                      style: GoogleFonts.poppins(
+                                        fontSize: 15,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                    Text(
+                                      'Tasks and reminders',
+                                      style: GoogleFonts.poppins(
+                                        fontSize: 12,
+                                        color: AppColors.textSecondary,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const Icon(
+                                Icons.chevron_right,
+                                color: AppColors.textHint,
+                              ),
+                            ],
+                          ),
+                        ),
                       ),
                     ),
                   ),
@@ -209,63 +196,115 @@ class _MarketingHubScreenState extends State<MarketingHubScreen> {
   }
 }
 
-class _HubTile extends StatelessWidget {
-  const _HubTile({
+class _HubGroupCard extends StatelessWidget {
+  const _HubGroupCard({
     required this.icon,
     required this.label,
     required this.color,
-    required this.onTap,
-    this.subtitle,
+    required this.createLabel,
+    required this.viewLabel,
+    required this.onCreate,
+    required this.onView,
   });
 
   final IconData icon;
   final String label;
-  final String? subtitle;
+  final Color color;
+  final String createLabel;
+  final String viewLabel;
+  final VoidCallback onCreate;
+  final VoidCallback onView;
+
+  @override
+  Widget build(BuildContext context) {
+    return SectionCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: color.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Icon(icon, color: color),
+              ),
+              const SizedBox(width: 12),
+              Text(
+                label,
+                style: GoogleFonts.poppins(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          Row(
+            children: [
+              Expanded(
+                child: _SubCard(
+                  icon: Icons.add_rounded,
+                  label: createLabel,
+                  color: color,
+                  onTap: onCreate,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: _SubCard(
+                  icon: Icons.list_alt_outlined,
+                  label: viewLabel,
+                  color: color,
+                  onTap: onView,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SubCard extends StatelessWidget {
+  const _SubCard({
+    required this.icon,
+    required this.label,
+    required this.color,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String label;
   final Color color;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    return SectionCard(
-      padding: EdgeInsets.zero,
+    return Material(
+      color: color.withValues(alpha: 0.08),
+      borderRadius: BorderRadius.circular(14),
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(14),
         child: Padding(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
           child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Container(
-                width: 56,
-                height: 56,
-                decoration: BoxDecoration(
-                  color: color.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                child: Icon(icon, color: color, size: 28),
-              ),
-              const SizedBox(height: 12),
+              Icon(icon, color: color, size: 22),
+              const SizedBox(height: 8),
               Text(
                 label,
                 textAlign: TextAlign.center,
                 style: GoogleFonts.poppins(
-                  fontSize: 14,
+                  fontSize: 12,
                   fontWeight: FontWeight.w600,
-                  color: AppColors.textPrimary,
                 ),
               ),
-              if (subtitle != null) ...[
-                const SizedBox(height: 4),
-                Text(
-                  subtitle!,
-                  textAlign: TextAlign.center,
-                  style: GoogleFonts.poppins(
-                    fontSize: 11,
-                    color: AppColors.textSecondary,
-                  ),
-                ),
-              ],
             ],
           ),
         ),
