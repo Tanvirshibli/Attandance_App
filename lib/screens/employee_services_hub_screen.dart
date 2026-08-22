@@ -60,7 +60,7 @@ class EmployeeServicesHubScreen extends StatelessWidget {
       ),
       _ServiceTileData(
         icon: Icons.agriculture_outlined,
-        label: 'Farm &\nDealer',
+        label: 'Farms, Dealers\n& Markets',
         color: const Color(0xFF2E7D32),
         screen: const MarketingHubScreen(),
       ),
