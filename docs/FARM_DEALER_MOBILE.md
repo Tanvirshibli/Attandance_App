@@ -4,6 +4,8 @@ Last updated: August 22, 2026
 
 Field data collection for **markets**, **dealers**, and **farms** in Attandance_App, backed by ZKTeco `/api/v1/mobile/marketing/*` (no JWT — same pattern as geo). Employee identity uses profile `canonicalEmployeeId` (`employees.id`).
 
+**v2.2.3+61:** Renamed to **Farms, Dealers and Markets**. Hub sections (Farms → Dealers → Markets) show top **5** preview rows; compact **Create** (+) and **View all** (list) icon buttons sit on the title row. Tap a preview row for the record page; pull-to-refresh reloads previews.
+
 **v2.2.3+60:** Farm & Dealer hub uses expandable **Create** / **View all** cards (no FABs, no standalone Visits tile). Farm records open the paper **Farm visit report** (rewritten farm survey). Dealer records still use the stock/order visit form. Posting a visit lives on the farm or dealer record page.
 
 **v2.2.3+59:** Create forms collect the full Phase-1 field set the current marketing API already accepts. ID fields are type-to-search (`SearchableSelectField`). Live lists are used for markets, parties, and visits (FK-checked). Demo catalog fills ERP-style IDs (dealers, products, units, employees) until live master APIs exist. Company / sector prefer Sales `GET /api/booking-person-books/form-data` (Bearer); demo companies/sectors fill the picker when that list is empty.
@@ -14,18 +16,16 @@ Create forms auto-capture GPS + reverse-geocode address fields (no manual Captur
 
 ## Entry point
 
-Services tab → **Farm & Dealer** → `MarketingHubScreen`
+Services tab → **Farms, Dealers and Markets** → `MarketingHubScreen`
 
-Hub cards (Create + View all on each; no FABs):
+Hub sections (Farms → Dealers → Markets). Each section title row has compact **Create** (+) and **View all** (list) icon buttons on the right. Below: up to **5** recent preview rows (tap → record detail). **View all** opens the full list screen.
 
-| Card | Create | View all |
-|------|--------|----------|
-| Markets | `MarketFormScreen` | `MarketListScreen` → `MarketDetailScreen` (parties in that market) |
-| Dealers | `PartyFormScreen(dealer)` | `PartyListScreen(dealer)` → `PartyDetailScreen` |
-| Farms | `PartyFormScreen(farm)` | `PartyListScreen(farm)` → `PartyDetailScreen` |
-| Follow-ups | — | `FollowupFormScreen` (list mode) |
-
-Farm detail lists farm visit reports and **Post a visit** opens `FarmSurveyFormScreen` (title **Farm visit report**). Dealer detail lists visits and **Post a visit** opens `VisitFormScreen`. Follow-up stays a secondary action on the record page.
+| Section | Create | View all | Preview tap |
+|---------|--------|----------|-------------|
+| Farms | `PartyFormScreen(farm)` | `PartyListScreen(farm)` | `PartyDetailScreen` → Post visit report |
+| Dealers | `PartyFormScreen(dealer)` | `PartyListScreen(dealer)` | `PartyDetailScreen` → Post visit |
+| Markets | `MarketFormScreen` | `MarketListScreen` | `MarketDetailScreen` |
+| Follow-ups | — | `FollowupFormScreen` (list mode) | — |
 
 ---
 

@@ -12,7 +12,7 @@ On **every cold start and when returning from background**, the app checks notif
 
 | Entry point | Destination |
 |-------------|-------------|
-| Footer **Services** tab | `EmployeeServicesHubScreen` (Attendance Report, Leave, Payments, HR Benefits, Sales Info, Vehicles, Farm & Dealer, Geo Tracking) |
+| Footer **Services** tab | `EmployeeServicesHubScreen` (Attendance Report, Leave, Payments, HR Benefits, Sales Info, Vehicles, Farms Dealers and Markets, Geo Tracking) |
 | Profile → Quick Actions → Leave Request | `LeaveHubScreen` |
 | Profile → Quick Actions → View Reports | `AttendanceReportScreen` |
 | Profile → Settings → Location Services | `GeoTrackingScreen` |
@@ -26,7 +26,7 @@ On **every cold start and when returning from background**, the app checks notif
 - HR Benefits (payslips, loans, PF, mess, compensation, post payment — demo by default)
 - Sales Info (live overall + module breakdown; Post sale with searchable dealer list)
 - Vehicles (fleet list → Maintenance / Trips per vehicle; unfiltered)
-- Farm & Dealer (hub Create / View all cards; farm visit report; dealer visits; follow-ups)
+- Farm & Dealer (hub **Farms, Dealers and Markets**; top-5 previews; farm visit report; follow-ups)
 - Geo Tracking (Google Maps; status only — no on/off toggle; auto-enabled after first-launch permissions; full-screen map with exit)
 
 ---
@@ -105,7 +105,7 @@ Handoff for backend teams: **[SALES_AND_PAYMENTS_API_CONTRACT.md](SALES_AND_PAYM
 
 ### Farm & Dealer (marketing)
 
-- Services tile → hub cards **Markets / Dealers / Farms** (each **Create** + **View all**) and Follow-ups. No FABs and no standalone Visits tile
+- Services tile **Farms, Dealers and Markets** → hub sections Farms / Dealers / Markets (top **5** preview rows + compact Create / View all icon buttons on each title row) and Follow-ups
 - Farm record: visit-report list + **Post a visit** (paper farm visit report). Dealer record: visit list + **Post a visit** (stock/order visit form). Market record: parties in that market
 - Create forms collect the **full Phase-1 field set** the current marketing API accepts (v2.2.3+59). Farm visit report paper fields ship in **v2.2.3+60**. ID fields are type-to-search (`SearchableSelectField`)
 - Live lists for `market_id` / parent party / `dealer_party_id` / `visit_id` (FK-checked). Demo catalog for ERP dealer, product, unit, assigned employee, breed, DOC/feed, shed, territory, and zone until live master APIs exist
@@ -162,6 +162,12 @@ Handoff for backend teams: **[SALES_AND_PAYMENTS_API_CONTRACT.md](SALES_AND_PAYM
 
 - Success tick is pinned to the **center of the rounded guide**
 - Step badge, coaching, and check-in status sit in one horizontally centered strip **above** the guide (including GPS “Capturing location…”)
+
+### Farms, Dealers and Markets hub previews (v2.2.3+61)
+
+- Services tile and hub title renamed **Farms, Dealers and Markets**
+- Each section: title row with compact **+** (create) and list (view all) icons; body shows up to 5 preview records
+- Tap preview → record detail (farm visit report / dealer visit unchanged). Pull-to-refresh reloads previews
 
 ### Farm visit report and hub cards (v2.2.3+60)
 
