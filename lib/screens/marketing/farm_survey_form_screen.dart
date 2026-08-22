@@ -10,6 +10,8 @@ import '../../data/marketing_demo_masters.dart';
 import '../../models/marketing_models.dart';
 import '../../services/auth_service.dart';
 import '../../services/marketing_service.dart';
+import '../../services/sales_service.dart';
+import '../../utils/marketing_location_helper.dart';
 import '../../widgets/gradient_screen_header.dart';
 import '../../widgets/searchable_select_field.dart';
 import '../../widgets/section_card.dart';
@@ -27,33 +29,35 @@ class FarmSurveyFormScreen extends StatefulWidget {
 class _FarmSurveyFormScreenState extends State<FarmSurveyFormScreen> {
   final MarketingService _service = MarketingService();
   final AuthService _authService = AuthService();
-  final _farmType = TextEditingController();
-  final _birdCapacity = TextEditingController();
-  final _currentBirds = TextEditingController();
-  final _housing = TextEditingController();
-  final _feedBrand = TextEditingController();
-  final _notes = TextEditingController();
-  final _ageDays = TextEditingController();
+  final SalesService _salesService = SalesService();
+
+  DateTime _surveyDate = DateTime.now();
+  DateTime? _hatchDate;
+  DateTime? _receivingDate;
+  TimeOfDay? _receivingTime;
+
   final _quantity = TextEditingController();
-  final _mortality = TextEditingController();
-  final _chicksBrand = TextEditingController();
+  final _ageDays = TextEditingController();
+  final _totalMortality = TextEditingController();
+  final _presentMortality = TextEditingController();
+  final _mortalityPct = TextEditingController();
+  final _restOfBirds = TextEditingController();
   final _totalFeed = TextEditingController();
   final _avgFeed = TextEditingController();
+  final _productionPercent = TextEditingController();
   final _fcr = TextEditingController();
-  final _bodyWeight = TextEditingController();
+  final _totalBodyWeight = TextEditingController();
+  final _avgBodyWeight = TextEditingController();
+  final _bagWeight = TextEditingController();
+  final _feederQty = TextEditingController();
+  final _drinkerQty = TextEditingController();
+  final _avgTemp = TextEditingController();
+  final _space = TextEditingController();
   final _uniformity = TextEditingController();
   final _diseaseDetails = TextEditingController();
   final _problems = TextEditingController();
-  final _recommendation = TextEditingController();
-  final _productionPercent = TextEditingController();
-  final _landArea = TextEditingController();
-  final _fertilizerKg = TextEditingController();
-  final _dailyEggs = TextEditingController();
-  final _crackedEgg = TextEditingController();
-  final _pondArea = TextEditingController();
-  final _flockAge = TextEditingController();
-  final _mortalityPct = TextEditingController();
-  final _feedBags = TextEditingController();
+  final _remarks = TextEditingController();
+  final _comments = TextEditingController();
 
   int _biosecurity = 3;
   int _management = 3;
@@ -61,50 +65,128 @@ class _FarmSurveyFormScreenState extends State<FarmSurveyFormScreen> {
   int _economic = 3;
   bool _diseasePresent = false;
   bool _submitting = false;
-  String _surveyType = 'poultry';
-  MarketingDemoNamed? _quantityUnit;
-  MarketingDemoProduct? _chicksProduct;
-  MarketingDemoProduct? _feedProduct;
+  bool _computing = false;
+  String _officerName = '';
+  List<Party> _dealers = const [];
+  Party? _dealer;
+  List<BookingFormCompany> _companies = const [];
+  MarketingDemoNamed? _breed;
+  MarketingDemoNamed? _docCompany;
+  MarketingDemoNamed? _feedCompany;
+  MarketingDemoNamed? _shedDesign;
+  MarketingDemoNamed? _curtain;
+  MarketingDemoNamed? _floor;
+  MarketingDemoNamed? _territory;
+  MarketingDemoNamed? _zone;
+  BookingFormCompany? _liveDocCompany;
+  BookingFormCompany? _liveFeedCompany;
+  double? _lat;
+  double? _lng;
+  bool _geoVerified = false;
   final List<XFile> _photos = [];
 
-  static const _surveyTypes = [
-    'poultry',
-    'fertilizer',
-    'egg',
-    'fish',
-    'other',
-  ];
+  @override
+  void initState() {
+    super.initState();
+    _quantity.addListener(_recompute);
+    _totalMortality.addListener(_recompute);
+    _loadContext();
+    _autoFillLocation();
+  }
 
   @override
   void dispose() {
-    _farmType.dispose();
-    _birdCapacity.dispose();
-    _currentBirds.dispose();
-    _housing.dispose();
-    _feedBrand.dispose();
-    _notes.dispose();
-    _ageDays.dispose();
     _quantity.dispose();
-    _mortality.dispose();
-    _chicksBrand.dispose();
+    _ageDays.dispose();
+    _totalMortality.dispose();
+    _presentMortality.dispose();
+    _mortalityPct.dispose();
+    _restOfBirds.dispose();
     _totalFeed.dispose();
     _avgFeed.dispose();
+    _productionPercent.dispose();
     _fcr.dispose();
-    _bodyWeight.dispose();
+    _totalBodyWeight.dispose();
+    _avgBodyWeight.dispose();
+    _bagWeight.dispose();
+    _feederQty.dispose();
+    _drinkerQty.dispose();
+    _avgTemp.dispose();
+    _space.dispose();
     _uniformity.dispose();
     _diseaseDetails.dispose();
     _problems.dispose();
-    _recommendation.dispose();
-    _productionPercent.dispose();
-    _landArea.dispose();
-    _fertilizerKg.dispose();
-    _dailyEggs.dispose();
-    _crackedEgg.dispose();
-    _pondArea.dispose();
-    _flockAge.dispose();
-    _mortalityPct.dispose();
-    _feedBags.dispose();
+    _remarks.dispose();
+    _comments.dispose();
     super.dispose();
+  }
+
+  Future<void> _loadContext() async {
+    final profile = await _authService.getCurrentUserProfile();
+    final dealers = await _service.listParties(
+      employeeId: profile?.canonicalEmployeeId,
+      partyType: 'dealer',
+    );
+    final formData = await _salesService.fetchBookingFormData();
+    if (!mounted) return;
+    setState(() {
+      _officerName = profile?.name ?? '';
+      _dealers = dealers.data ?? const [];
+      if (formData.success && formData.data != null) {
+        _companies = formData.data!.companies.where((c) => c.id > 0).toList();
+      }
+      _dealer = MarketingDemoMasters.byId(
+        _dealers,
+        widget.party.parentPartyId,
+        (p) => p.id,
+      );
+    });
+  }
+
+  Future<void> _autoFillLocation() async {
+    try {
+      final snap = await MarketingLocationHelper.capture();
+      if (!mounted || snap == null) return;
+      setState(() {
+        _lat = snap.latitude;
+        _lng = snap.longitude;
+        _geoVerified = true;
+      });
+    } catch (_) {}
+  }
+
+  void _recompute() {
+    if (_computing) return;
+    final qty = double.tryParse(_quantity.text.trim());
+    final mort = double.tryParse(_totalMortality.text.trim());
+    if (qty == null || qty <= 0 || mort == null) return;
+    final rest = (qty - mort).clamp(0, qty);
+    final pct = (mort / qty) * 100;
+    _computing = true;
+    _restOfBirds.text = rest.toStringAsFixed(0);
+    _mortalityPct.text = pct.toStringAsFixed(2);
+    _computing = false;
+  }
+
+  Future<void> _pickDate({
+    required DateTime? current,
+    required ValueChanged<DateTime> onPicked,
+  }) async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: current ?? DateTime.now(),
+      firstDate: DateTime.now().subtract(const Duration(days: 3650)),
+      lastDate: DateTime.now().add(const Duration(days: 30)),
+    );
+    if (picked != null) onPicked(picked);
+  }
+
+  Future<void> _pickReceivingTime() async {
+    final picked = await showTimePicker(
+      context: context,
+      initialTime: _receivingTime ?? TimeOfDay.now(),
+    );
+    if (picked != null) setState(() => _receivingTime = picked);
   }
 
   Future<void> _pickPhotos() async {
@@ -120,80 +202,66 @@ class _FarmSurveyFormScreenState extends State<FarmSurveyFormScreen> {
       _snack('Employee profile not linked.');
       return;
     }
-
     setState(() => _submitting = true);
-
-    final metrics = <Map<String, dynamic>>[];
-    void addMetric(
-      String key,
-      String label,
-      TextEditingController c, {
-      String? unit,
-    }) {
-      final raw = c.text.trim();
-      if (raw.isEmpty) return;
-      final numVal = double.tryParse(raw);
-      metrics.add({
-        'metric_key': key,
-        'metric_code': key,
-        'metric_label': label,
-        if (numVal != null) 'value_number': numVal else 'value_text': raw,
-        'unit': ?unit,
-      });
-    }
-
-    addMetric('flock_age_days', 'Flock age', _flockAge, unit: 'days');
-    addMetric('mortality_pct', 'Mortality', _mortalityPct, unit: '%');
-    addMetric('feed_bag_stock', 'Feed bag stock', _feedBags, unit: 'bags');
-    addMetric('LAND_AREA_ACRE', 'Cultivated land', _landArea, unit: 'acre');
-    addMetric(
-      'MONTHLY_FERTILIZER_KG',
-      'Monthly fertilizer',
-      _fertilizerKg,
-      unit: 'kg',
-    );
-    addMetric('DAILY_EGG_PRODUCTION', 'Daily egg production', _dailyEggs);
-    addMetric('CRACKED_EGG_PERCENT', 'Cracked egg', _crackedEgg, unit: '%');
-    addMetric('POND_AREA_DECIMAL', 'Pond area', _pondArea, unit: 'decimal');
-
     final payload = <String, dynamic>{
       'party_id': widget.party.id,
       'employee_id': employeeId,
       if (widget.visitId != null) 'visit_id': widget.visitId,
-      'survey_date': DateFormat('yyyy-MM-dd').format(DateTime.now()),
-      'survey_type': _surveyType,
-      if (_farmType.text.trim().isNotEmpty) 'farm_type': _farmType.text.trim(),
-      if (_ageDays.text.trim().isNotEmpty)
-        'age_days': int.tryParse(_ageDays.text.trim()),
+      if (_dealer != null) 'dealer_party_id': _dealer!.id,
+      'survey_date': DateFormat('yyyy-MM-dd').format(_surveyDate),
+      'survey_type': 'poultry',
+      if (_hatchDate != null)
+        'hatch_date': DateFormat('yyyy-MM-dd').format(_hatchDate!),
+      if (_receivingDate != null)
+        'receiving_date': DateFormat('yyyy-MM-dd').format(_receivingDate!),
+      if (_receivingTime != null)
+        'receiving_time':
+            '${_receivingTime!.hour.toString().padLeft(2, '0')}:${_receivingTime!.minute.toString().padLeft(2, '0')}',
+      if (_breed != null) 'breed': _breed!.name,
+      'doc_company': _liveDocCompany?.displayName ?? _docCompany?.name,
+      'feed_company': _liveFeedCompany?.displayName ?? _feedCompany?.name,
+      if (widget.party.businessYears != null)
+        'farming_years': widget.party.businessYears,
       if (_quantity.text.trim().isNotEmpty)
         'quantity': double.tryParse(_quantity.text.trim()),
-      if (_quantityUnit != null) 'quantity_unit_id': _quantityUnit!.id,
-      if (_chicksProduct != null) 'chicks_product_id': _chicksProduct!.id,
-      if (_feedProduct != null) 'feed_product_id': _feedProduct!.id,
-      if (_mortality.text.trim().isNotEmpty)
-        'mortality_quantity': double.tryParse(_mortality.text.trim()),
-      if (_chicksBrand.text.trim().isNotEmpty)
-        'chicks_brand': _chicksBrand.text.trim(),
-      if (_birdCapacity.text.trim().isNotEmpty)
-        'bird_capacity': double.tryParse(_birdCapacity.text.trim()),
-      if (_currentBirds.text.trim().isNotEmpty)
-        'current_birds': double.tryParse(_currentBirds.text.trim()),
-      if (_housing.text.trim().isNotEmpty)
-        'housing_type': _housing.text.trim(),
-      if (_feedBrand.text.trim().isNotEmpty)
-        'feed_brand': _feedBrand.text.trim(),
+      if (_ageDays.text.trim().isNotEmpty)
+        'age_days': int.tryParse(_ageDays.text.trim()),
+      if (_totalMortality.text.trim().isNotEmpty)
+        'total_mortality': double.tryParse(_totalMortality.text.trim()),
+      if (_presentMortality.text.trim().isNotEmpty)
+        'present_mortality': double.tryParse(_presentMortality.text.trim()),
+      if (_mortalityPct.text.trim().isNotEmpty)
+        'mortality_percent': double.tryParse(_mortalityPct.text.trim()),
+      if (_restOfBirds.text.trim().isNotEmpty)
+        'rest_of_birds': double.tryParse(_restOfBirds.text.trim()),
+      if (_restOfBirds.text.trim().isNotEmpty)
+        'current_birds': double.tryParse(_restOfBirds.text.trim()),
       if (_totalFeed.text.trim().isNotEmpty)
         'total_feed_intake_kg': double.tryParse(_totalFeed.text.trim()),
       if (_avgFeed.text.trim().isNotEmpty)
         'avg_feed_intake_kg': double.tryParse(_avgFeed.text.trim()),
+      if (_productionPercent.text.trim().isNotEmpty)
+        'production_percent': double.tryParse(_productionPercent.text.trim()),
       if (_fcr.text.trim().isNotEmpty) 'fcr': double.tryParse(_fcr.text.trim()),
-      if (_bodyWeight.text.trim().isNotEmpty)
-        'avg_body_weight_kg': double.tryParse(_bodyWeight.text.trim()),
+      if (_totalBodyWeight.text.trim().isNotEmpty)
+        'total_body_weight_kg': double.tryParse(_totalBodyWeight.text.trim()),
+      if (_avgBodyWeight.text.trim().isNotEmpty)
+        'avg_body_weight_kg': double.tryParse(_avgBodyWeight.text.trim()),
+      if (_bagWeight.text.trim().isNotEmpty)
+        'bag_weight_kg': double.tryParse(_bagWeight.text.trim()),
+      if (_shedDesign != null) 'shed_design': _shedDesign!.name,
+      if (_shedDesign != null) 'housing_type': _shedDesign!.name,
+      if (_curtain != null) 'curtain_type': _curtain!.name,
+      if (_floor != null) 'floor_type': _floor!.name,
+      if (_feederQty.text.trim().isNotEmpty)
+        'feeder_qty': double.tryParse(_feederQty.text.trim()),
+      if (_drinkerQty.text.trim().isNotEmpty)
+        'drinker_qty': double.tryParse(_drinkerQty.text.trim()),
+      if (_avgTemp.text.trim().isNotEmpty)
+        'avg_temperature': double.tryParse(_avgTemp.text.trim()),
+      if (_space.text.trim().isNotEmpty) 'space_note': _space.text.trim(),
       if (_uniformity.text.trim().isNotEmpty)
         'uniformity_percent': double.tryParse(_uniformity.text.trim()),
-      if (_productionPercent.text.trim().isNotEmpty)
-        'production_percent':
-            double.tryParse(_productionPercent.text.trim()),
       'biosecurity_rating': _biosecurity,
       'management_rating': _management,
       'technical_support_rating': _technical,
@@ -202,18 +270,22 @@ class _FarmSurveyFormScreenState extends State<FarmSurveyFormScreen> {
       if (_diseasePresent && _diseaseDetails.text.trim().isNotEmpty)
         'disease_details': _diseaseDetails.text.trim(),
       if (_problems.text.trim().isNotEmpty) 'problems': _problems.text.trim(),
-      if (_recommendation.text.trim().isNotEmpty)
-        'recommendation': _recommendation.text.trim(),
-      if (_notes.text.trim().isNotEmpty) 'notes': _notes.text.trim(),
+      if (_remarks.text.trim().isNotEmpty) 'notes': _remarks.text.trim(),
+      if (_comments.text.trim().isNotEmpty) 'comments': _comments.text.trim(),
+      if (_territory != null) 'territory': _territory!.name,
+      if (_zone != null) 'zone': _zone!.name,
+      if (_lat != null) 'check_in_lat': _lat,
+      if (_lng != null) 'check_in_lng': _lng,
+      'geo_verified': _geoVerified,
       'status': 'submitted',
-      if (metrics.isNotEmpty) 'metrics': metrics,
     };
+    payload.removeWhere((key, value) => value == null || value == '');
 
     final result = await _service.createFarmSurvey(payload);
     if (!mounted) return;
     if (!result.success || result.data == null) {
       setState(() => _submitting = false);
-      _snack(result.message ?? 'Could not save survey.');
+      _snack(result.message ?? 'Could not save farm visit report.');
       return;
     }
 
@@ -226,10 +298,9 @@ class _FarmSurveyFormScreenState extends State<FarmSurveyFormScreen> {
         photos: _photos.map((x) => File(x.path)).toList(),
       );
     }
-
     if (!mounted) return;
     setState(() => _submitting = false);
-    _snack('Farm survey saved.');
+    _snack('Farm visit report saved.');
     Navigator.of(context).pop(survey);
   }
 
@@ -263,15 +334,36 @@ class _FarmSurveyFormScreenState extends State<FarmSurveyFormScreen> {
     );
   }
 
-  Widget _sectionTitle(String text) {
+  Widget _readOnly(String label, String? value) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      child: Text(
-        text,
-        style: GoogleFonts.poppins(
-          fontSize: 14,
-          fontWeight: FontWeight.w600,
-          color: AppColors.textPrimary,
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _label(label),
+          Text(
+            (value == null || value.trim().isEmpty) ? '—' : value,
+            style: GoogleFonts.poppins(fontSize: 14),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _dateTile(String label, DateTime? value, VoidCallback onTap) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+        decoration: BoxDecoration(
+          color: AppColors.background,
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Text(
+          value == null ? label : DateFormat('dd MMM yyyy').format(value),
+          style: GoogleFonts.poppins(fontSize: 13),
         ),
       ),
     );
@@ -279,26 +371,22 @@ class _FarmSurveyFormScreenState extends State<FarmSurveyFormScreen> {
 
   Widget _ratingRow(String label, int value, ValueChanged<int> onChanged) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Row(
         children: [
-          Text(
-            '$label: $value',
-            style: GoogleFonts.poppins(
-              fontSize: 12,
-              color: AppColors.textSecondary,
+          Expanded(
+            child: Text(label, style: GoogleFonts.poppins(fontSize: 13)),
+          ),
+          for (var i = 1; i <= 5; i++)
+            IconButton(
+              visualDensity: VisualDensity.compact,
+              onPressed: () => onChanged(i),
+              icon: Icon(
+                i <= value ? Icons.star : Icons.star_border,
+                color: AppColors.warning,
+                size: 22,
+              ),
             ),
-          ),
-          Slider(
-            value: value.toDouble(),
-            min: 1,
-            max: 5,
-            divisions: 4,
-            label: '$value',
-            activeColor: AppColors.accent,
-            onChanged: (v) => onChanged(v.round()),
-          ),
         ],
       ),
     );
@@ -306,13 +394,14 @@ class _FarmSurveyFormScreenState extends State<FarmSurveyFormScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final farm = widget.party;
     return Scaffold(
       backgroundColor: AppColors.background,
       body: Column(
         children: [
           GradientScreenHeader(
-            title: 'Farm Survey',
-            subtitle: widget.party.displayName,
+            title: 'Farm visit report',
+            subtitle: farm.displayName,
           ),
           Expanded(
             child: SingleChildScrollView(
@@ -323,95 +412,46 @@ class _FarmSurveyFormScreenState extends State<FarmSurveyFormScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        _sectionTitle('Farm basics'),
-                        _label('Survey type'),
-                        DropdownButtonFormField<String>(
-                          initialValue: _surveyType,
-                          decoration: _decoration(),
-                          items: _surveyTypes
-                              .map(
-                                (t) => DropdownMenuItem(
-                                  value: t,
-                                  child: Text(t),
-                                ),
-                              )
-                              .toList(),
-                          onChanged: (v) {
-                            if (v != null) setState(() => _surveyType = v);
-                          },
+                        _label('Date'),
+                        _dateTile(
+                          'Select date',
+                          _surveyDate,
+                          () => _pickDate(
+                            current: _surveyDate,
+                            onPicked: (d) => setState(() => _surveyDate = d),
+                          ),
                         ),
-                        const SizedBox(height: 14),
-                        _label('Farm type'),
-                        TextField(
-                          controller: _farmType,
-                          decoration:
-                              _decoration(hint: 'e.g. Broiler, Layer'),
+                        const SizedBox(height: 12),
+                        _readOnly('Name of farm', farm.displayName),
+                        _readOnly(
+                          'Name of owner',
+                          farm.ownerName ?? farm.contactPerson,
                         ),
-                        const SizedBox(height: 14),
-                        Row(
-                          children: [
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  _label('Bird capacity'),
-                                  TextField(
-                                    controller: _birdCapacity,
-                                    keyboardType: TextInputType.number,
-                                    decoration: _decoration(),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  _label('Current birds'),
-                                  TextField(
-                                    controller: _currentBirds,
-                                    keyboardType: TextInputType.number,
-                                    decoration: _decoration(),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ],
+                        _readOnly('Address', farm.address),
+                        _readOnly('Contact No.', farm.phone),
+                        _readOnly(
+                          'Farming years',
+                          farm.businessYears?.toString(),
                         ),
-                        const SizedBox(height: 14),
-                        _label('Housing type'),
-                        TextField(
-                          controller: _housing,
-                          decoration:
-                              _decoration(hint: 'e.g. Open / Closed shed'),
+                        SearchableSelectField<Party>(
+                          label: 'Name of dealer',
+                          icon: Icons.storefront_outlined,
+                          options: _dealers,
+                          selected: _dealer,
+                          displayString: (d) => d.displayName,
+                          searchText: (d) =>
+                              '${d.displayName} ${d.phone ?? ''} ${d.address ?? ''}'
+                                  .toLowerCase(),
+                          onSelected: (d) => setState(() => _dealer = d),
                         ),
-                        const SizedBox(height: 14),
-                        _label('Feed brand'),
-                        TextField(
-                          controller: _feedBrand,
-                          decoration: _decoration(),
+                        const SizedBox(height: 12),
+                        _readOnly(
+                          'Dealer address',
+                          _dealer?.address ?? farm.parentPartyAddress,
                         ),
-                        const SizedBox(height: 14),
-                        SearchableSelectField<MarketingDemoProduct>(
-                          label: 'Chicks product',
-                          icon: Icons.egg_outlined,
-                          options: MarketingDemoMasters.products,
-                          selected: _chicksProduct,
-                          displayString: (p) => p.displayName,
-                          searchText: (p) => p.searchText,
-                          onSelected: (p) =>
-                              setState(() => _chicksProduct = p),
-                        ),
-                        const SizedBox(height: 14),
-                        SearchableSelectField<MarketingDemoProduct>(
-                          label: 'Feed product',
-                          icon: Icons.inventory_2_outlined,
-                          options: MarketingDemoMasters.products,
-                          selected: _feedProduct,
-                          displayString: (p) => p.displayName,
-                          searchText: (p) => p.searchText,
-                          onSelected: (p) => setState(() => _feedProduct = p),
+                        _readOnly(
+                          'Dealer contact',
+                          _dealer?.phone ?? farm.parentPartyPhone,
                         ),
                       ],
                     ),
@@ -421,236 +461,104 @@ class _FarmSurveyFormScreenState extends State<FarmSurveyFormScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        _sectionTitle('Flock performance'),
-                        Row(
-                          children: [
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  _label('Age (days)'),
-                                  TextField(
-                                    controller: _ageDays,
-                                    keyboardType: TextInputType.number,
-                                    decoration: _decoration(),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  _label('Quantity'),
-                                  TextField(
-                                    controller: _quantity,
-                                    keyboardType: TextInputType.number,
-                                    decoration: _decoration(),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ],
+                        _label('Hatch date'),
+                        _dateTile(
+                          'Select hatch date',
+                          _hatchDate,
+                          () => _pickDate(
+                            current: _hatchDate,
+                            onPicked: (d) => setState(() => _hatchDate = d),
+                          ),
                         ),
                         const SizedBox(height: 12),
-                        Row(
-                          children: [
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  _label('Mortality qty'),
-                                  TextField(
-                                    controller: _mortality,
-                                    keyboardType: TextInputType.number,
-                                    decoration: _decoration(),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  _label('Chicks brand'),
-                                  TextField(
-                                    controller: _chicksBrand,
-                                    decoration: _decoration(),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ],
+                        _label('Receiving date'),
+                        _dateTile(
+                          'Select receiving date',
+                          _receivingDate,
+                          () => _pickDate(
+                            current: _receivingDate,
+                            onPicked: (d) =>
+                                setState(() => _receivingDate = d),
+                          ),
                         ),
                         const SizedBox(height: 12),
-                        Row(
-                          children: [
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  _label('Total feed (kg)'),
-                                  TextField(
-                                    controller: _totalFeed,
-                                    keyboardType: TextInputType.number,
-                                    decoration: _decoration(),
-                                  ),
-                                ],
-                              ),
+                        _label('Receiving time'),
+                        InkWell(
+                          onTap: _pickReceivingTime,
+                          borderRadius: BorderRadius.circular(12),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 14,
+                              vertical: 14,
                             ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  _label('Avg feed (kg)'),
-                                  TextField(
-                                    controller: _avgFeed,
-                                    keyboardType: TextInputType.number,
-                                    decoration: _decoration(),
-                                  ),
-                                ],
-                              ),
+                            decoration: BoxDecoration(
+                              color: AppColors.background,
+                              borderRadius: BorderRadius.circular(12),
                             ),
-                          ],
-                        ),
-                        const SizedBox(height: 12),
-                        Row(
-                          children: [
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  _label('FCR'),
-                                  TextField(
-                                    controller: _fcr,
-                                    keyboardType: TextInputType.number,
-                                    decoration: _decoration(),
-                                  ),
-                                ],
-                              ),
+                            child: Text(
+                              _receivingTime == null
+                                  ? 'Select time'
+                                  : _receivingTime!.format(context),
+                              style: GoogleFonts.poppins(fontSize: 13),
                             ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  _label('Body weight (kg)'),
-                                  TextField(
-                                    controller: _bodyWeight,
-                                    keyboardType: TextInputType.number,
-                                    decoration: _decoration(),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 12),
-                        _label('Uniformity (%)'),
-                        TextField(
-                          controller: _uniformity,
-                          keyboardType: TextInputType.number,
-                          decoration: _decoration(),
-                        ),
-                        const SizedBox(height: 12),
-                        _label('Production (%)'),
-                        TextField(
-                          controller: _productionPercent,
-                          keyboardType: TextInputType.number,
-                          decoration: _decoration(),
+                          ),
                         ),
                         const SizedBox(height: 12),
                         SearchableSelectField<MarketingDemoNamed>(
-                          label: 'Quantity unit',
-                          icon: Icons.straighten,
-                          options: MarketingDemoMasters.units,
-                          selected: _quantityUnit,
-                          displayString: (u) => u.displayName,
-                          searchText: (u) => u.searchText,
-                          onSelected: (u) =>
-                              setState(() => _quantityUnit = u),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  SectionCard(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        _sectionTitle('Ratings (1–5)'),
-                        _ratingRow(
-                          'Biosecurity',
-                          _biosecurity,
-                          (v) => setState(() => _biosecurity = v),
-                        ),
-                        _ratingRow(
-                          'Management',
-                          _management,
-                          (v) => setState(() => _management = v),
-                        ),
-                        _ratingRow(
-                          'Technical support',
-                          _technical,
-                          (v) => setState(() => _technical = v),
-                        ),
-                        _ratingRow(
-                          'Economic solvency',
-                          _economic,
-                          (v) => setState(() => _economic = v),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  SectionCard(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        _sectionTitle('Health & notes'),
-                        SwitchListTile(
-                          contentPadding: EdgeInsets.zero,
-                          title: Text(
-                            'Disease present',
-                            style: GoogleFonts.poppins(fontSize: 13),
-                          ),
-                          value: _diseasePresent,
-                          activeThumbColor: AppColors.error,
-                          onChanged: (v) =>
-                              setState(() => _diseasePresent = v),
-                        ),
-                        if (_diseasePresent) ...[
-                          _label('Disease details'),
-                          TextField(
-                            controller: _diseaseDetails,
-                            maxLines: 2,
-                            decoration: _decoration(),
-                          ),
-                          const SizedBox(height: 12),
-                        ],
-                        _label('Problems'),
-                        TextField(
-                          controller: _problems,
-                          maxLines: 2,
-                          decoration: _decoration(),
+                          label: 'Breed',
+                          icon: Icons.pets_outlined,
+                          options: MarketingDemoMasters.breeds,
+                          selected: _breed,
+                          displayString: (b) => b.displayName,
+                          searchText: (b) => b.searchText,
+                          onSelected: (b) => setState(() => _breed = b),
                         ),
                         const SizedBox(height: 12),
-                        _label('Recommendation'),
-                        TextField(
-                          controller: _recommendation,
-                          maxLines: 2,
-                          decoration: _decoration(),
-                        ),
+                        if (_companies.isNotEmpty)
+                          SearchableSelectField<BookingFormCompany>(
+                            label: 'DOC company',
+                            icon: Icons.apartment_outlined,
+                            options: _companies,
+                            selected: _liveDocCompany,
+                            displayString: (c) => c.displayName,
+                            searchText: (c) => c.displayName.toLowerCase(),
+                            onSelected: (c) =>
+                                setState(() => _liveDocCompany = c),
+                          )
+                        else
+                          SearchableSelectField<MarketingDemoNamed>(
+                            label: 'DOC company',
+                            icon: Icons.apartment_outlined,
+                            options: MarketingDemoMasters.docCompanies,
+                            selected: _docCompany,
+                            displayString: (c) => c.displayName,
+                            searchText: (c) => c.searchText,
+                            onSelected: (c) =>
+                                setState(() => _docCompany = c),
+                          ),
                         const SizedBox(height: 12),
-                        _label('Notes'),
-                        TextField(
-                          controller: _notes,
-                          maxLines: 2,
-                          decoration: _decoration(),
-                        ),
+                        if (_companies.isNotEmpty)
+                          SearchableSelectField<BookingFormCompany>(
+                            label: 'Feed company',
+                            icon: Icons.inventory_2_outlined,
+                            options: _companies,
+                            selected: _liveFeedCompany,
+                            displayString: (c) => c.displayName,
+                            searchText: (c) => c.displayName.toLowerCase(),
+                            onSelected: (c) =>
+                                setState(() => _liveFeedCompany = c),
+                          )
+                        else
+                          SearchableSelectField<MarketingDemoNamed>(
+                            label: 'Feed company',
+                            icon: Icons.inventory_2_outlined,
+                            options: MarketingDemoMasters.feedCompanies,
+                            selected: _feedCompany,
+                            displayString: (c) => c.displayName,
+                            searchText: (c) => c.searchText,
+                            onSelected: (c) =>
+                                setState(() => _feedCompany = c),
+                          ),
                       ],
                     ),
                   ),
@@ -659,61 +567,260 @@ class _FarmSurveyFormScreenState extends State<FarmSurveyFormScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        _sectionTitle('Extra metrics'),
-                        _label('Flock age (days)'),
+                        _label('Quantity'),
                         TextField(
-                          controller: _flockAge,
+                          controller: _quantity,
                           keyboardType: TextInputType.number,
                           decoration: _decoration(),
                         ),
                         const SizedBox(height: 12),
-                        _label('Mortality (%)'),
+                        _label('Age'),
+                        TextField(
+                          controller: _ageDays,
+                          keyboardType: TextInputType.number,
+                          decoration: _decoration(hint: 'Days'),
+                        ),
+                        const SizedBox(height: 12),
+                        _label('Total mortality'),
+                        TextField(
+                          controller: _totalMortality,
+                          keyboardType: TextInputType.number,
+                          decoration: _decoration(),
+                        ),
+                        const SizedBox(height: 12),
+                        _label('Present mortality'),
+                        TextField(
+                          controller: _presentMortality,
+                          keyboardType: TextInputType.number,
+                          decoration: _decoration(),
+                        ),
+                        const SizedBox(height: 12),
+                        _label('Mortality %'),
                         TextField(
                           controller: _mortalityPct,
                           keyboardType: TextInputType.number,
                           decoration: _decoration(),
                         ),
                         const SizedBox(height: 12),
-                        _label('Feed bag stock'),
+                        _label('Rest of bird'),
                         TextField(
-                          controller: _feedBags,
+                          controller: _restOfBirds,
                           keyboardType: TextInputType.number,
                           decoration: _decoration(),
                         ),
                         const SizedBox(height: 12),
-                        _label('Cultivated land (acre)'),
+                        _label('Total feed intake'),
                         TextField(
-                          controller: _landArea,
+                          controller: _totalFeed,
+                          keyboardType: TextInputType.number,
+                          decoration: _decoration(hint: 'kg'),
+                        ),
+                        const SizedBox(height: 12),
+                        _label('Av. feed intake'),
+                        TextField(
+                          controller: _avgFeed,
+                          keyboardType: TextInputType.number,
+                          decoration: _decoration(hint: 'kg'),
+                        ),
+                        const SizedBox(height: 12),
+                        _label('Production %'),
+                        TextField(
+                          controller: _productionPercent,
                           keyboardType: TextInputType.number,
                           decoration: _decoration(),
                         ),
                         const SizedBox(height: 12),
-                        _label('Monthly fertilizer (kg)'),
+                        _label('FCR'),
                         TextField(
-                          controller: _fertilizerKg,
+                          controller: _fcr,
                           keyboardType: TextInputType.number,
                           decoration: _decoration(),
                         ),
                         const SizedBox(height: 12),
-                        _label('Daily egg production'),
+                        _label('Total body weight (kg)'),
                         TextField(
-                          controller: _dailyEggs,
+                          controller: _totalBodyWeight,
                           keyboardType: TextInputType.number,
                           decoration: _decoration(),
                         ),
                         const SizedBox(height: 12),
-                        _label('Cracked egg (%)'),
+                        _label('Av. B/W'),
                         TextField(
-                          controller: _crackedEgg,
+                          controller: _avgBodyWeight,
                           keyboardType: TextInputType.number,
                           decoration: _decoration(),
                         ),
                         const SizedBox(height: 12),
-                        _label('Pond area (decimal)'),
+                        _label('Per bag weight (kg)'),
                         TextField(
-                          controller: _pondArea,
+                          controller: _bagWeight,
                           keyboardType: TextInputType.number,
                           decoration: _decoration(),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  SectionCard(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        SearchableSelectField<MarketingDemoNamed>(
+                          label: 'Shed design',
+                          icon: Icons.home_work_outlined,
+                          options: MarketingDemoMasters.shedDesigns,
+                          selected: _shedDesign,
+                          displayString: (s) => s.displayName,
+                          searchText: (s) => s.searchText,
+                          onSelected: (s) => setState(() => _shedDesign = s),
+                        ),
+                        const SizedBox(height: 12),
+                        SearchableSelectField<MarketingDemoNamed>(
+                          label: 'Curtain',
+                          icon: Icons.blinds_outlined,
+                          options: MarketingDemoMasters.curtains,
+                          selected: _curtain,
+                          displayString: (s) => s.displayName,
+                          searchText: (s) => s.searchText,
+                          onSelected: (s) => setState(() => _curtain = s),
+                        ),
+                        const SizedBox(height: 12),
+                        SearchableSelectField<MarketingDemoNamed>(
+                          label: 'Floor',
+                          icon: Icons.layers_outlined,
+                          options: MarketingDemoMasters.floors,
+                          selected: _floor,
+                          displayString: (s) => s.displayName,
+                          searchText: (s) => s.searchText,
+                          onSelected: (s) => setState(() => _floor = s),
+                        ),
+                        const SizedBox(height: 12),
+                        _label('Quantity of feeder'),
+                        TextField(
+                          controller: _feederQty,
+                          keyboardType: TextInputType.number,
+                          decoration: _decoration(),
+                        ),
+                        const SizedBox(height: 12),
+                        _label('Quantity drinker'),
+                        TextField(
+                          controller: _drinkerQty,
+                          keyboardType: TextInputType.number,
+                          decoration: _decoration(),
+                        ),
+                        const SizedBox(height: 12),
+                        _label('Av. temperature'),
+                        TextField(
+                          controller: _avgTemp,
+                          keyboardType: TextInputType.number,
+                          decoration: _decoration(),
+                        ),
+                        const SizedBox(height: 12),
+                        _label('Space'),
+                        TextField(
+                          controller: _space,
+                          decoration: _decoration(),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  SectionCard(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        _ratingRow(
+                          'Biosecurity',
+                          _biosecurity,
+                          (v) => setState(() => _biosecurity = v),
+                        ),
+                        _label('Uniformity'),
+                        TextField(
+                          controller: _uniformity,
+                          keyboardType: TextInputType.number,
+                          decoration: _decoration(hint: '%'),
+                        ),
+                        const SizedBox(height: 8),
+                        _ratingRow(
+                          'Management',
+                          _management,
+                          (v) => setState(() => _management = v),
+                        ),
+                        SwitchListTile(
+                          contentPadding: EdgeInsets.zero,
+                          title: Text(
+                            'Diseases',
+                            style: GoogleFonts.poppins(fontSize: 13),
+                          ),
+                          value: _diseasePresent,
+                          onChanged: (v) =>
+                              setState(() => _diseasePresent = v),
+                        ),
+                        if (_diseasePresent) ...[
+                          TextField(
+                            controller: _diseaseDetails,
+                            maxLines: 2,
+                            decoration: _decoration(hint: 'Disease details'),
+                          ),
+                          const SizedBox(height: 8),
+                        ],
+                        _ratingRow(
+                          'Technical support',
+                          _technical,
+                          (v) => setState(() => _technical = v),
+                        ),
+                        _label('Problem facing'),
+                        TextField(
+                          controller: _problems,
+                          maxLines: 2,
+                          decoration: _decoration(),
+                        ),
+                        const SizedBox(height: 8),
+                        _ratingRow(
+                          'Economical solvency',
+                          _economic,
+                          (v) => setState(() => _economic = v),
+                        ),
+                        _label('Remarks'),
+                        TextField(
+                          controller: _remarks,
+                          maxLines: 2,
+                          decoration: _decoration(),
+                        ),
+                        const SizedBox(height: 12),
+                        _label('Comments'),
+                        TextField(
+                          controller: _comments,
+                          maxLines: 2,
+                          decoration: _decoration(),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  SectionCard(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        _readOnly('Reporting officer', _officerName),
+                        SearchableSelectField<MarketingDemoNamed>(
+                          label: 'Territory',
+                          icon: Icons.map_outlined,
+                          options: MarketingDemoMasters.territories,
+                          selected: _territory,
+                          displayString: (t) => t.displayName,
+                          searchText: (t) => t.searchText,
+                          onSelected: (t) => setState(() => _territory = t),
+                        ),
+                        const SizedBox(height: 12),
+                        SearchableSelectField<MarketingDemoNamed>(
+                          label: 'Zone',
+                          icon: Icons.public,
+                          options: MarketingDemoMasters.zones,
+                          selected: _zone,
+                          displayString: (z) => z.displayName,
+                          searchText: (z) => z.searchText,
+                          onSelected: (z) => setState(() => _zone = z),
                         ),
                         const SizedBox(height: 12),
                         OutlinedButton.icon(
@@ -725,7 +832,7 @@ class _FarmSurveyFormScreenState extends State<FarmSurveyFormScreen> {
                                 : '${_photos.length} photo(s)',
                           ),
                         ),
-                        const SizedBox(height: 24),
+                        const SizedBox(height: 16),
                         SizedBox(
                           height: 50,
                           child: ElevatedButton(
@@ -746,7 +853,7 @@ class _FarmSurveyFormScreenState extends State<FarmSurveyFormScreen> {
                                     ),
                                   )
                                 : Text(
-                                    'Submit survey',
+                                    'Submit report',
                                     style: GoogleFonts.poppins(
                                       fontWeight: FontWeight.w600,
                                       color: Colors.white,

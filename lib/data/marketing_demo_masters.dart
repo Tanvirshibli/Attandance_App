@@ -120,6 +120,60 @@ class MarketingDemoMasters {
     ),
   ];
 
+  static const breeds = <MarketingDemoNamed>[
+    MarketingDemoNamed(id: 201, name: 'Cobb 500'),
+    MarketingDemoNamed(id: 202, name: 'Ross 308'),
+    MarketingDemoNamed(id: 203, name: 'Hubbard'),
+    MarketingDemoNamed(id: 204, name: 'Sonali'),
+    MarketingDemoNamed(id: 205, name: 'Local'),
+  ];
+
+  static const docCompanies = <MarketingDemoNamed>[
+    MarketingDemoNamed(id: 301, name: 'Peoples Hatchery'),
+    MarketingDemoNamed(id: 302, name: 'Aftab Hatchery'),
+    MarketingDemoNamed(id: 303, name: 'Kazi Hatchery'),
+    MarketingDemoNamed(id: 304, name: 'Demo Hatchery'),
+  ];
+
+  static const feedCompanies = <MarketingDemoNamed>[
+    MarketingDemoNamed(id: 401, name: 'Peoples Feed'),
+    MarketingDemoNamed(id: 402, name: 'Nourish Feed'),
+    MarketingDemoNamed(id: 403, name: 'Quality Feed'),
+    MarketingDemoNamed(id: 404, name: 'Competitor Feed'),
+  ];
+
+  static const shedDesigns = <MarketingDemoNamed>[
+    MarketingDemoNamed(id: 501, name: 'Open'),
+    MarketingDemoNamed(id: 502, name: 'Semi-closed'),
+    MarketingDemoNamed(id: 503, name: 'Closed'),
+  ];
+
+  static const curtains = <MarketingDemoNamed>[
+    MarketingDemoNamed(id: 511, name: 'Present'),
+    MarketingDemoNamed(id: 512, name: 'Partial'),
+    MarketingDemoNamed(id: 513, name: 'None'),
+  ];
+
+  static const floors = <MarketingDemoNamed>[
+    MarketingDemoNamed(id: 521, name: 'Litter'),
+    MarketingDemoNamed(id: 522, name: 'Slatted'),
+    MarketingDemoNamed(id: 523, name: 'Mixed'),
+  ];
+
+  static const territories = <MarketingDemoNamed>[
+    MarketingDemoNamed(id: 601, name: 'Munshiganj East'),
+    MarketingDemoNamed(id: 602, name: 'Sreenagar'),
+    MarketingDemoNamed(id: 603, name: 'Savar'),
+    MarketingDemoNamed(id: 604, name: 'Narayanganj'),
+  ];
+
+  static const zones = <MarketingDemoNamed>[
+    MarketingDemoNamed(id: 701, name: 'Dhaka South'),
+    MarketingDemoNamed(id: 702, name: 'Dhaka North'),
+    MarketingDemoNamed(id: 703, name: 'Chattogram'),
+    MarketingDemoNamed(id: 704, name: 'Khulna'),
+  ];
+
   static const products = <MarketingDemoProduct>[
     MarketingDemoProduct(
       id: 101,
