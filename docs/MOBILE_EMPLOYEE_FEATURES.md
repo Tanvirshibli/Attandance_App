@@ -163,7 +163,7 @@ Handoff for backend teams: **[SALES_AND_PAYMENTS_API_CONTRACT.md](SALES_AND_PAYM
 - Success tick is pinned to the **center of the rounded guide**
 - Step badge, coaching, and check-in status sit in one horizontally centered strip **above** the guide (including GPS “Capturing location…”)
 
-### Farm visit detail photos and combined FCR (v2.2.3+67)
+### Farm visit detail photos and combined FCR (v2.2.3+68)
 
 - Farm visit report detail shows uploaded photo thumbnails; tap to zoom
 - Form merges Production% and FCR into one paper-aligned field

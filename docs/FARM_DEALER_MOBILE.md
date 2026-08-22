@@ -4,7 +4,7 @@ Last updated: August 22, 2026
 
 Field data collection for **markets**, **dealers**, and **farms** in Attandance_App, backed by ZKTeco `/api/v1/mobile/marketing/*` (no JWT — same pattern as geo). Employee identity uses profile `canonicalEmployeeId` (`employees.id`).
 
-**v2.2.3+67:** Farm visit report detail shows uploaded photo thumbnails (tap to zoom). Form uses one **Production% / FCR** field (e.g. `85% / 1.87` or `1.87`); parsed into API columns with raw value in `extra_data.production_fcr_note`.
+**v2.2.3+68:** Farm visit report detail shows uploaded photo thumbnails (tap to zoom). Form uses one **Production% / FCR** field (e.g. `85% / 1.87` or `1.87`); parsed into API columns with raw value in `extra_data.production_fcr_note`.
 
 **v2.2.3+66:** Three separate visit forms — **Farm visit report** (`POST /farm-surveys`, farm party only), **Dealer visit** (`POST /visits`, dealer party), **Market visit** (`POST /visits`, market fixed + party picker). Farm report: dealer block read-only from parent party; breed/DOC/etc. use type-to-search autocomplete (`SearchableTextField`). Dealer/market visits no longer offer `survey` type.
 
