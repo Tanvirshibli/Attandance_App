@@ -4,7 +4,7 @@ Last updated: August 22, 2026
 
 Field data collection for **markets**, **dealers**, and **farms** in Attandance_App, backed by ZKTeco `/api/v1/mobile/marketing/*` (no JWT — same pattern as geo). Employee identity uses profile `canonicalEmployeeId` (`employees.id`).
 
-**v2.2.3+62:** Hub sections use distinct tinted panels (Farms green, Dealers primary, Markets info). Farm visit report accepts **free-text** breed, DOC/feed company, shed, curtain, floor, territory, and zone with demo suggestion chips (CB, Provita, PPHL, Open shed, Cloth, Concrete house, zones A/B/C, etc.). Labels clarify units (avg feed g/bird, avg B/W grams, space sq ft). Editable farming years; visit type and temperature range stored in `extra_data`. Home Recent Attendance badge no longer overlaps check-in/out times.
+**v2.2.3+63:** Hub sections use distinct tinted panels (Farms green, Dealers primary, Markets info). Farm visit report accepts **free-text** breed, DOC/feed company, shed, curtain, floor, territory, and zone with demo suggestion chips (CB, Provita, PPHL, Open shed, Cloth, Concrete house, zones A/B/C, etc.). Labels clarify units (avg feed g/bird, avg B/W grams, space sq ft). Editable farming years; visit type and temperature range stored in `extra_data`. Home Recent Attendance badge no longer overlaps check-in/out times.
 
 **v2.2.3+61:** Renamed to **Farms, Dealers and Markets**. Hub sections (Farms → Dealers → Markets) show top **5** preview rows; compact **Create** (+) and **View all** (list) icon buttons sit on the title row. Tap a preview row for the record page; pull-to-refresh reloads previews.
 

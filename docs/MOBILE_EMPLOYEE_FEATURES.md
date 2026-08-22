@@ -163,7 +163,7 @@ Handoff for backend teams: **[SALES_AND_PAYMENTS_API_CONTRACT.md](SALES_AND_PAYM
 - Success tick is pinned to the **center of the rounded guide**
 - Step badge, coaching, and check-in status sit in one horizontally centered strip **above** the guide (including GPS “Capturing location…”)
 
-### Hub colors, attendance layout, farm visit free-text (v2.2.3+62)
+### Hub colors, attendance layout, farm visit free-text (v2.2.3+63)
 
 - Farms / Dealers / Markets hub sections each have a distinct tinted panel and left accent border
 - Home Recent Attendance: status badge sits beside the weekday; check-in/out times no longer overlap the badge
