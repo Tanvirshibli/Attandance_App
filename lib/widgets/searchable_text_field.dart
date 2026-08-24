@@ -29,12 +29,31 @@ class SearchableTextField extends StatefulWidget {
 }
 
 class _SearchableTextFieldState extends State<SearchableTextField> {
-  bool _showAllOnEmpty = false;
+  FocusNode? _fieldFocusNode;
+
+  @override
+  void dispose() {
+    _fieldFocusNode?.removeListener(_onFocusChange);
+    super.dispose();
+  }
+
+  void _bindFocusNode(FocusNode node) {
+    if (_fieldFocusNode == node) return;
+    _fieldFocusNode?.removeListener(_onFocusChange);
+    _fieldFocusNode = node;
+    _fieldFocusNode!.addListener(_onFocusChange);
+  }
+
+  void _onFocusChange() {
+    if (mounted) setState(() {});
+  }
 
   Iterable<String> _filtered(String query) {
     final q = query.trim().toLowerCase();
     if (q.isEmpty) {
-      if (!_showAllOnEmpty) return const Iterable<String>.empty();
+      if (_fieldFocusNode?.hasFocus != true) {
+        return const Iterable<String>.empty();
+      }
       return widget.suggestions.take(80);
     }
     return widget.suggestions
@@ -50,6 +69,16 @@ class _SearchableTextFieldState extends State<SearchableTextField> {
     );
   }
 
+  void _toggleSuffix(FocusNode focusNode, TextEditingController fieldController) {
+    if (focusNode.hasFocus) {
+      focusNode.unfocus();
+      return;
+    }
+    focusNode.requestFocus();
+    _bumpController(fieldController);
+    setState(() {});
+  }
+
   @override
   Widget build(BuildContext context) {
     return Column(
@@ -60,6 +89,7 @@ class _SearchableTextFieldState extends State<SearchableTextField> {
           displayStringForOption: (option) => option,
           fieldViewBuilder:
               (context, fieldController, focusNode, onFieldSubmitted) {
+            _bindFocusNode(focusNode);
             if (fieldController.text != widget.controller.text) {
               fieldController.value = TextEditingValue(
                 text: widget.controller.text,
@@ -68,18 +98,21 @@ class _SearchableTextFieldState extends State<SearchableTextField> {
                 ),
               );
             }
+            final listOpen = focusNode.hasFocus;
             return TextFormField(
               controller: fieldController,
               focusNode: focusNode,
               enabled: widget.enabled,
               keyboardType: widget.keyboardType,
               onFieldSubmitted: (_) => onFieldSubmitted(),
-              onTapOutside: (_) {
-                focusNode.unfocus();
-                if (_showAllOnEmpty) {
-                  setState(() => _showAllOnEmpty = false);
+              onTap: () {
+                if (!focusNode.hasFocus) {
+                  focusNode.requestFocus();
                 }
+                setState(() {});
+                _bumpController(fieldController);
               },
+              onTapOutside: (_) => focusNode.unfocus(),
               onChanged: (v) {
                 if (widget.controller.text != v) widget.controller.text = v;
               },
@@ -93,23 +126,14 @@ class _SearchableTextFieldState extends State<SearchableTextField> {
                     ? IconButton(
                         tooltip: 'Suggestions',
                         icon: Icon(
-                          _showAllOnEmpty
+                          listOpen
                               ? Icons.arrow_drop_up
                               : Icons.arrow_drop_down,
                           size: 22,
                         ),
                         onPressed: !widget.enabled
                             ? null
-                            : () {
-                                if (focusNode.hasFocus && _showAllOnEmpty) {
-                                  focusNode.unfocus();
-                                  setState(() => _showAllOnEmpty = false);
-                                  return;
-                                }
-                                setState(() => _showAllOnEmpty = true);
-                                focusNode.requestFocus();
-                                _bumpController(fieldController);
-                              },
+                            : () => _toggleSuffix(focusNode, fieldController),
                       )
                     : null,
                 filled: true,
@@ -123,7 +147,7 @@ class _SearchableTextFieldState extends State<SearchableTextField> {
           },
           onSelected: (value) {
             widget.controller.text = value;
-            setState(() => _showAllOnEmpty = false);
+            _fieldFocusNode?.unfocus();
           },
           optionsViewBuilder: (context, onSelected, options) {
             if (options.isEmpty) return const SizedBox.shrink();

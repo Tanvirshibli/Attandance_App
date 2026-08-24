@@ -20,7 +20,7 @@ class SearchableSelectField<T extends Object> extends StatefulWidget {
     this.filter,
     this.enabled = true,
     this.validator,
-    this.hintText = 'Type to search…',
+    this.hintText = 'Tap to pick or type…',
   });
 
   final String label;
@@ -43,7 +43,24 @@ class SearchableSelectField<T extends Object> extends StatefulWidget {
 
 class _SearchableSelectFieldState<T extends Object>
     extends State<SearchableSelectField<T>> {
-  bool _showAllOnEmpty = false;
+  FocusNode? _fieldFocusNode;
+
+  @override
+  void dispose() {
+    _fieldFocusNode?.removeListener(_onFocusChange);
+    super.dispose();
+  }
+
+  void _bindFocusNode(FocusNode node) {
+    if (_fieldFocusNode == node) return;
+    _fieldFocusNode?.removeListener(_onFocusChange);
+    _fieldFocusNode = node;
+    _fieldFocusNode!.addListener(_onFocusChange);
+  }
+
+  void _onFocusChange() {
+    if (mounted) setState(() {});
+  }
 
   bool _matches(T item, String query) {
     final q = query.trim().toLowerCase();
@@ -57,7 +74,9 @@ class _SearchableSelectFieldState<T extends Object>
   Iterable<T> _filtered(String query) {
     if (widget.options.isEmpty) return const Iterable.empty();
     final q = query.trim();
-    if (q.isEmpty && !_showAllOnEmpty) return const Iterable.empty();
+    if (q.isEmpty && _fieldFocusNode?.hasFocus != true) {
+      return const Iterable.empty();
+    }
     return widget.options.where((o) => _matches(o, q)).take(80);
   }
 
@@ -67,6 +86,16 @@ class _SearchableSelectFieldState<T extends Object>
       text: text,
       selection: TextSelection.collapsed(offset: text.length),
     );
+  }
+
+  void _toggleSuffix(FocusNode focusNode, TextEditingController controller) {
+    if (focusNode.hasFocus) {
+      focusNode.unfocus();
+      return;
+    }
+    focusNode.requestFocus();
+    _bumpController(controller);
+    setState(() {});
   }
 
   @override
@@ -89,6 +118,7 @@ class _SearchableSelectFieldState<T extends Object>
               initialValue: TextEditingValue(text: display),
               fieldViewBuilder:
                   (context, controller, focusNode, onFieldSubmitted) {
+                _bindFocusNode(focusNode);
                 if (current != null && controller.text != display) {
                   controller.value = TextEditingValue(
                     text: display,
@@ -96,17 +126,20 @@ class _SearchableSelectFieldState<T extends Object>
                         TextSelection.collapsed(offset: display.length),
                   );
                 }
+                final listOpen = focusNode.hasFocus;
                 return TextFormField(
                   controller: controller,
                   focusNode: focusNode,
                   enabled: widget.enabled && widget.options.isNotEmpty,
                   onFieldSubmitted: (_) => onFieldSubmitted(),
-                  onTapOutside: (_) {
-                    focusNode.unfocus();
-                    if (_showAllOnEmpty) {
-                      setState(() => _showAllOnEmpty = false);
+                  onTap: () {
+                    if (!focusNode.hasFocus) {
+                      focusNode.requestFocus();
                     }
+                    setState(() {});
+                    _bumpController(controller);
                   },
+                  onTapOutside: (_) => focusNode.unfocus(),
                   style: GoogleFonts.poppins(fontSize: 14),
                   decoration: InputDecoration(
                     labelText: widget.label,
@@ -126,14 +159,14 @@ class _SearchableSelectFieldState<T extends Object>
                                     controller.clear();
                                     field.didChange(null);
                                     widget.onSelected(null);
-                                    setState(() => _showAllOnEmpty = false);
+                                    focusNode.unfocus();
                                   }
                                 : null,
                           ),
                         IconButton(
                           tooltip: 'Show options',
                           icon: Icon(
-                            _showAllOnEmpty
+                            listOpen
                                 ? Icons.arrow_drop_up
                                 : Icons.arrow_drop_down,
                             size: 22,
@@ -141,17 +174,7 @@ class _SearchableSelectFieldState<T extends Object>
                           onPressed: !widget.enabled ||
                                   widget.options.isEmpty
                               ? null
-                              : () {
-                                  if (focusNode.hasFocus &&
-                                      _showAllOnEmpty) {
-                                    focusNode.unfocus();
-                                    setState(() => _showAllOnEmpty = false);
-                                    return;
-                                  }
-                                  setState(() => _showAllOnEmpty = true);
-                                  focusNode.requestFocus();
-                                  _bumpController(controller);
-                                },
+                              : () => _toggleSuffix(focusNode, controller),
                         ),
                       ],
                     ),
@@ -168,7 +191,7 @@ class _SearchableSelectFieldState<T extends Object>
               onSelected: (value) {
                 field.didChange(value);
                 widget.onSelected(value);
-                setState(() => _showAllOnEmpty = false);
+                _fieldFocusNode?.unfocus();
               },
               optionsViewBuilder: (context, onSelected, optionsList) {
                 if (optionsList.isEmpty) return const SizedBox.shrink();
