@@ -196,11 +196,14 @@ Selecting a product fills `product_name` and related category/company when those
 
 | Resource | Params |
 |----------|--------|
-| Parties | `employee_id`, `party_type`, `market_id`, `q`, `status` |
+| Parties (master lists) | `party_type`, `market_id`, `q`, `status`, `limit` — **omit `employee_id`** so farms/dealers are company-wide for all authenticated users |
+| Parties (optional mine filter) | `employee_id` still supported by the API when a private list is needed |
 | Visits | `employee_id`, `party_id`, `status` |
 | Farm surveys | `employee_id`, `party_id`, `from`, `to` |
 | Follow-ups | `employee_id`, `party_id`, `status` |
-| Markets | `q` (optional) |
+| Markets | `q` (optional) — already company-wide |
+
+Hub preview, View all parties, market-detail parties, and the parent-dealer picker **do not** send `employee_id`. Create still stamps `created_by_employee_id` / `owner_employee_id`.
 
 ---
 
