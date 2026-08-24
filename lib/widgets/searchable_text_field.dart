@@ -33,7 +33,7 @@ class _SearchableTextFieldState extends State<SearchableTextField> {
   final LayerLink _layerLink = LayerLink();
   OverlayEntry? _overlay;
   final GlobalKey _fieldKey = GlobalKey();
-  bool _selecting = false;
+  final Object _tapRegionGroupId = Object();
 
   @override
   void initState() {
@@ -106,46 +106,45 @@ class _SearchableTextFieldState extends State<SearchableTextField> {
             link: _layerLink,
             showWhenUnlinked: false,
             offset: const Offset(0, 56),
-            child: Material(
-              elevation: 6,
-              borderRadius: BorderRadius.circular(12),
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxHeight: 240),
-                child: options.isEmpty
-                    ? Padding(
-                        padding: const EdgeInsets.all(12),
-                        child: Text(
-                          'No matches',
-                          style: GoogleFonts.poppins(
-                            fontSize: 13,
-                            color: AppColors.textSecondary,
+            child: TextFieldTapRegion(
+              groupId: _tapRegionGroupId,
+              child: Material(
+                elevation: 6,
+                borderRadius: BorderRadius.circular(12),
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxHeight: 240),
+                  child: options.isEmpty
+                      ? Padding(
+                          padding: const EdgeInsets.all(12),
+                          child: Text(
+                            'No matches',
+                            style: GoogleFonts.poppins(
+                              fontSize: 13,
+                              color: AppColors.textSecondary,
+                            ),
                           ),
-                        ),
-                      )
-                    : ListView.builder(
-                        padding: EdgeInsets.zero,
-                        shrinkWrap: true,
-                        itemCount: options.length,
-                        itemBuilder: (context, index) {
-                          final option = options[index];
-                          return GestureDetector(
-                            onTapDown: (_) => _selecting = true,
-                            child: ListTile(
+                        )
+                      : ListView.builder(
+                          padding: EdgeInsets.zero,
+                          shrinkWrap: true,
+                          itemCount: options.length,
+                          itemBuilder: (context, index) {
+                            final option = options[index];
+                            return ListTile(
                               dense: true,
                               title: Text(
                                 option,
                                 style: GoogleFonts.poppins(fontSize: 13),
                               ),
                               onTap: () {
-                                _selecting = false;
                                 widget.controller.text = option;
                                 _hideOverlay();
                                 _focusNode.unfocus();
                               },
-                            ),
-                          );
-                        },
-                      ),
+                            );
+                          },
+                        ),
+                ),
               ),
             ),
           ),
@@ -175,46 +174,46 @@ class _SearchableTextFieldState extends State<SearchableTextField> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        CompositedTransformTarget(
-          link: _layerLink,
-          child: TextFormField(
-            key: _fieldKey,
-            controller: widget.controller,
-            focusNode: _focusNode,
-            enabled: widget.enabled,
-            keyboardType: widget.keyboardType,
-            onTap: () {
-              if (!_focusNode.hasFocus) {
-                _focusNode.requestFocus();
-              } else {
-                _showOverlay();
-              }
-            },
-            onTapOutside: (_) {
-              if (_selecting) return;
-              _focusNode.unfocus();
-            },
-            style: GoogleFonts.poppins(fontSize: 14),
-            decoration: InputDecoration(
-              labelText: widget.label,
-              hintText: widget.hintText,
-              labelStyle: GoogleFonts.poppins(fontSize: 13),
-              prefixIcon: Icon(widget.icon, size: 20),
-              suffixIcon: widget.suggestions.isNotEmpty
-                  ? IconButton(
-                      tooltip: 'Suggestions',
-                      icon: Icon(
-                        listOpen ? Icons.arrow_drop_up : Icons.arrow_drop_down,
-                        size: 22,
-                      ),
-                      onPressed: widget.enabled ? _toggleSuffix : null,
-                    )
-                  : null,
-              filled: true,
-              fillColor: AppColors.background,
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-                borderSide: BorderSide.none,
+        TextFieldTapRegion(
+          groupId: _tapRegionGroupId,
+          child: CompositedTransformTarget(
+            link: _layerLink,
+            child: TextFormField(
+              key: _fieldKey,
+              controller: widget.controller,
+              focusNode: _focusNode,
+              enabled: widget.enabled,
+              keyboardType: widget.keyboardType,
+              onTap: () {
+                if (!_focusNode.hasFocus) {
+                  _focusNode.requestFocus();
+                } else {
+                  _showOverlay();
+                }
+              },
+              onTapOutside: (_) => _focusNode.unfocus(),
+              style: GoogleFonts.poppins(fontSize: 14),
+              decoration: InputDecoration(
+                labelText: widget.label,
+                hintText: widget.hintText,
+                labelStyle: GoogleFonts.poppins(fontSize: 13),
+                prefixIcon: Icon(widget.icon, size: 20),
+                suffixIcon: widget.suggestions.isNotEmpty
+                    ? IconButton(
+                        tooltip: 'Suggestions',
+                        icon: Icon(
+                          listOpen ? Icons.arrow_drop_up : Icons.arrow_drop_down,
+                          size: 22,
+                        ),
+                        onPressed: widget.enabled ? _toggleSuffix : null,
+                      )
+                    : null,
+                filled: true,
+                fillColor: AppColors.background,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide.none,
+                ),
               ),
             ),
           ),

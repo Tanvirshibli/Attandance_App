@@ -27,7 +27,7 @@
 >
 > August 18, 2026 Google Maps: Geo Tracking uses native Google Maps (`google_maps_flutter`) with Standard, Terrain, and Hybrid Satellite layers, live marker, accuracy circle, history pins, and the same zoom/recenter controls.
 >
-> August 24, 2026 Searchable dropdown fix: `SearchableTextField` and `SearchableSelectField` now correctly register item selection. A `GestureDetector(onTapDown)` sets a `_selecting` guard before `onTapOutside` can fire, preventing the overlay from being dismissed before the `ListTile.onTap` callback completes. `_hideOverlay()` is called explicitly inside `onTap` for deterministic teardown.
+> August 24, 2026 searchable dropdown reliability update: `SearchableTextField` and `SearchableSelectField` now use `TextFieldTapRegion` to treat the field and overlay list as one interaction region. This prevents premature `onTapOutside` blur while selecting options and keeps form page scrolling usable while dropdowns are expanded.
 >
 > August 16, 2026 Vehicles: Services → Vehicles lists the full active fleet. Tap a vehicle for **Maintenance** or **Trips** (unfiltered by logged-in user). See `docs/VEHICLES_API.md`.
 >
