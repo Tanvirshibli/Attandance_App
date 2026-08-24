@@ -33,6 +33,7 @@ class _SearchableTextFieldState extends State<SearchableTextField> {
   final LayerLink _layerLink = LayerLink();
   OverlayEntry? _overlay;
   final GlobalKey _fieldKey = GlobalKey();
+  bool _selecting = false;
 
   @override
   void initState() {
@@ -127,16 +128,21 @@ class _SearchableTextFieldState extends State<SearchableTextField> {
                         itemCount: options.length,
                         itemBuilder: (context, index) {
                           final option = options[index];
-                          return ListTile(
-                            dense: true,
-                            title: Text(
-                              option,
-                              style: GoogleFonts.poppins(fontSize: 13),
+                          return GestureDetector(
+                            onTapDown: (_) => _selecting = true,
+                            child: ListTile(
+                              dense: true,
+                              title: Text(
+                                option,
+                                style: GoogleFonts.poppins(fontSize: 13),
+                              ),
+                              onTap: () {
+                                _selecting = false;
+                                widget.controller.text = option;
+                                _hideOverlay();
+                                _focusNode.unfocus();
+                              },
                             ),
-                            onTap: () {
-                              widget.controller.text = option;
-                              _focusNode.unfocus();
-                            },
                           );
                         },
                       ),
@@ -184,7 +190,10 @@ class _SearchableTextFieldState extends State<SearchableTextField> {
                 _showOverlay();
               }
             },
-            onTapOutside: (_) => _focusNode.unfocus(),
+            onTapOutside: (_) {
+              if (_selecting) return;
+              _focusNode.unfocus();
+            },
             style: GoogleFonts.poppins(fontSize: 14),
             decoration: InputDecoration(
               labelText: widget.label,

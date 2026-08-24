@@ -49,6 +49,7 @@ class _SearchableSelectFieldState<T extends Object>
   final GlobalKey _fieldKey = GlobalKey();
   OverlayEntry? _overlay;
   bool _userEditing = false;
+  bool _selecting = false;
   FormFieldState<T>? _formField;
 
   @override
@@ -173,28 +174,33 @@ class _SearchableSelectFieldState<T extends Object>
                         itemBuilder: (context, index) {
                           final option = options[index];
                           final subtitle = widget.subtitleFor?.call(option);
-                          return ListTile(
-                            dense: true,
-                            title: Text(
-                              widget.displayString(option),
-                              style: GoogleFonts.poppins(fontSize: 13),
+                          return GestureDetector(
+                            onTapDown: (_) => _selecting = true,
+                            child: ListTile(
+                              dense: true,
+                              title: Text(
+                                widget.displayString(option),
+                                style: GoogleFonts.poppins(fontSize: 13),
+                              ),
+                              subtitle: subtitle != null && subtitle.isNotEmpty
+                                  ? Text(
+                                      subtitle,
+                                      style: GoogleFonts.poppins(
+                                        fontSize: 11,
+                                        color: AppColors.textSecondary,
+                                      ),
+                                    )
+                                  : null,
+                              onTap: () {
+                                _selecting = false;
+                                _userEditing = false;
+                                _syncDisplay(option);
+                                _formField?.didChange(option);
+                                widget.onSelected(option);
+                                _hideOverlay();
+                                _focusNode.unfocus();
+                              },
                             ),
-                            subtitle: subtitle != null && subtitle.isNotEmpty
-                                ? Text(
-                                    subtitle,
-                                    style: GoogleFonts.poppins(
-                                      fontSize: 11,
-                                      color: AppColors.textSecondary,
-                                    ),
-                                  )
-                                : null,
-                            onTap: () {
-                              _userEditing = false;
-                              _syncDisplay(option);
-                              _formField?.didChange(option);
-                              widget.onSelected(option);
-                              _focusNode.unfocus();
-                            },
                           );
                         },
                       ),
@@ -244,7 +250,10 @@ class _SearchableSelectFieldState<T extends Object>
                 _showOverlay();
               }
             },
-            onTapOutside: (_) => _focusNode.unfocus(),
+            onTapOutside: (_) {
+              if (_selecting) return;
+              _focusNode.unfocus();
+            },
             style: GoogleFonts.poppins(fontSize: 14),
             decoration: InputDecoration(
               labelText: widget.label,
