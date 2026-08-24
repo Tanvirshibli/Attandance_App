@@ -27,7 +27,7 @@
 >
 > August 18, 2026 Google Maps: Geo Tracking uses native Google Maps (`google_maps_flutter`) with Standard, Terrain, and Hybrid Satellite layers, live marker, accuracy circle, history pins, and the same zoom/recenter controls.
 >
-> August 24, 2026 searchable dropdown rewrite: `SearchableTextField` and `SearchableSelectField` no longer use `OverlayEntry`. Options render **inline** under the field with an `_open` flag independent of focus/`onTapOutside`, so taps select values and page scrolling no longer closes the list. Farm/visit forms no longer use `ScrollViewKeyboardDismissBehavior.onDrag`.
+> August 24, 2026 searchable dropdown rewrite: `SearchableTextField` and `SearchableSelectField` no longer use `OverlayEntry`. Options render **inline** under the field with an `_open` flag independent of focus/`onTapOutside`, so taps select values and page scrolling no longer closes the list. A touch-slop-aware global pointer route collapses the list on a true outside **tap** while keeping it open during page **drags**. Farm/visit forms no longer use `ScrollViewKeyboardDismissBehavior.onDrag`.
 >
 > August 16, 2026 Vehicles: Services → Vehicles lists the full active fleet. Tap a vehicle for **Maintenance** or **Trips** (unfiltered by logged-in user). See `docs/VEHICLES_API.md`.
 >
