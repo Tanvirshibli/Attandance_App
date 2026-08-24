@@ -232,6 +232,35 @@ class MarketingDemoMasters {
     return usable.isNotEmpty ? usable : sectors;
   }
 
+  /// Prefer Sales form-data products; fall back to demo catalog.
+  static List<MarketingDemoProduct> productsFromBookingForm(BookingFormData? data) {
+    if (data == null) return products;
+    final byId = <int, MarketingDemoProduct>{};
+    for (final p in data.feedProductPrices) {
+      if (p.productId <= 0) continue;
+      byId[p.productId] = MarketingDemoProduct(
+        id: p.productId,
+        name: p.displayLabel,
+        categoryId: p.categoryId,
+        categoryName: 'Feed',
+      );
+    }
+    for (final p in data.chicksProducts) {
+      if (p.productId <= 0) continue;
+      byId.putIfAbsent(
+        p.productId,
+        () => MarketingDemoProduct(
+          id: p.productId,
+          name: p.displayLabel,
+          categoryName: 'Chicks',
+        ),
+      );
+    }
+    if (byId.isEmpty) return products;
+    return byId.values.toList()
+      ..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+  }
+
   static T? byId<T>(List<T> items, int? id, int Function(T item) getId) {
     if (id == null) return null;
     for (final item in items) {

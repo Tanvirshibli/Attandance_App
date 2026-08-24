@@ -196,6 +196,39 @@ class MarketingService {
     return _getList(uri, Visit.fromJson);
   }
 
+  Future<ApiResult<Visit>> getVisit(int visitId) async {
+    if (!await isMarketingEnabled()) {
+      return ApiResult.fail('feature_disabled');
+    }
+    if (visitId <= 0) return ApiResult.fail('Invalid visit.');
+    final base = await _url(
+      'marketing.visits',
+      '/api/v1/mobile/marketing/visits',
+    );
+    return _getObject(Uri.parse('$base/$visitId'), Visit.fromJson);
+  }
+
+  Future<ApiResult<List<Attachment>>> listAttachments({
+    required String attachableType,
+    required int attachableId,
+  }) async {
+    if (!await isMarketingEnabled()) {
+      return ApiResult.fail('feature_disabled');
+    }
+    if (attachableId <= 0) return ApiResult.fail('Invalid attachable.');
+    final base = await _url(
+      'marketing.attachments',
+      '/api/v1/mobile/marketing/attachments',
+    );
+    final uri = Uri.parse(base).replace(
+      queryParameters: {
+        'attachable_type': attachableType,
+        'attachable_id': '$attachableId',
+      },
+    );
+    return _getList(uri, Attachment.fromJson);
+  }
+
   Future<ApiResult<Visit>> createVisit(Map<String, dynamic> payload) async {
     if (!await isMarketingEnabled()) {
       return ApiResult.fail('feature_disabled');

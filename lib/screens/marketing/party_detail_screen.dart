@@ -12,6 +12,7 @@ import 'farm_survey_detail_screen.dart';
 import 'farm_survey_form_screen.dart';
 import 'followup_form_screen.dart';
 import 'dealer_visit_form_screen.dart';
+import 'visit_detail_screen.dart';
 
 class PartyDetailScreen extends StatefulWidget {
   const PartyDetailScreen({super.key, required this.partyId, this.initialParty});
@@ -276,25 +277,34 @@ class _PartyDetailScreenState extends State<PartyDetailScreen> {
                           child: Padding(
                             padding: const EdgeInsets.only(bottom: 10),
                             child: SectionCard(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    visit.displayName,
-                                    style: GoogleFonts.poppins(
-                                      fontWeight: FontWeight.w600,
-                                      fontSize: 14,
+                              padding: EdgeInsets.zero,
+                              child: ListTile(
+                                onTap: () async {
+                                  await Navigator.of(context).push(
+                                    MaterialPageRoute(
+                                      builder: (_) => VisitDetailScreen(
+                                        visitId: visit.id,
+                                        initial: visit,
+                                      ),
                                     ),
+                                  );
+                                  if (mounted) _loadRecords();
+                                },
+                                title: Text(
+                                  visit.displayName,
+                                  style: GoogleFonts.poppins(
+                                    fontWeight: FontWeight.w600,
+                                    fontSize: 14,
                                   ),
-                                  const SizedBox(height: 4),
-                                  Text(
-                                    visit.status ?? '—',
-                                    style: GoogleFonts.poppins(
-                                      fontSize: 12,
-                                      color: AppColors.textSecondary,
-                                    ),
+                                ),
+                                subtitle: Text(
+                                  visit.status ?? '—',
+                                  style: GoogleFonts.poppins(
+                                    fontSize: 12,
+                                    color: AppColors.textSecondary,
                                   ),
-                                ],
+                                ),
+                                trailing: const Icon(Icons.chevron_right),
                               ),
                             ),
                           ),
