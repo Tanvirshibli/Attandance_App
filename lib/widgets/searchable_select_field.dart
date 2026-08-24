@@ -6,6 +6,7 @@ import '../config/theme.dart';
 typedef SearchableItemFilter<T> = bool Function(T item, String query);
 
 /// Type-to-search dropdown styled like other form fields in the app.
+/// Options render inline under the field so selection and page scroll work.
 class SearchableSelectField<T extends Object> extends StatefulWidget {
   const SearchableSelectField({
     super.key,
@@ -44,12 +45,9 @@ class SearchableSelectField<T extends Object> extends StatefulWidget {
 class _SearchableSelectFieldState<T extends Object>
     extends State<SearchableSelectField<T>> {
   final FocusNode _focusNode = FocusNode();
-  final LayerLink _layerLink = LayerLink();
   final TextEditingController _controller = TextEditingController();
-  final GlobalKey _fieldKey = GlobalKey();
-  final Object _tapRegionGroupId = Object();
-  OverlayEntry? _overlay;
   bool _userEditing = false;
+  bool _open = false;
   FormFieldState<T>? _formField;
 
   @override
@@ -70,7 +68,6 @@ class _SearchableSelectFieldState<T extends Object>
 
   @override
   void dispose() {
-    _hideOverlay();
     _focusNode.removeListener(_onFocusChange);
     _controller.removeListener(_onTextChanged);
     _focusNode.dispose();
@@ -89,27 +86,21 @@ class _SearchableSelectFieldState<T extends Object>
   }
 
   void _onFocusChange() {
-    if (_focusNode.hasFocus) {
-      _userEditing = false;
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted && _focusNode.hasFocus) _showOverlay();
-      });
-    } else {
+    if (!_focusNode.hasFocus) {
       _userEditing = false;
       _syncDisplay(widget.selected);
-      _hideOverlay();
     }
     if (mounted) setState(() {});
   }
 
   void _onTextChanged() {
-    if (!_focusNode.hasFocus) return;
+    if (!_open) return;
     final selectedLabel =
         widget.selected != null ? widget.displayString(widget.selected as T) : '';
     if (_controller.text != selectedLabel) {
       _userEditing = true;
     }
-    _showOverlay();
+    if (mounted) setState(() {});
   }
 
   bool _matches(T item, String query) {
@@ -131,99 +122,74 @@ class _SearchableSelectFieldState<T extends Object>
     return widget.options.where((o) => _matches(o, filterQuery)).take(80).toList();
   }
 
-  double _fieldWidth() {
-    final box = _fieldKey.currentContext?.findRenderObject() as RenderBox?;
-    return box?.size.width ?? 280;
-  }
-
-  void _showOverlay() {
-    if (!widget.enabled || widget.options.isEmpty) {
-      _hideOverlay();
-      return;
-    }
-    _overlay?.remove();
-    final options = _filtered();
-    _overlay = OverlayEntry(
-      builder: (context) {
-        return Positioned(
-          width: _fieldWidth(),
-          child: CompositedTransformFollower(
-            link: _layerLink,
-            showWhenUnlinked: false,
-            offset: const Offset(0, 56),
-            child: TextFieldTapRegion(
-              groupId: _tapRegionGroupId,
-              child: Material(
-                elevation: 6,
-                borderRadius: BorderRadius.circular(12),
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxHeight: 280),
-                  child: options.isEmpty
-                      ? Padding(
-                          padding: const EdgeInsets.all(12),
-                          child: Text(
-                            'No matches',
-                            style: GoogleFonts.poppins(
-                              fontSize: 13,
-                              color: AppColors.textSecondary,
-                            ),
-                          ),
-                        )
-                      : ListView.builder(
-                          padding: EdgeInsets.zero,
-                          shrinkWrap: true,
-                          itemCount: options.length,
-                          itemBuilder: (context, index) {
-                            final option = options[index];
-                            final subtitle = widget.subtitleFor?.call(option);
-                            return ListTile(
-                              dense: true,
-                              title: Text(
-                                widget.displayString(option),
-                                style: GoogleFonts.poppins(fontSize: 13),
-                              ),
-                              subtitle: subtitle != null && subtitle.isNotEmpty
-                                  ? Text(
-                                      subtitle,
-                                      style: GoogleFonts.poppins(
-                                        fontSize: 11,
-                                        color: AppColors.textSecondary,
-                                      ),
-                                    )
-                                  : null,
-                              onTap: () {
-                                _userEditing = false;
-                                _syncDisplay(option);
-                                _formField?.didChange(option);
-                                widget.onSelected(option);
-                                _hideOverlay();
-                                _focusNode.unfocus();
-                              },
-                            );
-                          },
-                        ),
-                ),
-              ),
-            ),
-          ),
-        );
-      },
-    );
-    Overlay.of(context).insert(_overlay!);
-  }
-
-  void _hideOverlay() {
-    _overlay?.remove();
-    _overlay = null;
+  void _setOpen(bool value) {
+    if (_open == value) return;
+    setState(() => _open = value);
   }
 
   void _toggleSuffix() {
     if (!widget.enabled || widget.options.isEmpty) return;
-    if (_focusNode.hasFocus) {
-      _focusNode.unfocus();
+    if (_open) {
+      _setOpen(false);
     } else {
-      _focusNode.requestFocus();
+      _setOpen(true);
+      if (!_focusNode.hasFocus) _focusNode.requestFocus();
     }
+  }
+
+  Widget _optionsPanel(List<T> options) {
+    return Material(
+      elevation: 6,
+      borderRadius: BorderRadius.circular(12),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxHeight: 280),
+        child: options.isEmpty
+            ? Padding(
+                padding: const EdgeInsets.all(12),
+                child: Text(
+                  'No matches',
+                  style: GoogleFonts.poppins(
+                    fontSize: 13,
+                    color: AppColors.textSecondary,
+                  ),
+                ),
+              )
+            : ListView.builder(
+                padding: EdgeInsets.zero,
+                shrinkWrap: true,
+                primary: false,
+                itemCount: options.length,
+                itemBuilder: (context, index) {
+                  final option = options[index];
+                  final subtitle = widget.subtitleFor?.call(option);
+                  return ListTile(
+                    dense: true,
+                    title: Text(
+                      widget.displayString(option),
+                      style: GoogleFonts.poppins(fontSize: 13),
+                    ),
+                    subtitle: subtitle != null && subtitle.isNotEmpty
+                        ? Text(
+                            subtitle,
+                            style: GoogleFonts.poppins(
+                              fontSize: 11,
+                              color: AppColors.textSecondary,
+                            ),
+                          )
+                        : null,
+                    onTap: () {
+                      _userEditing = false;
+                      _syncDisplay(option);
+                      _formField?.didChange(option);
+                      widget.onSelected(option);
+                      _setOpen(false);
+                      _focusNode.unfocus();
+                    },
+                  );
+                },
+              ),
+      ),
+    );
   }
 
   @override
@@ -234,24 +200,22 @@ class _SearchableSelectFieldState<T extends Object>
       builder: (field) {
         _formField = field;
         final current = field.value ?? widget.selected;
-        final listOpen = _focusNode.hasFocus;
-        return TextFieldTapRegion(
-          groupId: _tapRegionGroupId,
-          child: CompositedTransformTarget(
-            link: _layerLink,
-            child: TextFormField(
-              key: _fieldKey,
+        final canOpen = widget.enabled && widget.options.isNotEmpty;
+        final showList = _open && canOpen;
+        final options = showList ? _filtered() : <T>[];
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            TextFormField(
               controller: _controller,
               focusNode: _focusNode,
-              enabled: widget.enabled && widget.options.isNotEmpty,
+              enabled: canOpen,
               onTap: () {
-                if (!_focusNode.hasFocus) {
-                  _focusNode.requestFocus();
-                } else {
-                  _showOverlay();
-                }
+                if (!canOpen) return;
+                _setOpen(true);
+                if (!_focusNode.hasFocus) _focusNode.requestFocus();
               },
-              onTapOutside: (_) => _focusNode.unfocus(),
               style: GoogleFonts.poppins(fontSize: 14),
               decoration: InputDecoration(
                 labelText: widget.label,
@@ -272,6 +236,7 @@ class _SearchableSelectFieldState<T extends Object>
                                 _controller.clear();
                                 field.didChange(null);
                                 widget.onSelected(null);
+                                _setOpen(false);
                                 _focusNode.unfocus();
                               }
                             : null,
@@ -279,12 +244,10 @@ class _SearchableSelectFieldState<T extends Object>
                     IconButton(
                       tooltip: 'Show options',
                       icon: Icon(
-                        listOpen ? Icons.arrow_drop_up : Icons.arrow_drop_down,
+                        showList ? Icons.arrow_drop_up : Icons.arrow_drop_down,
                         size: 22,
                       ),
-                      onPressed: !widget.enabled || widget.options.isEmpty
-                          ? null
-                          : _toggleSuffix,
+                      onPressed: !canOpen ? null : _toggleSuffix,
                     ),
                   ],
                 ),
@@ -297,7 +260,11 @@ class _SearchableSelectFieldState<T extends Object>
                 ),
               ),
             ),
-          ),
+            if (showList) ...[
+              const SizedBox(height: 6),
+              _optionsPanel(options),
+            ],
+          ],
         );
       },
     );

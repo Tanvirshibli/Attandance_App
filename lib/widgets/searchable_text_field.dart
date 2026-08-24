@@ -4,6 +4,7 @@ import 'package:google_fonts/google_fonts.dart';
 import '../config/theme.dart';
 
 /// Free-text field with type-to-search suggestions (custom values allowed).
+/// Options render inline under the field so selection and page scroll work.
 class SearchableTextField extends StatefulWidget {
   const SearchableTextField({
     super.key,
@@ -30,10 +31,7 @@ class SearchableTextField extends StatefulWidget {
 
 class _SearchableTextFieldState extends State<SearchableTextField> {
   final FocusNode _focusNode = FocusNode();
-  final LayerLink _layerLink = LayerLink();
-  OverlayEntry? _overlay;
-  final GlobalKey _fieldKey = GlobalKey();
-  final Object _tapRegionGroupId = Object();
+  bool _open = false;
 
   @override
   void initState() {
@@ -53,7 +51,6 @@ class _SearchableTextFieldState extends State<SearchableTextField> {
 
   @override
   void dispose() {
-    _hideOverlay();
     _focusNode.removeListener(_onFocusChange);
     widget.controller.removeListener(_onTextChanged);
     _focusNode.dispose();
@@ -61,20 +58,11 @@ class _SearchableTextFieldState extends State<SearchableTextField> {
   }
 
   void _onFocusChange() {
-    if (_focusNode.hasFocus) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted && _focusNode.hasFocus) _showOverlay();
-      });
-    } else {
-      _hideOverlay();
-    }
     if (mounted) setState(() {});
   }
 
   void _onTextChanged() {
-    if (_focusNode.hasFocus) {
-      _showOverlay();
-    }
+    if (_open && mounted) setState(() {});
   }
 
   List<String> _filtered() {
@@ -86,138 +74,110 @@ class _SearchableTextFieldState extends State<SearchableTextField> {
         .toList();
   }
 
-  double _fieldWidth() {
-    final box = _fieldKey.currentContext?.findRenderObject() as RenderBox?;
-    return box?.size.width ?? 280;
-  }
-
-  void _showOverlay() {
-    if (!widget.enabled || widget.suggestions.isEmpty) {
-      _hideOverlay();
-      return;
-    }
-    _overlay?.remove();
-    final options = _filtered();
-    _overlay = OverlayEntry(
-      builder: (context) {
-        return Positioned(
-          width: _fieldWidth(),
-          child: CompositedTransformFollower(
-            link: _layerLink,
-            showWhenUnlinked: false,
-            offset: const Offset(0, 56),
-            child: TextFieldTapRegion(
-              groupId: _tapRegionGroupId,
-              child: Material(
-                elevation: 6,
-                borderRadius: BorderRadius.circular(12),
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxHeight: 240),
-                  child: options.isEmpty
-                      ? Padding(
-                          padding: const EdgeInsets.all(12),
-                          child: Text(
-                            'No matches',
-                            style: GoogleFonts.poppins(
-                              fontSize: 13,
-                              color: AppColors.textSecondary,
-                            ),
-                          ),
-                        )
-                      : ListView.builder(
-                          padding: EdgeInsets.zero,
-                          shrinkWrap: true,
-                          itemCount: options.length,
-                          itemBuilder: (context, index) {
-                            final option = options[index];
-                            return ListTile(
-                              dense: true,
-                              title: Text(
-                                option,
-                                style: GoogleFonts.poppins(fontSize: 13),
-                              ),
-                              onTap: () {
-                                widget.controller.text = option;
-                                _hideOverlay();
-                                _focusNode.unfocus();
-                              },
-                            );
-                          },
-                        ),
-                ),
-              ),
-            ),
-          ),
-        );
-      },
-    );
-    Overlay.of(context).insert(_overlay!);
-  }
-
-  void _hideOverlay() {
-    _overlay?.remove();
-    _overlay = null;
+  void _setOpen(bool value) {
+    if (_open == value) return;
+    setState(() => _open = value);
   }
 
   void _toggleSuffix() {
     if (!widget.enabled || widget.suggestions.isEmpty) return;
-    if (_focusNode.hasFocus) {
-      _focusNode.unfocus();
+    if (_open) {
+      _setOpen(false);
     } else {
-      _focusNode.requestFocus();
+      _setOpen(true);
+      if (!_focusNode.hasFocus) _focusNode.requestFocus();
     }
+  }
+
+  Widget _optionsPanel(List<String> options) {
+    return Material(
+      elevation: 6,
+      borderRadius: BorderRadius.circular(12),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxHeight: 240),
+        child: options.isEmpty
+            ? Padding(
+                padding: const EdgeInsets.all(12),
+                child: Text(
+                  'No matches',
+                  style: GoogleFonts.poppins(
+                    fontSize: 13,
+                    color: AppColors.textSecondary,
+                  ),
+                ),
+              )
+            : ListView.builder(
+                padding: EdgeInsets.zero,
+                shrinkWrap: true,
+                primary: false,
+                itemCount: options.length,
+                itemBuilder: (context, index) {
+                  final option = options[index];
+                  return ListTile(
+                    dense: true,
+                    title: Text(
+                      option,
+                      style: GoogleFonts.poppins(fontSize: 13),
+                    ),
+                    onTap: () {
+                      widget.controller.text = option;
+                      _setOpen(false);
+                      _focusNode.unfocus();
+                    },
+                  );
+                },
+              ),
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
-    final listOpen = _focusNode.hasFocus;
+    final canOpen = widget.enabled && widget.suggestions.isNotEmpty;
+    final showList = _open && canOpen;
+    final options = showList ? _filtered() : const <String>[];
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        TextFieldTapRegion(
-          groupId: _tapRegionGroupId,
-          child: CompositedTransformTarget(
-            link: _layerLink,
-            child: TextFormField(
-              key: _fieldKey,
-              controller: widget.controller,
-              focusNode: _focusNode,
-              enabled: widget.enabled,
-              keyboardType: widget.keyboardType,
-              onTap: () {
-                if (!_focusNode.hasFocus) {
-                  _focusNode.requestFocus();
-                } else {
-                  _showOverlay();
-                }
-              },
-              onTapOutside: (_) => _focusNode.unfocus(),
-              style: GoogleFonts.poppins(fontSize: 14),
-              decoration: InputDecoration(
-                labelText: widget.label,
-                hintText: widget.hintText,
-                labelStyle: GoogleFonts.poppins(fontSize: 13),
-                prefixIcon: Icon(widget.icon, size: 20),
-                suffixIcon: widget.suggestions.isNotEmpty
-                    ? IconButton(
-                        tooltip: 'Suggestions',
-                        icon: Icon(
-                          listOpen ? Icons.arrow_drop_up : Icons.arrow_drop_down,
-                          size: 22,
-                        ),
-                        onPressed: widget.enabled ? _toggleSuffix : null,
-                      )
-                    : null,
-                filled: true,
-                fillColor: AppColors.background,
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide.none,
-                ),
-              ),
+        TextFormField(
+          controller: widget.controller,
+          focusNode: _focusNode,
+          enabled: widget.enabled,
+          keyboardType: widget.keyboardType,
+          onTap: () {
+            if (!canOpen) return;
+            _setOpen(true);
+            if (!_focusNode.hasFocus) _focusNode.requestFocus();
+          },
+          style: GoogleFonts.poppins(fontSize: 14),
+          decoration: InputDecoration(
+            labelText: widget.label,
+            hintText: widget.hintText,
+            labelStyle: GoogleFonts.poppins(fontSize: 13),
+            prefixIcon: Icon(widget.icon, size: 20),
+            suffixIcon: widget.suggestions.isNotEmpty
+                ? IconButton(
+                    tooltip: 'Suggestions',
+                    icon: Icon(
+                      showList ? Icons.arrow_drop_up : Icons.arrow_drop_down,
+                      size: 22,
+                    ),
+                    onPressed: widget.enabled ? _toggleSuffix : null,
+                  )
+                : null,
+            filled: true,
+            fillColor: AppColors.background,
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide.none,
             ),
           ),
         ),
+        if (showList) ...[
+          const SizedBox(height: 6),
+          _optionsPanel(options),
+        ],
         const SizedBox(height: 12),
       ],
     );
