@@ -207,6 +207,23 @@ Hub preview, View all parties, market-detail parties, and the parent-dealer pick
 
 ---
 
+## Web Reports (ZKTeco)
+
+Admin read-only pages (same Postgres `mkt_*` tables) live under **Reports** nested holders:
+
+| Flutter | ZKTeco web |
+|---------|------------|
+| Markets list | `/reports/markets` |
+| Market visits | `/reports/markets/visits` (trail map + visit grid) |
+| Dealers list | `/reports/dealers` |
+| Dealer visits | `/reports/dealers/visits` |
+| Farms list | `/reports/farms` |
+| Farm visit reports | `/reports/farms/visits` |
+
+See `zkteco-Automation-management-PPHL/docs/REPORTS.md`.
+
+---
+
 ## Out of scope (later iterations)
 
 - Document / signature / audio / video uploads (API is images-only)
