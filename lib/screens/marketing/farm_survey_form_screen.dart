@@ -462,8 +462,6 @@ class _FarmSurveyFormScreenState extends State<FarmSurveyFormScreen> {
             ),
             Expanded(
               child: SingleChildScrollView(
-                keyboardDismissBehavior:
-                    ScrollViewKeyboardDismissBehavior.onDrag,
                 padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
                 child: Column(
                 children: [

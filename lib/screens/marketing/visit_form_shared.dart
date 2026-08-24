@@ -561,8 +561,6 @@ class _SharedVisitFormScreenState extends State<SharedVisitFormScreen> {
             ),
             Expanded(
               child: SingleChildScrollView(
-                keyboardDismissBehavior:
-                    ScrollViewKeyboardDismissBehavior.onDrag,
                 padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
                 child: Column(
                   children: [
