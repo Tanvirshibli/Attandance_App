@@ -1,5 +1,7 @@
 // Farm & Dealer (marketing) models for ZKTeco mobile API.
 
+import '../config/app_config.dart';
+
 int? marketingParseInt(Object? v) {
   if (v == null) return null;
   if (v is int) return v;
@@ -1124,7 +1126,20 @@ class Attachment {
 
   String? get displayUrl {
     final u = url?.trim();
-    if (u != null && u.isNotEmpty) return u;
+    if (u != null && u.isNotEmpty) {
+      if (u.startsWith('http://') || u.startsWith('https://')) return u;
+      final base = AppConfig.attendanceApiBaseUrl.trim().replaceAll(RegExp(r'/+$'), '');
+      if (u.startsWith('/')) return '$base$u';
+      return '$base/$u';
+    }
+    final p = path?.trim();
+    if (p != null && p.isNotEmpty) {
+      final base = AppConfig.attendanceApiBaseUrl.trim().replaceAll(RegExp(r'/+$'), '');
+      if (p.startsWith('http://') || p.startsWith('https://')) return p;
+      if (p.startsWith('/storage/')) return '$base$p';
+      if (p.startsWith('storage/')) return '$base/$p';
+      return '$base/storage/$p';
+    }
     return null;
   }
 

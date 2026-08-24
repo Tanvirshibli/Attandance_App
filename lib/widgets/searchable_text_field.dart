@@ -4,7 +4,7 @@ import 'package:google_fonts/google_fonts.dart';
 import '../config/theme.dart';
 
 /// Free-text field with type-to-search suggestions (custom values allowed).
-class SearchableTextField extends StatelessWidget {
+class SearchableTextField extends StatefulWidget {
   const SearchableTextField({
     super.key,
     required this.label,
@@ -24,12 +24,30 @@ class SearchableTextField extends StatelessWidget {
   final bool enabled;
   final IconData icon;
 
+  @override
+  State<SearchableTextField> createState() => _SearchableTextFieldState();
+}
+
+class _SearchableTextFieldState extends State<SearchableTextField> {
+  bool _showAllOnEmpty = false;
+
   Iterable<String> _filtered(String query) {
     final q = query.trim().toLowerCase();
-    if (q.isEmpty) return suggestions.take(80);
-    return suggestions
+    if (q.isEmpty) {
+      if (!_showAllOnEmpty) return const Iterable<String>.empty();
+      return widget.suggestions.take(80);
+    }
+    return widget.suggestions
         .where((s) => s.toLowerCase().contains(q))
         .take(80);
+  }
+
+  void _bumpController(TextEditingController c) {
+    final text = c.text;
+    c.value = TextEditingValue(
+      text: text,
+      selection: TextSelection.collapsed(offset: text.length),
+    );
   }
 
   @override
@@ -38,30 +56,61 @@ class SearchableTextField extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Autocomplete<String>(
-          key: ValueKey('${label}_${suggestions.length}'),
           optionsBuilder: (value) => _filtered(value.text),
           displayStringForOption: (option) => option,
-          fieldViewBuilder: (context, fieldController, focusNode, onFieldSubmitted) {
-            if (fieldController.text != controller.text) {
-              fieldController.text = controller.text;
+          fieldViewBuilder:
+              (context, fieldController, focusNode, onFieldSubmitted) {
+            if (fieldController.text != widget.controller.text) {
+              fieldController.value = TextEditingValue(
+                text: widget.controller.text,
+                selection: TextSelection.collapsed(
+                  offset: widget.controller.text.length,
+                ),
+              );
             }
             return TextFormField(
               controller: fieldController,
               focusNode: focusNode,
-              enabled: enabled,
-              keyboardType: keyboardType,
+              enabled: widget.enabled,
+              keyboardType: widget.keyboardType,
               onFieldSubmitted: (_) => onFieldSubmitted(),
+              onTapOutside: (_) {
+                focusNode.unfocus();
+                if (_showAllOnEmpty) {
+                  setState(() => _showAllOnEmpty = false);
+                }
+              },
               onChanged: (v) {
-                if (controller.text != v) controller.text = v;
+                if (widget.controller.text != v) widget.controller.text = v;
               },
               style: GoogleFonts.poppins(fontSize: 14),
               decoration: InputDecoration(
-                labelText: label,
-                hintText: hintText,
+                labelText: widget.label,
+                hintText: widget.hintText,
                 labelStyle: GoogleFonts.poppins(fontSize: 13),
-                prefixIcon: Icon(icon, size: 20),
-                suffixIcon: suggestions.isNotEmpty
-                    ? const Icon(Icons.arrow_drop_down, size: 22)
+                prefixIcon: Icon(widget.icon, size: 20),
+                suffixIcon: widget.suggestions.isNotEmpty
+                    ? IconButton(
+                        tooltip: 'Suggestions',
+                        icon: Icon(
+                          _showAllOnEmpty
+                              ? Icons.arrow_drop_up
+                              : Icons.arrow_drop_down,
+                          size: 22,
+                        ),
+                        onPressed: !widget.enabled
+                            ? null
+                            : () {
+                                if (focusNode.hasFocus && _showAllOnEmpty) {
+                                  focusNode.unfocus();
+                                  setState(() => _showAllOnEmpty = false);
+                                  return;
+                                }
+                                setState(() => _showAllOnEmpty = true);
+                                focusNode.requestFocus();
+                                _bumpController(fieldController);
+                              },
+                      )
                     : null,
                 filled: true,
                 fillColor: AppColors.background,
@@ -72,7 +121,10 @@ class SearchableTextField extends StatelessWidget {
               ),
             );
           },
-          onSelected: (value) => controller.text = value,
+          onSelected: (value) {
+            widget.controller.text = value;
+            setState(() => _showAllOnEmpty = false);
+          },
           optionsViewBuilder: (context, onSelected, options) {
             if (options.isEmpty) return const SizedBox.shrink();
             return Align(

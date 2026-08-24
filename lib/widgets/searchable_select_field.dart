@@ -6,7 +6,7 @@ import '../config/theme.dart';
 typedef SearchableItemFilter<T> = bool Function(T item, String query);
 
 /// Type-to-search dropdown styled like other form fields in the app.
-class SearchableSelectField<T extends Object> extends StatelessWidget {
+class SearchableSelectField<T extends Object> extends StatefulWidget {
   const SearchableSelectField({
     super.key,
     required this.label,
@@ -36,63 +36,125 @@ class SearchableSelectField<T extends Object> extends StatelessWidget {
   final String? Function(T? value)? validator;
   final String hintText;
 
+  @override
+  State<SearchableSelectField<T>> createState() =>
+      _SearchableSelectFieldState<T>();
+}
+
+class _SearchableSelectFieldState<T extends Object>
+    extends State<SearchableSelectField<T>> {
+  bool _showAllOnEmpty = false;
+
   bool _matches(T item, String query) {
     final q = query.trim().toLowerCase();
     if (q.isEmpty) return true;
-    if (filter != null) return filter!(item, q);
-    final text = searchText?.call(item) ?? displayString(item).toLowerCase();
+    if (widget.filter != null) return widget.filter!(item, q);
+    final text =
+        widget.searchText?.call(item) ?? widget.displayString(item).toLowerCase();
     return text.contains(q);
+  }
+
+  Iterable<T> _filtered(String query) {
+    if (widget.options.isEmpty) return const Iterable.empty();
+    final q = query.trim();
+    if (q.isEmpty && !_showAllOnEmpty) return const Iterable.empty();
+    return widget.options.where((o) => _matches(o, q)).take(80);
+  }
+
+  void _bumpController(TextEditingController c) {
+    final text = c.text;
+    c.value = TextEditingValue(
+      text: text,
+      selection: TextSelection.collapsed(offset: text.length),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     return FormField<T>(
-      validator: validator,
-      initialValue: selected,
+      validator: widget.validator,
+      initialValue: widget.selected,
       builder: (field) {
-        final current = field.value ?? selected;
-        final display = current != null ? displayString(current) : '';
+        final current = field.value ?? widget.selected;
+        final display =
+            current != null ? widget.displayString(current) : '';
 
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Autocomplete<T>(
-              key: ValueKey('${label}_${options.length}_${current.hashCode}'),
-              optionsBuilder: (textEditingValue) {
-                final query = textEditingValue.text;
-                if (options.isEmpty) return Iterable<T>.empty();
-                final filtered = options.where((o) => _matches(o, query));
-                return filtered.take(80);
-              },
-              displayStringForOption: displayString,
+              optionsBuilder: (textEditingValue) =>
+                  _filtered(textEditingValue.text),
+              displayStringForOption: widget.displayString,
               initialValue: TextEditingValue(text: display),
-              fieldViewBuilder: (context, controller, focusNode, onFieldSubmitted) {
+              fieldViewBuilder:
+                  (context, controller, focusNode, onFieldSubmitted) {
                 if (current != null && controller.text != display) {
-                  controller.text = display;
+                  controller.value = TextEditingValue(
+                    text: display,
+                    selection:
+                        TextSelection.collapsed(offset: display.length),
+                  );
                 }
                 return TextFormField(
                   controller: controller,
                   focusNode: focusNode,
-                  enabled: enabled && options.isNotEmpty,
+                  enabled: widget.enabled && widget.options.isNotEmpty,
                   onFieldSubmitted: (_) => onFieldSubmitted(),
+                  onTapOutside: (_) {
+                    focusNode.unfocus();
+                    if (_showAllOnEmpty) {
+                      setState(() => _showAllOnEmpty = false);
+                    }
+                  },
                   style: GoogleFonts.poppins(fontSize: 14),
                   decoration: InputDecoration(
-                    labelText: label,
-                    hintText: options.isEmpty ? 'No options loaded' : hintText,
+                    labelText: widget.label,
+                    hintText: widget.options.isEmpty
+                        ? 'No options loaded'
+                        : widget.hintText,
                     labelStyle: GoogleFonts.poppins(fontSize: 13),
-                    prefixIcon: Icon(icon, size: 20),
-                    suffixIcon: current != null
-                        ? IconButton(
+                    prefixIcon: Icon(widget.icon, size: 20),
+                    suffixIcon: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (current != null)
+                          IconButton(
                             icon: const Icon(Icons.clear, size: 20),
-                            onPressed: enabled
+                            onPressed: widget.enabled
                                 ? () {
                                     controller.clear();
                                     field.didChange(null);
-                                    onSelected(null);
+                                    widget.onSelected(null);
+                                    setState(() => _showAllOnEmpty = false);
                                   }
                                 : null,
-                          )
-                        : const Icon(Icons.search, size: 20),
+                          ),
+                        IconButton(
+                          tooltip: 'Show options',
+                          icon: Icon(
+                            _showAllOnEmpty
+                                ? Icons.arrow_drop_up
+                                : Icons.arrow_drop_down,
+                            size: 22,
+                          ),
+                          onPressed: !widget.enabled ||
+                                  widget.options.isEmpty
+                              ? null
+                              : () {
+                                  if (focusNode.hasFocus &&
+                                      _showAllOnEmpty) {
+                                    focusNode.unfocus();
+                                    setState(() => _showAllOnEmpty = false);
+                                    return;
+                                  }
+                                  setState(() => _showAllOnEmpty = true);
+                                  focusNode.requestFocus();
+                                  _bumpController(controller);
+                                },
+                        ),
+                      ],
+                    ),
                     filled: true,
                     fillColor: AppColors.background,
                     errorText: field.errorText,
@@ -105,9 +167,11 @@ class SearchableSelectField<T extends Object> extends StatelessWidget {
               },
               onSelected: (value) {
                 field.didChange(value);
-                onSelected(value);
+                widget.onSelected(value);
+                setState(() => _showAllOnEmpty = false);
               },
               optionsViewBuilder: (context, onSelected, optionsList) {
+                if (optionsList.isEmpty) return const SizedBox.shrink();
                 return Align(
                   alignment: Alignment.topLeft,
                   child: Material(
@@ -124,11 +188,11 @@ class SearchableSelectField<T extends Object> extends StatelessWidget {
                         itemCount: optionsList.length,
                         itemBuilder: (context, index) {
                           final option = optionsList.elementAt(index);
-                          final subtitle = subtitleFor?.call(option);
+                          final subtitle = widget.subtitleFor?.call(option);
                           return ListTile(
                             dense: true,
                             title: Text(
-                              displayString(option),
+                              widget.displayString(option),
                               style: GoogleFonts.poppins(fontSize: 13),
                             ),
                             subtitle: subtitle != null && subtitle.isNotEmpty
