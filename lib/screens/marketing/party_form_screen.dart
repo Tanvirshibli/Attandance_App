@@ -181,9 +181,8 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
 
   Future<void> _loadDealers() async {
     setState(() => _loadingDealers = true);
-    final profile = await _authService.getCurrentUserProfile();
+    // Parent dealer picker is company-wide (omit employee_id).
     final result = await _service.listParties(
-      employeeId: profile?.canonicalEmployeeId,
       partyType: 'dealer',
     );
     if (!mounted) return;

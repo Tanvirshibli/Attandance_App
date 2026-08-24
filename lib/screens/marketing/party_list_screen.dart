@@ -4,7 +4,6 @@ import 'package:google_fonts/google_fonts.dart';
 
 import '../../config/theme.dart';
 import '../../models/marketing_models.dart';
-import '../../services/auth_service.dart';
 import '../../services/marketing_service.dart';
 import '../../widgets/api_empty_state.dart';
 import '../../widgets/filter_chip_row.dart';
@@ -28,7 +27,6 @@ class PartyListScreen extends StatefulWidget {
 
 class _PartyListScreenState extends State<PartyListScreen> {
   final MarketingService _service = MarketingService();
-  final AuthService _authService = AuthService();
   final TextEditingController _searchController = TextEditingController();
 
   bool _loading = true;
@@ -62,11 +60,8 @@ class _PartyListScreenState extends State<PartyListScreen> {
       _error = null;
     });
 
-    final profile = await _authService.getCurrentUserProfile();
-    final employeeId = profile?.canonicalEmployeeId;
-
+    // Master lists are company-wide (omit employee_id).
     final result = await _service.listParties(
-      employeeId: employeeId,
       partyType: _typeFilter == 'All' ? null : _typeFilter,
       q: _searchController.text,
       status: _statusFilter,

@@ -4,7 +4,6 @@ import 'package:google_fonts/google_fonts.dart';
 
 import '../../config/theme.dart';
 import '../../models/marketing_models.dart';
-import '../../services/auth_service.dart';
 import '../../services/marketing_service.dart';
 import '../../widgets/api_empty_state.dart';
 import '../../widgets/gradient_screen_header.dart';
@@ -23,7 +22,6 @@ class MarketDetailScreen extends StatefulWidget {
 
 class _MarketDetailScreenState extends State<MarketDetailScreen> {
   final MarketingService _service = MarketingService();
-  final AuthService _authService = AuthService();
   bool _loading = true;
   String? _error;
   List<Party> _parties = const [];
@@ -39,9 +37,8 @@ class _MarketDetailScreenState extends State<MarketDetailScreen> {
       _loading = true;
       _error = null;
     });
-    final profile = await _authService.getCurrentUserProfile();
+    // Parties under a market are company-wide (omit employee_id).
     final result = await _service.listParties(
-      employeeId: profile?.canonicalEmployeeId,
       marketId: widget.market.id,
     );
     if (!mounted) return;

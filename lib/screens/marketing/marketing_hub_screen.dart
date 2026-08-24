@@ -4,7 +4,6 @@ import 'package:google_fonts/google_fonts.dart';
 
 import '../../config/theme.dart';
 import '../../models/marketing_models.dart';
-import '../../services/auth_service.dart';
 import '../../services/marketing_service.dart';
 import '../../widgets/api_empty_state.dart';
 import '../../widgets/gradient_screen_header.dart';
@@ -28,7 +27,6 @@ class _MarketingHubScreenState extends State<MarketingHubScreen> {
   static const _previewLimit = 5;
 
   final MarketingService _service = MarketingService();
-  final AuthService _authService = AuthService();
 
   bool _loadingFeature = true;
   bool _enabled = true;
@@ -67,16 +65,12 @@ class _MarketingHubScreenState extends State<MarketingHubScreen> {
       _marketsError = null;
     });
 
-    final profile = await _authService.getCurrentUserProfile();
-    final employeeId = profile?.canonicalEmployeeId;
-
+    // Master lists are company-wide (omit employee_id).
     final farmsFuture = _service.listParties(
-      employeeId: employeeId,
       partyType: 'farm',
       limit: _previewLimit,
     );
     final dealersFuture = _service.listParties(
-      employeeId: employeeId,
       partyType: 'dealer',
       limit: _previewLimit,
     );
