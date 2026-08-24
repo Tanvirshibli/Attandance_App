@@ -1,3 +1,4 @@
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
@@ -31,7 +32,11 @@ class SearchableTextField extends StatefulWidget {
 
 class _SearchableTextFieldState extends State<SearchableTextField> {
   final FocusNode _focusNode = FocusNode();
+  final GlobalKey _rootKey = GlobalKey();
   bool _open = false;
+  bool _pointerRouteActive = false;
+  int? _outsidePointer;
+  Offset? _outsideDownPos;
 
   @override
   void initState() {
@@ -51,6 +56,7 @@ class _SearchableTextFieldState extends State<SearchableTextField> {
 
   @override
   void dispose() {
+    _detachPointerRoute();
     _focusNode.removeListener(_onFocusChange);
     widget.controller.removeListener(_onTextChanged);
     _focusNode.dispose();
@@ -77,6 +83,68 @@ class _SearchableTextFieldState extends State<SearchableTextField> {
   void _setOpen(bool value) {
     if (_open == value) return;
     setState(() => _open = value);
+    if (value) {
+      _attachPointerRoute();
+    } else {
+      _detachPointerRoute();
+    }
+  }
+
+  void _attachPointerRoute() {
+    if (_pointerRouteActive) return;
+    GestureBinding.instance.pointerRouter.addGlobalRoute(_handleGlobalPointer);
+    _pointerRouteActive = true;
+  }
+
+  void _detachPointerRoute() {
+    if (!_pointerRouteActive) return;
+    GestureBinding.instance.pointerRouter.removeGlobalRoute(_handleGlobalPointer);
+    _pointerRouteActive = false;
+    _outsidePointer = null;
+    _outsideDownPos = null;
+  }
+
+  bool _isOutside(Offset globalPosition) {
+    final box = _rootKey.currentContext?.findRenderObject() as RenderBox?;
+    if (box == null || !box.hasSize) return true;
+    final local = box.globalToLocal(globalPosition);
+    return !(Offset.zero & box.size).contains(local);
+  }
+
+  void _handleGlobalPointer(PointerEvent event) {
+    if (!_open) return;
+    if (event is PointerDownEvent) {
+      if (_isOutside(event.position)) {
+        _outsidePointer = event.pointer;
+        _outsideDownPos = event.position;
+      } else {
+        _outsidePointer = null;
+        _outsideDownPos = null;
+      }
+      return;
+    }
+    if (_outsidePointer != event.pointer || _outsideDownPos == null) return;
+    if (event is PointerMoveEvent) {
+      if ((event.position - _outsideDownPos!).distance > kTouchSlop) {
+        _outsidePointer = null;
+        _outsideDownPos = null;
+      }
+      return;
+    }
+    if (event is PointerCancelEvent) {
+      _outsidePointer = null;
+      _outsideDownPos = null;
+      return;
+    }
+    if (event is PointerUpEvent) {
+      final moved = (event.position - _outsideDownPos!).distance;
+      _outsidePointer = null;
+      _outsideDownPos = null;
+      if (moved <= kTouchSlop) {
+        _setOpen(false);
+        _focusNode.unfocus();
+      }
+    }
   }
 
   void _toggleSuffix() {
@@ -138,6 +206,7 @@ class _SearchableTextFieldState extends State<SearchableTextField> {
     final options = showList ? _filtered() : const <String>[];
 
     return Column(
+      key: _rootKey,
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         TextFormField(
