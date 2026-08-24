@@ -1,4 +1,3 @@
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
@@ -7,6 +6,7 @@ import '../../models/marketing_models.dart';
 import '../../services/marketing_service.dart';
 import '../../widgets/api_empty_state.dart';
 import '../../widgets/gradient_screen_header.dart';
+import '../../widgets/marketing_photo_widgets.dart';
 import '../../widgets/section_card.dart';
 
 class FarmSurveyDetailScreen extends StatefulWidget {
@@ -26,6 +26,7 @@ class FarmSurveyDetailScreen extends StatefulWidget {
 class _FarmSurveyDetailScreenState extends State<FarmSurveyDetailScreen> {
   final MarketingService _service = MarketingService();
   FarmSurvey? _survey;
+  List<Attachment> _attachments = const [];
   bool _loading = true;
   String? _error;
 
@@ -33,6 +34,7 @@ class _FarmSurveyDetailScreenState extends State<FarmSurveyDetailScreen> {
   void initState() {
     super.initState();
     _survey = widget.initial;
+    _attachments = widget.initial?.attachments ?? const [];
     _load();
   }
 
@@ -50,8 +52,21 @@ class _FarmSurveyDetailScreenState extends State<FarmSurveyDetailScreen> {
       });
       return;
     }
+    var survey = result.data!;
+    var attachments = survey.attachments;
+    if (attachments.isEmpty) {
+      final listed = await _service.listAttachments(
+        attachableType: 'survey',
+        attachableId: survey.id,
+      );
+      if (listed.success && listed.data != null) {
+        attachments = listed.data!;
+      }
+    }
+    if (!mounted) return;
     setState(() {
-      _survey = result.data;
+      _survey = survey;
+      _attachments = attachments;
       _loading = false;
     });
   }
@@ -177,82 +192,7 @@ class _FarmSurveyDetailScreenState extends State<FarmSurveyDetailScreen> {
   }
 
   Widget _photoSection(FarmSurvey survey) {
-    final photos = survey.attachments
-        .where((a) => a.displayUrl != null && a.displayUrl!.isNotEmpty)
-        .toList();
-    if (photos.isEmpty) return const SizedBox.shrink();
-
-    return Padding(
-      padding: const EdgeInsets.only(top: 12),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'Photos',
-            style: GoogleFonts.poppins(
-              fontSize: 12,
-              fontWeight: FontWeight.w500,
-              color: AppColors.textSecondary,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: photos.map((attachment) {
-              final url = attachment.displayUrl!;
-              return GestureDetector(
-                onTap: () => _openPhotoViewer(url),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(10),
-                  child: SizedBox(
-                    width: 120,
-                    height: 120,
-                    child: CachedNetworkImage(
-                      imageUrl: url,
-                      fit: BoxFit.cover,
-                      placeholder: (context, url) => Container(
-                        color: AppColors.background,
-                        child: const Center(
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        ),
-                      ),
-                      errorWidget: (context, url, error) => Container(
-                        color: AppColors.background,
-                        child: const Icon(Icons.broken_image_outlined),
-                      ),
-                    ),
-                  ),
-                ),
-              );
-            }).toList(),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _openPhotoViewer(String url) {
-    showDialog<void>(
-      context: context,
-      builder: (context) => Dialog(
-        insetPadding: const EdgeInsets.all(16),
-        child: InteractiveViewer(
-          child: AspectRatio(
-            aspectRatio: 1,
-            child: CachedNetworkImage(
-              imageUrl: url,
-              fit: BoxFit.contain,
-              placeholder: (context, url) => const Center(
-                child: CircularProgressIndicator(),
-              ),
-              errorWidget: (context, url, error) =>
-                  const Icon(Icons.broken_image_outlined),
-            ),
-          ),
-        ),
-      ),
-    );
+    return MarketingPhotoGrid(attachments: _attachments);
   }
 
   Widget _row(String label, String? value) {

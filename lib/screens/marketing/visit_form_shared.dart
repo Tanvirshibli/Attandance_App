@@ -1,4 +1,4 @@
-import 'dart:io';
+﻿import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -7,15 +7,18 @@ import 'package:intl/intl.dart';
 
 import '../../config/theme.dart';
 import '../../data/marketing_demo_masters.dart';
+import '../../models/booking_form_data_models.dart';
 import '../../models/marketing_models.dart';
 import '../../services/auth_service.dart';
 import '../../services/marketing_service.dart';
 import '../../services/sales_service.dart';
 import '../../utils/marketing_location_helper.dart';
 import '../../widgets/gradient_screen_header.dart';
+import '../../widgets/marketing_photo_widgets.dart';
 import '../../widgets/searchable_select_field.dart';
 import '../../widgets/searchable_text_field.dart';
 import '../../widgets/section_card.dart';
+import 'visit_detail_screen.dart';
 
 /// Visit types for dealer and market visits (farm surveys use a separate form).
 const kPartyVisitTypes = [
@@ -37,6 +40,24 @@ const kObservationTypes = [
   'competitor',
   'sample',
   'price',
+  'other',
+];
+
+const kDealerObservationTypes = [
+  'stock',
+  'order',
+  'demand',
+  'price',
+  'competitor',
+  'other',
+];
+
+const kMarketObservationTypes = [
+  'demand',
+  'price',
+  'competitor',
+  'sells',
+  'sample',
   'other',
 ];
 
@@ -127,6 +148,7 @@ class _SharedVisitFormScreenState extends State<SharedVisitFormScreen> {
   List<Market> _markets = const [];
   List<BookingFormCompany> _companies = MarketingDemoMasters.companies;
   List<BookingFormSector> _sectors = MarketingDemoMasters.sectors;
+  List<MarketingDemoProduct> _catalogProducts = MarketingDemoMasters.products;
   Market? _selectedMarket;
   Party? _selectedParty;
   BookingFormCompany? _selectedCompany;
@@ -171,6 +193,9 @@ class _SharedVisitFormScreenState extends State<SharedVisitFormScreen> {
     }
     _loadMasters();
     _autoFillLocation();
+    if (!_isDealer) {
+      _products.first.observationType = kMarketObservationTypes.first;
+    }
   }
 
   @override
@@ -210,6 +235,8 @@ class _SharedVisitFormScreenState extends State<SharedVisitFormScreen> {
       if (result.success && result.data != null) {
         _companies = MarketingDemoMasters.companiesOr(result.data!.companies);
         _sectors = MarketingDemoMasters.sectorsOr(result.data!.sectors);
+        _catalogProducts =
+            MarketingDemoMasters.productsFromBookingForm(result.data);
       }
     });
   }
@@ -217,7 +244,7 @@ class _SharedVisitFormScreenState extends State<SharedVisitFormScreen> {
   Future<void> _autoFillLocation() async {
     setState(() {
       _resolvingLocation = true;
-      _locationStatus = 'Detecting check-in location…';
+      _locationStatus = 'Detecting check-in locationâ€¦';
     });
     try {
       final snap = await MarketingLocationHelper.capture();
@@ -226,7 +253,7 @@ class _SharedVisitFormScreenState extends State<SharedVisitFormScreen> {
         setState(() {
           _resolvingLocation = false;
           _locationStatus =
-              'Location unavailable — will retry on start visit.';
+              'Location unavailable â€” will retry on start visit.';
         });
         return;
       }
@@ -242,7 +269,7 @@ class _SharedVisitFormScreenState extends State<SharedVisitFormScreen> {
       if (!mounted) return;
       setState(() {
         _resolvingLocation = false;
-        _locationStatus = 'Location failed — will retry on start visit.';
+        _locationStatus = 'Location failed â€” will retry on start visit.';
       });
       _snack('Could not get location: $e');
     }
@@ -440,7 +467,15 @@ class _SharedVisitFormScreenState extends State<SharedVisitFormScreen> {
         return;
       }
       _snack('Visit completed.');
-      Navigator.of(context).pop(result.data);
+      final completed = result.data!;
+      await Navigator.of(context).pushReplacement(
+        MaterialPageRoute(
+          builder: (_) => VisitDetailScreen(
+            visitId: completed.id,
+            initial: completed,
+          ),
+        ),
+      );
     } catch (e) {
       if (mounted) {
         setState(() => _checkingOut = false);
@@ -487,7 +522,7 @@ class _SharedVisitFormScreenState extends State<SharedVisitFormScreen> {
         children: [
           _label(label),
           Text(
-            (value == null || value.trim().isEmpty) ? '—' : value,
+            (value == null || value.trim().isEmpty) ? 'â€”' : value,
             style: GoogleFonts.poppins(fontSize: 14),
           ),
         ],
@@ -509,542 +544,627 @@ class _SharedVisitFormScreenState extends State<SharedVisitFormScreen> {
     );
   }
 
+  List<String> get _observationTypesForMode =>
+      _isDealer ? kDealerObservationTypes : kMarketObservationTypes;
+
   @override
   Widget build(BuildContext context) {
     final parties = widget.partiesInMarket ?? const [];
     return Scaffold(
       backgroundColor: AppColors.background,
-      body: Column(
-        children: [
-          GradientScreenHeader(
-            title: _headerTitle,
-            subtitle: _headerSubtitle,
-          ),
-          Expanded(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
-              child: Column(
-                children: [
-                  SectionCard(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        _sectionTitle('Visit details'),
-                        if (!_isDealer) ...[
-                          _readOnly('Market', widget.market!.displayName),
-                          if (widget.market!.address != null)
-                            _readOnly('Market address', widget.market!.address),
-                          const SizedBox(height: 8),
-                          SearchableSelectField<Party>(
-                            label: 'Party to visit',
-                            icon: Icons.person_outline,
-                            options: parties,
-                            selected: _selectedParty,
-                            displayString: (p) => p.displayName,
-                            searchText: (p) =>
-                                '${p.displayName} ${p.partyType} ${p.phone ?? ''}'
-                                    .toLowerCase(),
+      body: marketingFormDismissible(
+        child: Column(
+          children: [
+            GradientScreenHeader(
+              title: _headerTitle,
+              subtitle: _headerSubtitle,
+            ),
+            Expanded(
+              child: SingleChildScrollView(
+                keyboardDismissBehavior:
+                    ScrollViewKeyboardDismissBehavior.onDrag,
+                padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
+                child: Column(
+                  children: [
+                    SectionCard(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          _sectionTitle('Identity'),
+                          if (_isDealer) ...[
+                            _readOnly('Dealer', widget.party!.displayName),
+                            if (widget.party!.address != null)
+                              _readOnly('Address', widget.party!.address),
+                            if (widget.party!.phone != null)
+                              _readOnly('Contact', widget.party!.phone),
+                          ] else ...[
+                            _readOnly('Market', widget.market!.displayName),
+                            if (widget.market!.address != null)
+                              _readOnly(
+                                'Market address',
+                                widget.market!.address,
+                              ),
+                          ],
+                          if (_locationStatus != null) ...[
+                            const SizedBox(height: 8),
+                            Text(
+                              _locationStatus!,
+                              style: GoogleFonts.poppins(
+                                fontSize: 12,
+                                color: _resolvingLocation
+                                    ? AppColors.textHint
+                                    : AppColors.textSecondary,
+                              ),
+                            ),
+                            if (_resolvingLocation) ...[
+                              const SizedBox(height: 8),
+                              const LinearProgressIndicator(),
+                            ],
+                          ],
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    SectionCard(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          _sectionTitle('Visit'),
+                          if (!_isDealer) ...[
+                            SearchableSelectField<Party>(
+                              label: 'Party to visit',
+                              icon: Icons.person_outline,
+                              options: parties,
+                              selected: _selectedParty,
+                              displayString: (p) => p.displayName,
+                              searchText: (p) =>
+                                  '${p.displayName} ${p.partyType} ${p.phone ?? ''}'
+                                      .toLowerCase(),
+                              enabled: !_locked,
+                              validator: (v) =>
+                                  v == null ? 'Select a party' : null,
+                              onSelected: (p) =>
+                                  setState(() => _selectedParty = p),
+                            ),
+                            const SizedBox(height: 14),
+                          ],
+                          if (_isDealer) ...[
+                            if (_loadingMarkets)
+                              const Padding(
+                                padding: EdgeInsets.symmetric(vertical: 12),
+                                child:
+                                    Center(child: CircularProgressIndicator()),
+                              )
+                            else
+                              SearchableSelectField<Market>(
+                                label: 'Market',
+                                icon: Icons.store_mall_directory_outlined,
+                                options: _markets,
+                                selected: _selectedMarket,
+                                displayString: (m) => m.displayName,
+                                searchText: (m) => m.displayName.toLowerCase(),
+                                enabled: !_locked,
+                                onSelected: (m) =>
+                                    setState(() => _selectedMarket = m),
+                              ),
+                            const SizedBox(height: 14),
+                          ],
+                          SearchableSelectField<BookingFormCompany>(
+                            label: 'Company',
+                            icon: Icons.apartment_outlined,
+                            options: _companies,
+                            selected: _selectedCompany,
+                            displayString: (c) => c.displayName,
+                            searchText: (c) => c.displayName.toLowerCase(),
                             enabled: !_locked,
-                            validator: (v) =>
-                                v == null ? 'Select a party' : null,
-                            onSelected: (p) =>
-                                setState(() => _selectedParty = p),
+                            onSelected: (c) =>
+                                setState(() => _selectedCompany = c),
                           ),
                           const SizedBox(height: 14),
-                        ],
-                        if (_isDealer) ...[
-                          _readOnly('Dealer', widget.party!.displayName),
-                          const SizedBox(height: 8),
-                          if (_loadingMarkets)
-                            const Padding(
-                              padding: EdgeInsets.symmetric(vertical: 12),
-                              child: Center(child: CircularProgressIndicator()),
-                            )
-                          else
-                            SearchableSelectField<Market>(
-                              label: 'Market',
-                              icon: Icons.store_mall_directory_outlined,
-                              options: _markets,
-                              selected: _selectedMarket,
-                              displayString: (m) => m.displayName,
-                              searchText: (m) => m.displayName.toLowerCase(),
-                              enabled: !_locked,
-                              onSelected: (m) =>
-                                  setState(() => _selectedMarket = m),
-                            ),
+                          SearchableSelectField<BookingFormSector>(
+                            label: 'Sector',
+                            icon: Icons.hub_outlined,
+                            options: _selectedCompany == null
+                                ? _sectors
+                                : _sectors
+                                    .where(
+                                      (s) =>
+                                          s.companyId == _selectedCompany!.id,
+                                    )
+                                    .toList(),
+                            selected: _selectedSector,
+                            displayString: (s) => s.name,
+                            searchText: (s) => s.searchText,
+                            enabled: !_locked,
+                            onSelected: (s) =>
+                                setState(() => _selectedSector = s),
+                          ),
                           const SizedBox(height: 14),
+                          SearchableTextField(
+                            label: 'Visit type',
+                            controller: _visitType,
+                            suggestions: kPartyVisitTypeLabels,
+                            hintText: 'Type or pick visit type',
+                            enabled: !_locked,
+                            icon: Icons.category_outlined,
+                          ),
                         ],
-                        SearchableSelectField<BookingFormCompany>(
-                          label: 'Company',
-                          icon: Icons.apartment_outlined,
-                          options: _companies,
-                          selected: _selectedCompany,
-                          displayString: (c) => c.displayName,
-                          searchText: (c) => c.displayName.toLowerCase(),
-                          enabled: !_locked,
-                          onSelected: (c) =>
-                              setState(() => _selectedCompany = c),
-                        ),
-                        const SizedBox(height: 14),
-                        SearchableSelectField<BookingFormSector>(
-                          label: 'Sector',
-                          icon: Icons.hub_outlined,
-                          options: _selectedCompany == null
-                              ? _sectors
-                              : _sectors
-                                  .where(
-                                    (s) => s.companyId == _selectedCompany!.id,
-                                  )
-                                  .toList(),
-                          selected: _selectedSector,
-                          displayString: (s) => s.name,
-                          searchText: (s) => s.searchText,
-                          enabled: !_locked,
-                          onSelected: (s) =>
-                              setState(() => _selectedSector = s),
-                        ),
-                        const SizedBox(height: 14),
-                        SearchableTextField(
-                          label: 'Visit type',
-                          controller: _visitType,
-                          suggestions: kPartyVisitTypeLabels,
-                          hintText: 'Type or pick visit type',
-                          enabled: !_locked,
-                          icon: Icons.category_outlined,
-                        ),
-                        _label('Objective'),
-                        TextField(
-                          controller: _objective,
-                          enabled: !_locked,
-                          decoration:
-                              _decoration(hint: 'e.g. Stock check, order'),
-                        ),
-                        const SizedBox(height: 14),
-                        _label('Findings'),
-                        TextField(
-                          controller: _findings,
-                          maxLines: 2,
-                          decoration: _decoration(),
-                        ),
-                        const SizedBox(height: 14),
-                        _label('Result'),
-                        TextField(
-                          controller: _result,
-                          decoration: _decoration(),
-                        ),
-                        const SizedBox(height: 14),
-                        _label('Next plan'),
-                        TextField(
-                          controller: _nextPlan,
-                          maxLines: 2,
-                          decoration: _decoration(),
-                        ),
-                        const SizedBox(height: 14),
-                        _label('Next visit date'),
-                        InkWell(
-                          onTap: _pickNextVisitDate,
-                          borderRadius: BorderRadius.circular(12),
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 14,
-                              vertical: 14,
-                            ),
-                            decoration: BoxDecoration(
-                              color: AppColors.background,
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: Row(
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    SectionCard(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          _sectionTitle(
+                            _isDealer ? 'Commercial' : 'Market intel',
+                          ),
+                          if (_isDealer)
+                            Row(
                               children: [
                                 Expanded(
-                                  child: Text(
-                                    _nextVisitDate == null
-                                        ? 'Select date'
-                                        : DateFormat('dd MMM yyyy')
-                                            .format(_nextVisitDate!),
-                                    style: GoogleFonts.poppins(fontSize: 13),
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      _label('Order amount'),
+                                      TextField(
+                                        controller: _orderAmount,
+                                        keyboardType: TextInputType.number,
+                                        decoration: _decoration(),
+                                      ),
+                                    ],
                                   ),
                                 ),
-                                const Icon(
-                                  Icons.calendar_today_outlined,
-                                  size: 18,
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      _label('Collection amount'),
+                                      TextField(
+                                        controller: _collectionAmount,
+                                        keyboardType: TextInputType.number,
+                                        decoration: _decoration(),
+                                      ),
+                                    ],
+                                  ),
                                 ),
                               ],
-                            ),
-                          ),
-                        ),
-                        const SizedBox(height: 14),
-                        Row(
-                          children: [
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  _label('Order amount'),
-                                  TextField(
-                                    controller: _orderAmount,
-                                    keyboardType: TextInputType.number,
-                                    decoration: _decoration(),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  _label('Collection amount'),
-                                  TextField(
-                                    controller: _collectionAmount,
-                                    keyboardType: TextInputType.number,
-                                    decoration: _decoration(),
-                                  ),
-                                ],
-                              ),
+                            )
+                          else ...[
+                            _label('Order amount'),
+                            TextField(
+                              controller: _orderAmount,
+                              keyboardType: TextInputType.number,
+                              decoration: _decoration(),
                             ),
                           ],
-                        ),
-                        const SizedBox(height: 14),
-                        if (_locationStatus != null) ...[
-                          Text(
-                            _locationStatus!,
-                            style: GoogleFonts.poppins(
-                              fontSize: 12,
-                              color: _resolvingLocation
-                                  ? AppColors.textHint
-                                  : AppColors.textSecondary,
-                            ),
-                          ),
-                          if (_resolvingLocation) ...[
-                            const SizedBox(height: 8),
-                            const LinearProgressIndicator(),
-                          ],
-                          const SizedBox(height: 14),
                         ],
-                        _label('Notes'),
-                        TextField(
-                          controller: _notes,
-                          maxLines: 2,
-                          decoration: _decoration(),
-                        ),
-                        const SizedBox(height: 14),
-                        SwitchListTile(
-                          contentPadding: EdgeInsets.zero,
-                          title: Text(
-                            'GPS verified',
-                            style: GoogleFonts.poppins(fontSize: 13),
-                          ),
-                          subtitle: Text(
-                            'Set when check-in coordinates are captured',
-                            style: GoogleFonts.poppins(
-                              fontSize: 11,
-                              color: AppColors.textSecondary,
-                            ),
-                          ),
-                          value: _geoVerified,
-                          onChanged: _locked
-                              ? null
-                              : (v) => setState(() => _geoVerified = v),
-                        ),
-                        _label('Client UUID'),
-                        Text(
-                          _clientUuid,
-                          style: GoogleFonts.poppins(
-                            fontSize: 12,
-                            color: AppColors.textSecondary,
-                          ),
-                        ),
-                      ],
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 12),
-                  SectionCard(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        Row(
-                          children: [
-                            Expanded(
-                              child: _sectionTitle('Product observations'),
+                    const SizedBox(height: 12),
+                    SectionCard(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          _sectionTitle('Narrative'),
+                          _label('Objective'),
+                          TextField(
+                            controller: _objective,
+                            enabled: !_locked,
+                            decoration: _decoration(
+                              hint: _isDealer
+                                  ? 'e.g. Stock check, order, collection'
+                                  : 'e.g. Demand check, competitor scan',
                             ),
-                            if (!_locked)
-                              TextButton.icon(
-                                onPressed: () => setState(
-                                  () => _products.add(VisitObsRow()),
-                                ),
-                                icon: const Icon(Icons.add, size: 18),
-                                label: const Text('Add'),
-                              ),
-                          ],
-                        ),
-                        ...List.generate(_products.length, (i) {
-                          final row = _products[i];
-                          return Padding(
-                            padding: const EdgeInsets.only(bottom: 10),
+                          ),
+                          const SizedBox(height: 14),
+                          _label('Findings'),
+                          TextField(
+                            controller: _findings,
+                            maxLines: 2,
+                            decoration: _decoration(),
+                          ),
+                          const SizedBox(height: 14),
+                          _label('Result'),
+                          TextField(
+                            controller: _result,
+                            decoration: _decoration(),
+                          ),
+                          const SizedBox(height: 14),
+                          _label('Next plan'),
+                          TextField(
+                            controller: _nextPlan,
+                            maxLines: 2,
+                            decoration: _decoration(),
+                          ),
+                          const SizedBox(height: 14),
+                          _label('Next visit date'),
+                          InkWell(
+                            onTap: _pickNextVisitDate,
+                            borderRadius: BorderRadius.circular(12),
                             child: Container(
-                              padding: const EdgeInsets.all(12),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 14,
+                                vertical: 14,
+                              ),
                               decoration: BoxDecoration(
                                 color: AppColors.background,
                                 borderRadius: BorderRadius.circular(12),
                               ),
-                              child: Column(
+                              child: Row(
                                 children: [
-                                  SearchableSelectField<MarketingDemoProduct>(
-                                    label: 'Product',
-                                    icon: Icons.inventory_2_outlined,
-                                    options: MarketingDemoMasters.products,
-                                    selected: row.product,
-                                    displayString: (p) => p.displayName,
-                                    searchText: (p) => p.searchText,
-                                    enabled: !_locked,
-                                    onSelected: (p) {
-                                      setState(() {
-                                        row.product = p;
-                                        if (p != null) {
-                                          row.name.text = p.name;
-                                        }
-                                      });
-                                    },
-                                  ),
-                                  const SizedBox(height: 8),
-                                  TextField(
-                                    controller: row.name,
-                                    enabled: !_locked,
-                                    decoration:
-                                        _decoration(hint: 'Product name'),
-                                  ),
-                                  const SizedBox(height: 8),
-                                  DropdownButtonFormField<String>(
-                                    initialValue: row.observationType,
-                                    decoration: _decoration(
-                                      hint: 'Observation type',
-                                    ),
-                                    items: kObservationTypes
-                                        .map(
-                                          (t) => DropdownMenuItem(
-                                            value: t,
-                                            child: Text(t),
-                                          ),
-                                        )
-                                        .toList(),
-                                    onChanged: _locked
-                                        ? null
-                                        : (v) {
-                                            if (v != null) {
-                                              setState(
-                                                () => row.observationType = v,
-                                              );
-                                            }
-                                          },
-                                  ),
-                                  const SizedBox(height: 8),
-                                  SearchableSelectField<MarketingDemoNamed>(
-                                    label: 'Unit',
-                                    icon: Icons.straighten,
-                                    options: MarketingDemoMasters.units,
-                                    selected: row.unit,
-                                    displayString: (u) => u.displayName,
-                                    searchText: (u) => u.searchText,
-                                    enabled: !_locked,
-                                    onSelected: (u) =>
-                                        setState(() => row.unit = u),
-                                  ),
-                                  const SizedBox(height: 8),
-                                  TextField(
-                                    controller: row.brand,
-                                    enabled: !_locked,
-                                    decoration:
-                                        _decoration(hint: 'Brand name'),
-                                  ),
-                                  const SizedBox(height: 8),
-                                  TextField(
-                                    controller: row.competitor,
-                                    enabled: !_locked,
-                                    decoration: _decoration(
-                                      hint: 'Competitor company',
+                                  Expanded(
+                                    child: Text(
+                                      _nextVisitDate == null
+                                          ? 'Select date'
+                                          : DateFormat('dd MMM yyyy')
+                                              .format(_nextVisitDate!),
+                                      style: GoogleFonts.poppins(fontSize: 13),
                                     ),
                                   ),
-                                  const SizedBox(height: 8),
-                                  Row(
-                                    children: [
-                                      Expanded(
-                                        child: TextField(
-                                          controller: row.stock,
-                                          enabled: !_locked,
-                                          keyboardType: TextInputType.number,
-                                          decoration:
-                                              _decoration(hint: 'Stock'),
-                                        ),
-                                      ),
-                                      const SizedBox(width: 8),
-                                      Expanded(
-                                        child: TextField(
-                                          controller: row.demand,
-                                          enabled: !_locked,
-                                          keyboardType: TextInputType.number,
-                                          decoration:
-                                              _decoration(hint: 'Demand'),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                  const SizedBox(height: 8),
-                                  Row(
-                                    children: [
-                                      Expanded(
-                                        child: TextField(
-                                          controller: row.quantity,
-                                          enabled: !_locked,
-                                          keyboardType: TextInputType.number,
-                                          decoration:
-                                              _decoration(hint: 'Qty'),
-                                        ),
-                                      ),
-                                      const SizedBox(width: 8),
-                                      Expanded(
-                                        child: TextField(
-                                          controller: row.order,
-                                          enabled: !_locked,
-                                          keyboardType: TextInputType.number,
-                                          decoration:
-                                              _decoration(hint: 'Order qty'),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                  const SizedBox(height: 8),
-                                  Row(
-                                    children: [
-                                      Expanded(
-                                        child: TextField(
-                                          controller: row.price,
-                                          enabled: !_locked,
-                                          keyboardType: TextInputType.number,
-                                          decoration:
-                                              _decoration(hint: 'Unit price'),
-                                        ),
-                                      ),
-                                      const SizedBox(width: 8),
-                                      Expanded(
-                                        child: TextField(
-                                          controller: row.amount,
-                                          enabled: !_locked,
-                                          keyboardType: TextInputType.number,
-                                          decoration:
-                                              _decoration(hint: 'Amount'),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                  const SizedBox(height: 8),
-                                  TextField(
-                                    controller: row.notes,
-                                    enabled: !_locked,
-                                    decoration:
-                                        _decoration(hint: 'Line notes'),
+                                  const Icon(
+                                    Icons.calendar_today_outlined,
+                                    size: 18,
                                   ),
                                 ],
                               ),
                             ),
-                          );
-                        }),
-                        if (!_locked) ...[
-                          const SizedBox(height: 8),
-                          OutlinedButton.icon(
-                            onPressed: _pickPhotos,
-                            icon: const Icon(Icons.photo_library_outlined),
-                            label: Text(
-                              _photos.isEmpty
-                                  ? 'Add photos'
-                                  : '${_photos.length} photo(s)',
+                          ),
+                          const SizedBox(height: 14),
+                          _label('Notes'),
+                          TextField(
+                            controller: _notes,
+                            maxLines: 2,
+                            decoration: _decoration(),
+                          ),
+                          const SizedBox(height: 14),
+                          SwitchListTile(
+                            contentPadding: EdgeInsets.zero,
+                            title: Text(
+                              'GPS verified',
+                              style: GoogleFonts.poppins(fontSize: 13),
                             ),
+                            value: _geoVerified,
+                            onChanged: _locked
+                                ? null
+                                : (v) => setState(() => _geoVerified = v),
                           ),
                         ],
-                        const SizedBox(height: 24),
-                        if (!_locked)
-                          SizedBox(
-                            height: 50,
-                            child: ElevatedButton(
-                              onPressed: _submitting ? null : _submit,
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: AppColors.primary,
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(14),
-                                ),
-                              ),
-                              child: _submitting
-                                  ? const SizedBox(
-                                      width: 22,
-                                      height: 22,
-                                      child: CircularProgressIndicator(
-                                        strokeWidth: 2,
-                                        color: Colors.white,
-                                      ),
-                                    )
-                                  : Text(
-                                      'Start visit (check-in)',
-                                      style: GoogleFonts.poppins(
-                                        fontWeight: FontWeight.w600,
-                                        color: Colors.white,
-                                      ),
-                                    ),
-                            ),
-                          )
-                        else ...[
-                          SizedBox(
-                            height: 50,
-                            child: ElevatedButton.icon(
-                              onPressed:
-                                  _checkingOut ? null : _completeCheckout,
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: AppColors.success,
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(14),
-                                ),
-                              ),
-                              icon: _checkingOut
-                                  ? const SizedBox(
-                                      width: 18,
-                                      height: 18,
-                                      child: CircularProgressIndicator(
-                                        strokeWidth: 2,
-                                        color: Colors.white,
-                                      ),
-                                    )
-                                  : const Icon(
-                                      Icons.logout,
-                                      color: Colors.white,
-                                    ),
-                              label: Text(
-                                'Complete / check-out',
-                                style: GoogleFonts.poppins(
-                                  fontWeight: FontWeight.w600,
-                                  color: Colors.white,
-                                ),
-                              ),
-                            ),
-                          ),
-                          const SizedBox(height: 10),
-                          TextButton(
-                            onPressed: () =>
-                                Navigator.of(context).pop(_savedVisit),
-                            child: Text(
-                              'Keep in progress & close',
-                              style: GoogleFonts.poppins(
-                                color: AppColors.textSecondary,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ],
+                      ),
                     ),
-                  ),
-                ],
+                    const SizedBox(height: 12),
+                    SectionCard(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Row(
+                            children: [
+                              Expanded(
+                                child: _sectionTitle('Product observations'),
+                              ),
+                              if (!_locked)
+                                TextButton.icon(
+                                  onPressed: () => setState(() {
+                                    final row = VisitObsRow();
+                                    row.observationType =
+                                        _observationTypesForMode.first;
+                                    _products.add(row);
+                                  }),
+                                  icon: const Icon(Icons.add, size: 18),
+                                  label: const Text('Add'),
+                                ),
+                            ],
+                          ),
+                          Text(
+                            identical(
+                                  _catalogProducts,
+                                  MarketingDemoMasters.products,
+                                )
+                                ? 'Products: demo catalog (Sales list empty)'
+                                : 'Products: Sales form-data',
+                            style: GoogleFonts.poppins(
+                              fontSize: 11,
+                              color: AppColors.textHint,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          ...List.generate(_products.length, (i) {
+                            final row = _products[i];
+                            final obsTypes = _observationTypesForMode;
+                            if (!obsTypes.contains(row.observationType)) {
+                              row.observationType = obsTypes.first;
+                            }
+                            return Padding(
+                              padding: const EdgeInsets.only(bottom: 10),
+                              child: Container(
+                                padding: const EdgeInsets.all(12),
+                                decoration: BoxDecoration(
+                                  color: AppColors.background,
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: Column(
+                                  children: [
+                                    SearchableSelectField<MarketingDemoProduct>(
+                                      label: 'Product',
+                                      icon: Icons.inventory_2_outlined,
+                                      options: _catalogProducts,
+                                      selected: row.product,
+                                      displayString: (p) => p.displayName,
+                                      searchText: (p) => p.searchText,
+                                      enabled: !_locked,
+                                      onSelected: (p) {
+                                        setState(() {
+                                          row.product = p;
+                                          if (p != null) {
+                                            row.name.text = p.name;
+                                          }
+                                        });
+                                      },
+                                    ),
+                                    const SizedBox(height: 8),
+                                    TextField(
+                                      controller: row.name,
+                                      enabled: !_locked,
+                                      decoration:
+                                          _decoration(hint: 'Product name'),
+                                    ),
+                                    const SizedBox(height: 8),
+                                    DropdownButtonFormField<String>(
+                                      initialValue: row.observationType,
+                                      decoration: _decoration(
+                                        hint: 'Observation type',
+                                      ),
+                                      items: obsTypes
+                                          .map(
+                                            (t) => DropdownMenuItem(
+                                              value: t,
+                                              child: Text(t),
+                                            ),
+                                          )
+                                          .toList(),
+                                      onChanged: _locked
+                                          ? null
+                                          : (v) {
+                                              if (v != null) {
+                                                setState(
+                                                  () =>
+                                                      row.observationType = v,
+                                                );
+                                              }
+                                            },
+                                    ),
+                                    const SizedBox(height: 8),
+                                    SearchableSelectField<MarketingDemoNamed>(
+                                      label: 'Unit (demo)',
+                                      icon: Icons.straighten,
+                                      options: MarketingDemoMasters.units,
+                                      selected: row.unit,
+                                      displayString: (u) => u.displayName,
+                                      searchText: (u) => u.searchText,
+                                      enabled: !_locked,
+                                      onSelected: (u) =>
+                                          setState(() => row.unit = u),
+                                    ),
+                                    const SizedBox(height: 8),
+                                    TextField(
+                                      controller: row.brand,
+                                      enabled: !_locked,
+                                      decoration:
+                                          _decoration(hint: 'Brand name'),
+                                    ),
+                                    const SizedBox(height: 8),
+                                    TextField(
+                                      controller: row.competitor,
+                                      enabled: !_locked,
+                                      decoration: _decoration(
+                                        hint: 'Competitor company',
+                                      ),
+                                    ),
+                                    const SizedBox(height: 8),
+                                    if (_isDealer) ...[
+                                      Row(
+                                        children: [
+                                          Expanded(
+                                            child: TextField(
+                                              controller: row.stock,
+                                              enabled: !_locked,
+                                              keyboardType:
+                                                  TextInputType.number,
+                                              decoration:
+                                                  _decoration(hint: 'Stock'),
+                                            ),
+                                          ),
+                                          const SizedBox(width: 8),
+                                          Expanded(
+                                            child: TextField(
+                                              controller: row.demand,
+                                              enabled: !_locked,
+                                              keyboardType:
+                                                  TextInputType.number,
+                                              decoration:
+                                                  _decoration(hint: 'Demand'),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                      const SizedBox(height: 8),
+                                      Row(
+                                        children: [
+                                          Expanded(
+                                            child: TextField(
+                                              controller: row.order,
+                                              enabled: !_locked,
+                                              keyboardType:
+                                                  TextInputType.number,
+                                              decoration: _decoration(
+                                                hint: 'Order qty',
+                                              ),
+                                            ),
+                                          ),
+                                          const SizedBox(width: 8),
+                                          Expanded(
+                                            child: TextField(
+                                              controller: row.price,
+                                              enabled: !_locked,
+                                              keyboardType:
+                                                  TextInputType.number,
+                                              decoration: _decoration(
+                                                hint: 'Unit price',
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                      const SizedBox(height: 8),
+                                      TextField(
+                                        controller: row.amount,
+                                        enabled: !_locked,
+                                        keyboardType: TextInputType.number,
+                                        decoration:
+                                            _decoration(hint: 'Amount'),
+                                      ),
+                                    ] else ...[
+                                      Row(
+                                        children: [
+                                          Expanded(
+                                            child: TextField(
+                                              controller: row.demand,
+                                              enabled: !_locked,
+                                              keyboardType:
+                                                  TextInputType.number,
+                                              decoration:
+                                                  _decoration(hint: 'Demand'),
+                                            ),
+                                          ),
+                                          const SizedBox(width: 8),
+                                          Expanded(
+                                            child: TextField(
+                                              controller: row.price,
+                                              enabled: !_locked,
+                                              keyboardType:
+                                                  TextInputType.number,
+                                              decoration:
+                                                  _decoration(hint: 'Price'),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                      const SizedBox(height: 8),
+                                      TextField(
+                                        controller: row.quantity,
+                                        enabled: !_locked,
+                                        keyboardType: TextInputType.number,
+                                        decoration:
+                                            _decoration(hint: 'Quantity'),
+                                      ),
+                                    ],
+                                    const SizedBox(height: 8),
+                                    TextField(
+                                      controller: row.notes,
+                                      enabled: !_locked,
+                                      decoration:
+                                          _decoration(hint: 'Line notes'),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            );
+                          }),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    SectionCard(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          _sectionTitle('Photos'),
+                          if (!_locked)
+                            MarketingPhotoPicker(
+                              photos: _photos,
+                              onPick: _pickPhotos,
+                              onRemove: (i) =>
+                                  setState(() => _photos.removeAt(i)),
+                            )
+                          else if (_photos.isNotEmpty)
+                            Text(
+                              '${_photos.length} photo(s) uploaded',
+                              style: GoogleFonts.poppins(fontSize: 13),
+                            ),
+                          const SizedBox(height: 24),
+                          if (!_locked)
+                            SizedBox(
+                              height: 50,
+                              child: ElevatedButton(
+                                onPressed: _submitting ? null : _submit,
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: AppColors.primary,
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(14),
+                                  ),
+                                ),
+                                child: _submitting
+                                    ? const SizedBox(
+                                        width: 22,
+                                        height: 22,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                          color: Colors.white,
+                                        ),
+                                      )
+                                    : Text(
+                                        'Start visit',
+                                        style: GoogleFonts.poppins(
+                                          fontWeight: FontWeight.w600,
+                                          color: Colors.white,
+                                        ),
+                                      ),
+                              ),
+                            )
+                          else
+                            SizedBox(
+                              height: 50,
+                              child: ElevatedButton(
+                                onPressed:
+                                    _checkingOut ? null : _completeCheckout,
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: AppColors.accent,
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(14),
+                                  ),
+                                ),
+                                child: _checkingOut
+                                    ? const SizedBox(
+                                        width: 22,
+                                        height: 22,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                          color: Colors.white,
+                                        ),
+                                      )
+                                    : Text(
+                                        'Complete / check-out',
+                                        style: GoogleFonts.poppins(
+                                          fontWeight: FontWeight.w600,
+                                          color: Colors.white,
+                                        ),
+                                      ),
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
 }
+

@@ -12,8 +12,10 @@ import '../../services/auth_service.dart';
 import '../../services/marketing_service.dart';
 import '../../utils/marketing_location_helper.dart';
 import '../../widgets/gradient_screen_header.dart';
+import '../../widgets/marketing_photo_widgets.dart';
 import '../../widgets/searchable_text_field.dart';
 import '../../widgets/section_card.dart';
+import 'farm_survey_detail_screen.dart';
 
 ({double? productionPercent, double? fcr}) parseProductionFcr(String raw) {
   final trimmed = raw.trim();
@@ -329,7 +331,14 @@ class _FarmSurveyFormScreenState extends State<FarmSurveyFormScreen> {
     if (!mounted) return;
     setState(() => _submitting = false);
     _snack('Farm visit report saved.');
-    Navigator.of(context).pop(survey);
+    await Navigator.of(context).pushReplacement(
+      MaterialPageRoute(
+        builder: (_) => FarmSurveyDetailScreen(
+          surveyId: survey.id,
+          initial: survey,
+        ),
+      ),
+    );
   }
 
   void _snack(String msg) {
@@ -444,16 +453,19 @@ class _FarmSurveyFormScreenState extends State<FarmSurveyFormScreen> {
     final farm = widget.party;
     return Scaffold(
       backgroundColor: AppColors.background,
-      body: Column(
-        children: [
-          GradientScreenHeader(
-            title: 'Farm visit report',
-            subtitle: farm.displayName,
-          ),
-          Expanded(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
-              child: Column(
+      body: marketingFormDismissible(
+        child: Column(
+          children: [
+            GradientScreenHeader(
+              title: 'Farm visit report',
+              subtitle: farm.displayName,
+            ),
+            Expanded(
+              child: SingleChildScrollView(
+                keyboardDismissBehavior:
+                    ScrollViewKeyboardDismissBehavior.onDrag,
+                padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
+                child: Column(
                 children: [
                   SectionCard(
                     child: Column(
@@ -800,14 +812,10 @@ class _FarmSurveyFormScreenState extends State<FarmSurveyFormScreen> {
                             MarketingDemoMasters.zones,
                           ),
                         ),
-                        OutlinedButton.icon(
-                          onPressed: _pickPhotos,
-                          icon: const Icon(Icons.photo_library_outlined),
-                          label: Text(
-                            _photos.isEmpty
-                                ? 'Add photos'
-                                : '${_photos.length} photo(s)',
-                          ),
+                        MarketingPhotoPicker(
+                          photos: _photos,
+                          onPick: _pickPhotos,
+                          onRemove: (i) => setState(() => _photos.removeAt(i)),
                         ),
                         const SizedBox(height: 16),
                         SizedBox(
@@ -844,8 +852,8 @@ class _FarmSurveyFormScreenState extends State<FarmSurveyFormScreen> {
                 ],
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
