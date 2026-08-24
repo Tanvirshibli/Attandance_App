@@ -852,6 +852,7 @@ class _FarmSurveyFormScreenState extends State<FarmSurveyFormScreen> {
                 ],
               ),
             ),
+          ),
           ],
         ),
       ),
