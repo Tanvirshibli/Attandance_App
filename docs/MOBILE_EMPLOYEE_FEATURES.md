@@ -163,6 +163,11 @@ Handoff for backend teams: **[SALES_AND_PAYMENTS_API_CONTRACT.md](SALES_AND_PAYM
 - Success tick is pinned to the **center of the rounded guide**
 - Step badge, coaching, and check-in status sit in one horizontally centered strip **above** the guide (including GPS “Capturing location…”)
 
+### Searchable dropdowns open on tap (v2.2.3+71)
+
+- Tapping a searchable field opens the options list immediately (no typing required)
+- Tap outside or suffix arrow still collapses the drawer
+
 ### Visit photos, API-first forms, touch UX (v2.2.3+70)
 
 - Fix marketing photo serving on ZKTeco; farm/dealer/market uploads show on detail pages
