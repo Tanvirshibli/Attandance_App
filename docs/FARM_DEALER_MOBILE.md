@@ -1,8 +1,10 @@
 # Farm & Dealer Mobile Module
 
-Last updated: August 22, 2026
+Last updated: August 24, 2026
 
 Field data collection for **markets**, **dealers**, and **farms** in Attandance_App, backed by ZKTeco `/api/v1/mobile/marketing/*` (no JWT — same pattern as geo). Employee identity uses profile `canonicalEmployeeId` (`employees.id`).
+
+**v2.2.3+70:** Marketing attachment URLs served correctly (ZKTeco `web` mounts `zkteco-storage` + `storage:link`). Farm / dealer / market visit photos upload and show on detail screens (`GET /farm-surveys/{id}`, new `GET /visits/{id}`). Dealer and market visit forms redesigned as paper-style sections (identity → visit → commercial/intel → narrative → products → photos). Products prefer Sales `form-data`; units stay demo. Searchable fields: tap outside or suffix arrow to collapse suggestions.
 
 **v2.2.3+68:** Farm visit report detail shows uploaded photo thumbnails (tap to zoom). Form uses one **Production% / FCR** field (e.g. `85% / 1.87` or `1.87`); parsed into API columns with raw value in `extra_data.production_fcr_note`.
 

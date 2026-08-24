@@ -163,6 +163,13 @@ Handoff for backend teams: **[SALES_AND_PAYMENTS_API_CONTRACT.md](SALES_AND_PAYM
 - Success tick is pinned to the **center of the rounded guide**
 - Step badge, coaching, and check-in status sit in one horizontally centered strip **above** the guide (including GPS “Capturing location…”)
 
+### Visit photos, API-first forms, touch UX (v2.2.3+70)
+
+- Fix marketing photo serving on ZKTeco; farm/dealer/market uploads show on detail pages
+- Dealer vs market visit forms: distinct paper-style sections and product-line focus
+- Company/sector/markets/parties from live APIs; products from Sales form-data when available; units demo
+- Visit detail screen from dealer party list; tap outside collapses searchable dropdowns
+
 ### Farm visit detail photos and combined FCR (v2.2.3+68)
 
 - Farm visit report detail shows uploaded photo thumbnails; tap to zoom
