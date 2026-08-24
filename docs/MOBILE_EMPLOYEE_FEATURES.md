@@ -163,6 +163,11 @@ Handoff for backend teams: **[SALES_AND_PAYMENTS_API_CONTRACT.md](SALES_AND_PAYM
 - Success tick is pinned to the **center of the rounded guide**
 - Step badge, coaching, and check-in status sit in one horizontally centered strip **above** the guide (including GPS “Capturing location…”)
 
+### Searchable dropdown overlay on tap (v2.2.3+72)
+
+- Searchable fields use a real overlay list (not Flutter Autocomplete), so options appear as soon as the field is tapped
+- Empty query shows the full suggestion list; typing still filters; tap outside closes
+
 ### Searchable dropdowns open on tap (v2.2.3+71)
 
 - Tapping a searchable field opens the options list immediately (no typing required)
