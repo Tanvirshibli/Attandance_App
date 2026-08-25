@@ -1,8 +1,12 @@
 # Farm & Dealer Mobile Module
 
-Last updated: August 24, 2026
+Last updated: August 25, 2026
 
 Field data collection for **markets**, **dealers**, and **farms** in Attandance_App, backed by ZKTeco `/api/v1/mobile/marketing/*` (no JWT — same pattern as geo). Employee identity uses profile `canonicalEmployeeId` (`employees.id`).
+
+**v2.2.3+78:** Farm visit report flock metrics reordered (present mortality before total; avg feed before read-only total feed kg; total body weight before Production% / FCR). Hatch date defaults today; per bag weight defaults **50** kg. Total feed intake auto-calculates `quantity × avg_feed_intake_g / 1000` (read-only). Mortality % and rest of bird stay auto-computed from quantity + total mortality. Dealer visit product rows: amount = order qty × unit price (read-only). Market visit rows: quantity above price; amount = quantity × price (read-only, included in payload).
+
+**v2.2.3+77:** Hub and party master lists are company-wide (`employee_id` omitted on `GET /parties`). Any employee sees farms/dealers created by others; visits/surveys/follow-ups stay employee-scoped.
 
 **v2.2.3+70:** Marketing attachment URLs served correctly (ZKTeco `web` mounts `zkteco-storage` + `storage:link`). Farm / dealer / market visit photos upload and show on detail screens (`GET /farm-surveys/{id}`, new `GET /visits/{id}`). Dealer and market visit forms redesigned as paper-style sections (identity → visit → commercial/intel → narrative → products → photos). Products prefer Sales `form-data`; units stay demo. Searchable fields: tap outside or suffix arrow to collapse suggestions.
 
@@ -124,7 +128,7 @@ Searchable company and sector; status `active` / `inactive`; name, code, geo add
 
 Create with `status: in_progress` (not completed). Sends `visit_type`, live `market_id`, company/sector, `objective` / `purpose`, `findings`, `result` / `outcome`, `next_plan`, `next_visit_date`, `order_amount`, `collection_amount`, auto-generated `client_uuid`, `geo_verified` (defaults true when GPS is present), check-in GPS.
 
-Observation types: `uses|sells|stock|demand|order|competitor|sample|price|other`. Product row: searchable product + unit, brand, competitor, quantity / demand / stock, unit price, amount, notes.
+Observation types: `uses|sells|stock|demand|order|competitor|sample|price|other`. Product row: searchable product + unit, brand, competitor, quantity / demand / stock, unit price, **amount** (auto: dealer = order qty × unit price; market = quantity × price; read-only), notes.
 
 Check-in coords are auto-captured on form open (and retried on submit); no Check-in GPS button. After save, UI offers **Complete / check-out** → `POST .../check-out` with auto GPS (and optional findings/amounts). `completeVisit` in the service delegates to `checkOutVisit`.
 
@@ -138,7 +142,7 @@ Type-to-search autocomplete (`SearchableTextField`) for visit type, breed, DOC c
 
 `dealer_party_id` and `farming_years` come from the farm party's parent dealer link and `business_years` — not from form pickers. Visit type and avg temperature range (e.g. `28-30`) store in `extra_data`. Detail screen shows those keys when present.
 
-Computed when quantity + total mortality are filled: mortality % and rest of bird (user can override). **Production% / FCR** is one form field (paper-aligned); values parse to `production_percent` / `fcr` with raw text in `extra_data.production_fcr_note`. Detail screen shows photo thumbnails from survey attachments. Ratings stay 1–5 (biosecurity, management, technical support, economical solvency). Photos use `attachable_type=survey`.
+Computed when quantity + total mortality are filled: mortality % and rest of bird (read-only). When quantity + avg feed intake (g/bird) are filled: **total feed intake (kg)** = `quantity × avg_feed_intake_g / 1000` (read-only). Hatch date defaults to today; per bag weight defaults **50** kg. Flock field order: present mortality (today) → total mortality → mortality % / rest of bird → avg feed → total feed → total body weight → Production% / FCR → avg B/W → per bag weight. **Production% / FCR** is one form field (paper-aligned); values parse to `production_percent` / `fcr` with raw text in `extra_data.production_fcr_note`. Detail screen shows photo thumbnails from survey attachments. Ratings stay 1–5 (biosecurity, management, technical support, economical solvency). Photos use `attachable_type=survey`.
 
 Paper field map: hatch / receiving date+time, breed, DOC + feed company, quantity, age, mortalities, rest of bird, feed intake (kg + avg g/bird), production% / FCR (single field), total + avg body weight (grams), bag weight, shed / curtain / floor / feeder / drinker / temp / space (sq ft), diseases, problems, remarks (`notes`), comments, territory, zone.
 
