@@ -50,7 +50,7 @@ class _FarmSurveyFormScreenState extends State<FarmSurveyFormScreen> {
   final AuthService _authService = AuthService();
 
   DateTime _surveyDate = DateTime.now();
-  DateTime? _hatchDate;
+  DateTime _hatchDate = DateTime.now();
   DateTime? _receivingDate;
   TimeOfDay? _receivingTime;
 
@@ -74,7 +74,7 @@ class _FarmSurveyFormScreenState extends State<FarmSurveyFormScreen> {
   final _productionFcr = TextEditingController();
   final _totalBodyWeight = TextEditingController();
   final _avgBodyWeight = TextEditingController();
-  final _bagWeight = TextEditingController();
+  final _bagWeight = TextEditingController(text: '50');
   final _feederQty = TextEditingController();
   final _drinkerQty = TextEditingController();
   final _avgTemp = TextEditingController();
@@ -104,6 +104,7 @@ class _FarmSurveyFormScreenState extends State<FarmSurveyFormScreen> {
     super.initState();
     _quantity.addListener(_recompute);
     _totalMortality.addListener(_recompute);
+    _avgFeed.addListener(_recompute);
     _loadContext();
     _autoFillLocation();
   }
@@ -166,14 +167,22 @@ class _FarmSurveyFormScreenState extends State<FarmSurveyFormScreen> {
 
   void _recompute() {
     if (_computing) return;
+    _computing = true;
     final qty = double.tryParse(_quantity.text.trim());
     final mort = double.tryParse(_totalMortality.text.trim());
-    if (qty == null || qty <= 0 || mort == null) return;
-    final rest = (qty - mort).clamp(0, qty);
-    final pct = (mort / qty) * 100;
-    _computing = true;
-    _restOfBirds.text = rest.toStringAsFixed(0);
-    _mortalityPct.text = pct.toStringAsFixed(2);
+    if (qty != null && qty > 0 && mort != null) {
+      final rest = (qty - mort).clamp(0, qty);
+      final pct = (mort / qty) * 100;
+      _restOfBirds.text = rest.toStringAsFixed(0);
+      _mortalityPct.text = pct.toStringAsFixed(2);
+    }
+    final avgG = double.tryParse(_avgFeed.text.trim());
+    if (qty != null && qty > 0 && avgG != null) {
+      final totalKg = qty * avgG / 1000;
+      _totalFeed.text = totalKg.toStringAsFixed(3);
+    } else if (_avgFeed.text.trim().isEmpty || qty == null) {
+      _totalFeed.clear();
+    }
     _computing = false;
   }
 
@@ -239,8 +248,7 @@ class _FarmSurveyFormScreenState extends State<FarmSurveyFormScreen> {
       if (farm.parentPartyId != null) 'dealer_party_id': farm.parentPartyId,
       'survey_date': DateFormat('yyyy-MM-dd').format(_surveyDate),
       'survey_type': 'poultry',
-      if (_hatchDate != null)
-        'hatch_date': DateFormat('yyyy-MM-dd').format(_hatchDate!),
+      'hatch_date': DateFormat('yyyy-MM-dd').format(_hatchDate),
       if (_receivingDate != null)
         'receiving_date': DateFormat('yyyy-MM-dd').format(_receivingDate!),
       if (_receivingTime != null)
@@ -345,11 +353,13 @@ class _FarmSurveyFormScreenState extends State<FarmSurveyFormScreen> {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
   }
 
-  InputDecoration _decoration({String? hint}) {
+  InputDecoration _decoration({String? hint, bool readOnly = false}) {
     return InputDecoration(
       hintText: hint,
       filled: true,
-      fillColor: AppColors.background,
+      fillColor: readOnly
+          ? AppColors.background.withValues(alpha: 0.65)
+          : AppColors.background,
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
         borderSide: BorderSide.none,
@@ -592,16 +602,16 @@ class _FarmSurveyFormScreenState extends State<FarmSurveyFormScreen> {
                           decoration: _decoration(hint: 'Days'),
                         ),
                         const SizedBox(height: 12),
-                        _label('Total mortality'),
+                        _label('Present mortality (today)'),
                         TextField(
-                          controller: _totalMortality,
+                          controller: _presentMortality,
                           keyboardType: TextInputType.number,
                           decoration: _decoration(hint: 'Pcs'),
                         ),
                         const SizedBox(height: 12),
-                        _label('Present mortality'),
+                        _label('Total mortality'),
                         TextField(
-                          controller: _presentMortality,
+                          controller: _totalMortality,
                           keyboardType: TextInputType.number,
                           decoration: _decoration(hint: 'Pcs'),
                         ),
@@ -610,21 +620,16 @@ class _FarmSurveyFormScreenState extends State<FarmSurveyFormScreen> {
                         TextField(
                           controller: _mortalityPct,
                           keyboardType: TextInputType.number,
-                          decoration: _decoration(),
+                          readOnly: true,
+                          decoration: _decoration(readOnly: true),
                         ),
                         const SizedBox(height: 12),
                         _label('Rest of bird'),
                         TextField(
                           controller: _restOfBirds,
                           keyboardType: TextInputType.number,
-                          decoration: _decoration(hint: 'Pcs'),
-                        ),
-                        const SizedBox(height: 12),
-                        _label('Total feed intake'),
-                        TextField(
-                          controller: _totalFeed,
-                          keyboardType: TextInputType.number,
-                          decoration: _decoration(hint: 'kg'),
+                          readOnly: true,
+                          decoration: _decoration(hint: 'Pcs', readOnly: true),
                         ),
                         const SizedBox(height: 12),
                         _label('Av. feed intake'),
@@ -634,10 +639,12 @@ class _FarmSurveyFormScreenState extends State<FarmSurveyFormScreen> {
                           decoration: _decoration(hint: 'grams per bird'),
                         ),
                         const SizedBox(height: 12),
-                        _label('Production% / FCR'),
+                        _label('Total feed intake'),
                         TextField(
-                          controller: _productionFcr,
-                          decoration: _decoration(hint: 'e.g. 85% / 1.87'),
+                          controller: _totalFeed,
+                          keyboardType: TextInputType.number,
+                          readOnly: true,
+                          decoration: _decoration(hint: 'kg', readOnly: true),
                         ),
                         const SizedBox(height: 12),
                         _label('Total body weight (kg)'),
@@ -645,6 +652,12 @@ class _FarmSurveyFormScreenState extends State<FarmSurveyFormScreen> {
                           controller: _totalBodyWeight,
                           keyboardType: TextInputType.number,
                           decoration: _decoration(),
+                        ),
+                        const SizedBox(height: 12),
+                        _label('Production% / FCR'),
+                        TextField(
+                          controller: _productionFcr,
+                          decoration: _decoration(hint: 'e.g. 85% / 1.87'),
                         ),
                         const SizedBox(height: 12),
                         _label('Av. B/W'),

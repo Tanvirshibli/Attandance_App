@@ -93,7 +93,59 @@ class VisitObsRow {
   MarketingDemoProduct? product;
   MarketingDemoNamed? unit;
 
+  void Function()? _amountListener;
+  bool _amountDealerMode = false;
+  bool _computingAmount = false;
+
+  void attachAmountListeners(bool dealerMode) {
+    detachAmountListeners();
+    _amountDealerMode = dealerMode;
+    _amountListener = () {
+      if (_computingAmount) return;
+      _computingAmount = true;
+      if (dealerMode) {
+        final o = double.tryParse(order.text.trim());
+        final p = double.tryParse(price.text.trim());
+        if (o != null && p != null) {
+          amount.text = (o * p).toStringAsFixed(2);
+        } else {
+          amount.clear();
+        }
+      } else {
+        final q = double.tryParse(quantity.text.trim());
+        final p = double.tryParse(price.text.trim());
+        if (q != null && p != null) {
+          amount.text = (q * p).toStringAsFixed(2);
+        } else {
+          amount.clear();
+        }
+      }
+      _computingAmount = false;
+    };
+    if (dealerMode) {
+      order.addListener(_amountListener!);
+      price.addListener(_amountListener!);
+    } else {
+      quantity.addListener(_amountListener!);
+      price.addListener(_amountListener!);
+    }
+  }
+
+  void detachAmountListeners() {
+    final listener = _amountListener;
+    if (listener == null) return;
+    if (_amountDealerMode) {
+      order.removeListener(listener);
+      price.removeListener(listener);
+    } else {
+      quantity.removeListener(listener);
+      price.removeListener(listener);
+    }
+    _amountListener = null;
+  }
+
   void dispose() {
+    detachAmountListeners();
     name.dispose();
     brand.dispose();
     competitor.dispose();
@@ -193,6 +245,9 @@ class _SharedVisitFormScreenState extends State<SharedVisitFormScreen> {
     }
     _loadMasters();
     _autoFillLocation();
+    for (final row in _products) {
+      row.attachAmountListeners(_isDealer);
+    }
     if (!_isDealer) {
       _products.first.observationType = kMarketObservationTypes.first;
     }
@@ -488,11 +543,13 @@ class _SharedVisitFormScreenState extends State<SharedVisitFormScreen> {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
   }
 
-  InputDecoration _decoration({String? hint}) {
+  InputDecoration _decoration({String? hint, bool readOnly = false}) {
     return InputDecoration(
       hintText: hint,
       filled: true,
-      fillColor: AppColors.background,
+      fillColor: readOnly
+          ? AppColors.background.withValues(alpha: 0.65)
+          : AppColors.background,
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
         borderSide: BorderSide.none,
@@ -849,6 +906,7 @@ class _SharedVisitFormScreenState extends State<SharedVisitFormScreen> {
                                     final row = VisitObsRow();
                                     row.observationType =
                                         _observationTypesForMode.first;
+                                    row.attachAmountListeners(_isDealer);
                                     _products.add(row);
                                   }),
                                   icon: const Icon(Icons.add, size: 18),
@@ -1019,12 +1077,22 @@ class _SharedVisitFormScreenState extends State<SharedVisitFormScreen> {
                                       const SizedBox(height: 8),
                                       TextField(
                                         controller: row.amount,
+                                        readOnly: true,
+                                        keyboardType: TextInputType.number,
+                                        decoration: _decoration(
+                                          hint: 'Amount',
+                                          readOnly: true,
+                                        ),
+                                      ),
+                                    ] else ...[
+                                      TextField(
+                                        controller: row.quantity,
                                         enabled: !_locked,
                                         keyboardType: TextInputType.number,
                                         decoration:
-                                            _decoration(hint: 'Amount'),
+                                            _decoration(hint: 'Quantity'),
                                       ),
-                                    ] else ...[
+                                      const SizedBox(height: 8),
                                       Row(
                                         children: [
                                           Expanded(
@@ -1052,11 +1120,13 @@ class _SharedVisitFormScreenState extends State<SharedVisitFormScreen> {
                                       ),
                                       const SizedBox(height: 8),
                                       TextField(
-                                        controller: row.quantity,
-                                        enabled: !_locked,
+                                        controller: row.amount,
+                                        readOnly: true,
                                         keyboardType: TextInputType.number,
-                                        decoration:
-                                            _decoration(hint: 'Quantity'),
+                                        decoration: _decoration(
+                                          hint: 'Amount',
+                                          readOnly: true,
+                                        ),
                                       ),
                                     ],
                                     const SizedBox(height: 8),
