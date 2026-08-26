@@ -56,10 +56,31 @@ class AttendanceRequestRecord {
   bool get isDayComplete =>
       hasCheckIn && hasCheckOut && !isRejected && !canUpdateCheckOut;
 
-  bool get canPunchCheckIn => !isRejected && !hasCheckIn;
+  bool get canPunchCheckIn {
+    // Allow punch-in if record is rejected or doesn't have check-in
+    if (isRejected) return false;
+    if (!hasCheckIn) return true;
+    
+    // Additional safety: if we have a record but times are invalid/missing, allow punch-in
+    final inTime = parseFlexibleDateTime(requestedInTime);
+    if (inTime == null) return true;
+    
+    return false;
+  }
 
-  bool get canPunchCheckOut =>
-      !isRejected && hasCheckIn && (!hasCheckOut || canUpdateCheckOut);
+  bool get canPunchCheckOut {
+    // Allow punch-out if not rejected, has check-in, and (no check-out or can update)
+    if (isRejected) return false;
+    if (!hasCheckIn) return false;
+    
+    // Safety check: if check-in time is invalid, treat as no check-in
+    final inTime = parseFlexibleDateTime(requestedInTime);
+    if (inTime == null) return false;
+    
+    if (!hasCheckOut || canUpdateCheckOut) return true;
+    
+    return false;
+  }
 
   bool get canTreatAsActiveCheckIn => canPunchCheckOut;
 

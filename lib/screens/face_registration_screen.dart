@@ -130,7 +130,6 @@ class _FaceRegistrationScreenState extends State<FaceRegistrationScreen>
 
   Future<void> _init() async {
     await _faceService.initialize();
-    await _faceService.deleteRegisteredFace();
     await _initCamera();
   }
 
@@ -522,6 +521,15 @@ class _FaceRegistrationScreenState extends State<FaceRegistrationScreen>
               registrationData,
               canonicalEmployeeId: profile?.canonicalEmployeeId,
             );
+            // Delete old face data from local memory only after successful new registration
+            // Then refresh from server to get the latest registration data
+            if (savedToBackend) {
+              await _faceService.deleteRegisteredFace();
+              final updatedProfile = await _authService.getCurrentUserProfile();
+              if (updatedProfile != null && mounted) {
+                _faceService.hydrateRegistration(updatedProfile.faceRegistration);
+              }
+            }
           }
 
           await _stopImageStream();

@@ -1,6 +1,6 @@
 # OTA (Over-The-Air) Updates — PPHL Attendance App
 
-Last updated: August 20, 2026
+Last updated: August 26, 2026
 
 Production OTA uses **GitHub** (public repo + GitHub Releases). There is **no Cloudinary** or HRM server involved in APK hosting.
 
@@ -208,3 +208,19 @@ After publishing build **N**:
 - [`rocket launcher/README.md`](../../rocket%20launcher/README.md) — publisher scripts and GitHub API flow
 - [`SERVER_COMMANDS.md`](../../SERVER_COMMANDS.md) — workspace command reference (OTA section)
 - [`MOBILE_EMPLOYEE_FEATURES.md`](MOBILE_EMPLOYEE_FEATURES.md) — feature summary including OTA
+
+---
+
+## August 26, 2026 Update (v2.2.3+82)
+
+**Face Registration Safety Fix:**
+- Face registration screen no longer deletes existing face data on initialization
+- Old face data is only deleted after successful new registration completion
+- Prevents accidental data loss when users exit the registration screen
+- Home screen now shows correct face registration status immediately after registration
+
+**Attendance Button Visibility Fix:**
+- Improved attendance record validation in `AttendanceRequestRecord` model
+- Added defensive null checks for `requestedInTime` and `requestedOutTime` fields
+- Check-in/check-out buttons now render correctly even when backend dump recovery operations leave time fields in inconsistent states
+- Backend dump recovery now includes safety checks to validate time format and year ranges before applying changes
