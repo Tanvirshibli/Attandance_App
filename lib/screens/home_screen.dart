@@ -216,7 +216,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       _lastLocalTodayRecord = null;
     }
 
-    final canPunchIn = todayRecord?.canPunchCheckIn ?? false;
+    final canPunchIn = todayRecord?.canPunchCheckIn ?? true;
     final canPunchOut = todayRecord?.canPunchCheckOut ?? false;
     final isClockedIn = canPunchOut;
     final isDayComplete = todayRecord?.isDayComplete ?? false;
