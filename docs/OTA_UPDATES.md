@@ -223,4 +223,5 @@ After publishing build **N**:
 - Improved attendance record validation in `AttendanceRequestRecord` model
 - Added defensive null checks for `requestedInTime` and `requestedOutTime` fields
 - Check-in/check-out buttons now render correctly even when backend dump recovery operations leave time fields in inconsistent states
+- Fixed null fallback in home screen to show Check In button when no attendance record exists for today
 - Backend dump recovery now includes safety checks to validate time format and year ranges before applying changes

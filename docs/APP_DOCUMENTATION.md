@@ -51,7 +51,7 @@
 
 > August 26, 2026 Face registration safety fix (v2.2.3+82): Face registration screen no longer deletes existing face data on initialization. Old face data is only deleted after successful new registration completion, preventing accidental data loss when users exit the registration screen. Home screen now shows correct face registration status immediately after registration.
 
-> August 26, 2026 Attendance button visibility fix (v2.2.3+82): Improved attendance record validation in `AttendanceRequestRecord` model with defensive null checks for `requestedInTime` and `requestedOutTime` fields. Check-in/check-out buttons now render correctly even when backend dump recovery operations leave time fields in inconsistent states.
+> August 26, 2026 Attendance button visibility fix (v2.2.3+82): Improved attendance record validation in `AttendanceRequestRecord` model with defensive null checks for `requestedInTime` and `requestedOutTime` fields. Check-in/check-out buttons now render correctly even when backend dump recovery operations leave time fields in inconsistent states. Fixed null fallback in home screen to show Check In button when no attendance record exists for today.
 
 ---
 
