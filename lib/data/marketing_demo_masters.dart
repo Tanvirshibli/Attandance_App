@@ -1,4 +1,5 @@
 import '../models/booking_form_data_models.dart';
+import '../models/dealer_list_models.dart';
 
 /// Opaque ERP-style IDs for Farm & Dealer forms until live master APIs exist.
 class MarketingDemoNamed {
@@ -100,6 +101,7 @@ class MarketingDemoMasters {
     MarketingDemoNamed(id: 33, name: 'Pcs'),
     MarketingDemoNamed(id: 34, name: 'Acre'),
     MarketingDemoNamed(id: 35, name: 'Decimal'),
+    MarketingDemoNamed(id: 36, name: 'Ton'),
   ];
 
   static const employees = <MarketingDemoNamed>[
@@ -221,6 +223,35 @@ class MarketingDemoMasters {
       ourProduct: false,
     ),
   ];
+
+  /// Hierarchy zone pickers: prefer live zones from Sales (`all-dealer-lists`
+  /// `zoneList` or booking `form-data` `chicks.zoneList`), then demo zones.
+  /// Dedupes by lowercase name; keeps the sales id so `zone_id` posts stay
+  /// consistent with the sales master.
+  static List<MarketingDemoNamed> zonesFrom({
+    List<DealerZone>? salesZones,
+    List<BookingFormZone>? formZones,
+  }) {
+    final out = <String, MarketingDemoNamed>{};
+    for (final z in salesZones ?? const <DealerZone>[]) {
+      final name = z.zoneName.trim();
+      if (name.isEmpty) continue;
+      out.putIfAbsent(
+        name.toLowerCase(),
+        () => MarketingDemoNamed(id: z.id, name: name),
+      );
+    }
+    for (final z in formZones ?? const <BookingFormZone>[]) {
+      final name = z.name.trim();
+      if (name.isEmpty) continue;
+      out.putIfAbsent(
+        name.toLowerCase(),
+        () => MarketingDemoNamed(id: z.id, name: name),
+      );
+    }
+    if (out.isNotEmpty) return out.values.toList();
+    return zones;
+  }
 
   static List<BookingFormCompany> companiesOr(List<BookingFormCompany> live) {
     final usable = live.where((c) => c.id > 0).toList();

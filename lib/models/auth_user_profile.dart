@@ -12,6 +12,8 @@ class AuthUserProfile {
     required this.joiningDate,
     this.canonicalEmployeeId,
     this.faceRegistration,
+    this.zoneId,
+    this.zoneName,
   });
 
   final String name;
@@ -24,6 +26,12 @@ class AuthUserProfile {
   final String joiningDate;
   final int? canonicalEmployeeId;
   final FaceRegistrationData? faceRegistration;
+
+  /// Hierarchy zone of the logged-in employee (company > zone > sector > depot).
+  /// Null until the HRM profile payload exposes it — filtering degrades
+  /// gracefully while absent.
+  final int? zoneId;
+  final String? zoneName;
 
   String get avatarLetters {
     final trimmedName = name.trim();
@@ -106,6 +114,23 @@ class AuthUserProfile {
       ], fallback: 'N/A'),
       canonicalEmployeeId: _parseCanonicalEmployeeId(json, employee),
       faceRegistration: FaceRegistrationData.fromJson(json['face_registration']),
+      zoneId: _toPositiveInt(
+        json['zoneId'] ??
+            json['zone_id'] ??
+            employee['zoneId'] ??
+            employee['zone_id'] ??
+            facility['zoneId'] ??
+            facility['zone_id'],
+      ),
+      zoneName: _firstNonEmpty([
+        _mapName(json['zone']),
+        _mapName(employee['zone']),
+        json['zoneName'],
+        json['zone_name'],
+        employee['zoneName'],
+        facility['zoneName'],
+        facility['zone_name'],
+      ], fallback: ''),
     );
   }
 

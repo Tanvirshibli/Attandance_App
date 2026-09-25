@@ -71,6 +71,31 @@ Map<String, dynamic>? marketingExtractObject(Object? decoded) {
   return map;
 }
 
+/// Competitor company row on a market: name + estimated share + free note.
+class MarketCompetitor {
+  const MarketCompetitor({required this.name, this.sharePercent, this.note});
+
+  final String name;
+  final double? sharePercent;
+  final String? note;
+
+  factory MarketCompetitor.fromJson(Map<String, dynamic> json) {
+    return MarketCompetitor(
+      name: (json['name'] ?? '').toString(),
+      sharePercent: marketingParseDouble(
+        json['sharePercent'] ?? json['share_percent'],
+      ),
+      note: marketingNonEmpty(json['note']),
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+        'name': name,
+        if (sharePercent != null) 'share_percent': sharePercent,
+        if (note != null && note!.isNotEmpty) 'note': note,
+      };
+}
+
 class Market {
   const Market({
     required this.id,
@@ -86,6 +111,19 @@ class Market {
     this.lng,
     this.status,
     this.notes,
+    this.zoneId,
+    this.zoneName,
+    this.feedSharePercent,
+    this.chicksSharePercent,
+    this.productTypes = const [],
+    this.feedDealerCount,
+    this.chicksDealerCount,
+    this.broilerFarmCount,
+    this.layerFarmCount,
+    this.colorFarmCount,
+    this.cockFarmCount,
+    this.competitorCompanies = const [],
+    this.updatedByEmployeeId,
   });
 
   final int id;
@@ -101,6 +139,19 @@ class Market {
   final double? lng;
   final String? status;
   final String? notes;
+  final int? zoneId;
+  final String? zoneName;
+  final double? feedSharePercent;
+  final double? chicksSharePercent;
+  final List<String> productTypes;
+  final int? feedDealerCount;
+  final int? chicksDealerCount;
+  final int? broilerFarmCount;
+  final int? layerFarmCount;
+  final int? colorFarmCount;
+  final int? cockFarmCount;
+  final List<MarketCompetitor> competitorCompanies;
+  final int? updatedByEmployeeId;
 
   String get displayName {
     final c = code?.trim();
@@ -138,7 +189,51 @@ class Market {
       lng: marketingParseDouble(json['lng']),
       status: marketingNonEmpty(json['status']),
       notes: marketingNonEmpty(json['notes']),
+      zoneId: marketingParseInt(json['zoneId'] ?? json['zone_id']),
+      zoneName: marketingNonEmpty(json['zoneName'] ?? json['zone_name']),
+      feedSharePercent: marketingParseDouble(
+        json['feedSharePercent'] ?? json['feed_share_percent'],
+      ),
+      chicksSharePercent: marketingParseDouble(
+        json['chicksSharePercent'] ?? json['chicks_share_percent'],
+      ),
+      productTypes: _parseStringList(
+        json['productTypes'] ?? json['product_types'],
+      ),
+      feedDealerCount: marketingParseInt(
+        json['feedDealerCount'] ?? json['feed_dealer_count'],
+      ),
+      chicksDealerCount: marketingParseInt(
+        json['chicksDealerCount'] ?? json['chicks_dealer_count'],
+      ),
+      broilerFarmCount: marketingParseInt(
+        json['broilerFarmCount'] ?? json['broiler_farm_count'],
+      ),
+      layerFarmCount: marketingParseInt(
+        json['layerFarmCount'] ?? json['layer_farm_count'],
+      ),
+      colorFarmCount: marketingParseInt(
+        json['colorFarmCount'] ?? json['color_farm_count'],
+      ),
+      cockFarmCount: marketingParseInt(
+        json['cockFarmCount'] ?? json['cock_farm_count'],
+      ),
+      competitorCompanies:
+          marketingMapList(json['competitorCompanies'] ?? json['competitor_companies'])
+              .map(MarketCompetitor.fromJson)
+              .toList(),
+      updatedByEmployeeId: marketingParseInt(
+        json['updatedByEmployeeId'] ?? json['updated_by_employee_id'],
+      ),
     );
+  }
+
+  static List<String> _parseStringList(Object? raw) {
+    if (raw is! List) return const [];
+    return raw
+        .map((e) => e.toString().trim())
+        .where((e) => e.isNotEmpty)
+        .toList();
   }
 
   @override
@@ -292,6 +387,8 @@ class Party {
     this.lng,
     this.status,
     this.notes,
+    this.zoneId,
+    this.zoneName,
     this.products = const [],
     this.attachments = const [],
     this.marketName,
@@ -332,6 +429,8 @@ class Party {
   final double? lng;
   final String? status;
   final String? notes;
+  final int? zoneId;
+  final String? zoneName;
   final List<PartyProduct> products;
   final List<Attachment> attachments;
   final String? marketName;
@@ -408,6 +507,8 @@ class Party {
       lng: marketingParseDouble(json['lng']),
       status: marketingNonEmpty(json['status']),
       notes: marketingNonEmpty(json['notes']),
+      zoneId: marketingParseInt(json['zoneId'] ?? json['zone_id']),
+      zoneName: marketingNonEmpty(json['zoneName'] ?? json['zone_name']),
       products:
           marketingMapList(json['products']).map(PartyProduct.fromJson).toList(),
       attachments: marketingMapList(json['attachments'])
@@ -559,6 +660,10 @@ class Visit {
     this.collectionAmount,
     this.status,
     this.notes,
+    this.zoneId,
+    this.zoneName,
+    this.feedFindings,
+    this.chicksFindings,
     this.products = const [],
     this.attachments = const [],
     this.partyName,
@@ -593,6 +698,10 @@ class Visit {
   final double? collectionAmount;
   final String? status;
   final String? notes;
+  final int? zoneId;
+  final String? zoneName;
+  final String? feedFindings;
+  final String? chicksFindings;
   final List<VisitProduct> products;
   final List<Attachment> attachments;
   final String? partyName;
@@ -652,6 +761,14 @@ class Visit {
       ),
       status: marketingNonEmpty(json['status']),
       notes: marketingNonEmpty(json['notes']),
+      zoneId: marketingParseInt(json['zoneId'] ?? json['zone_id']),
+      zoneName: marketingNonEmpty(json['zoneName'] ?? json['zone_name']),
+      feedFindings: marketingNonEmpty(
+        json['feedFindings'] ?? json['feed_findings'],
+      ),
+      chicksFindings: marketingNonEmpty(
+        json['chicksFindings'] ?? json['chicks_findings'],
+      ),
       products:
           marketingMapList(json['products']).map(VisitProduct.fromJson).toList(),
       attachments: marketingMapList(json['attachments'])

@@ -6,7 +6,9 @@ import 'package:http/http.dart' as http;
 import '../config/app_config.dart';
 import '../models/api_result.dart';
 import '../models/marketing_models.dart';
+import '../utils/user_facing_error.dart';
 import 'endpoint_config_service.dart';
+import 'image_upload_service.dart';
 
 class MarketingService {
   MarketingService({EndpointConfigService? configService})
@@ -30,7 +32,11 @@ class MarketingService {
     return '$base$fallbackPath';
   }
 
-  Future<ApiResult<List<Market>>> listMarkets({String? q, int? limit}) async {
+  Future<ApiResult<List<Market>>> listMarkets({
+    String? q,
+    int? limit,
+    int? zoneId,
+  }) async {
     if (!await isMarketingEnabled()) {
       return ApiResult.fail('feature_disabled');
     }
@@ -42,27 +48,15 @@ class MarketingService {
       queryParameters: {
         if (q != null && q.trim().isNotEmpty) 'q': q.trim(),
         if (limit != null && limit > 0) 'limit': '$limit',
+        if (zoneId != null && zoneId > 0) 'zone_id': '$zoneId',
       },
     );
     return _getList(uri, Market.fromJson);
   }
 
-  Future<ApiResult<Market>> createMarket({
-    required String name,
-    String? code,
-    int? companyId,
-    int? sectorId,
-    String? divisionName,
-    String? district,
-    String? upazila,
-    String? unionName,
-    String? villageName,
-    String? address,
-    double? lat,
-    double? lng,
-    String? status,
-    String? notes,
-  }) async {
+  Future<ApiResult<Market>> createMarket(
+    Map<String, dynamic> payload,
+  ) async {
     if (!await isMarketingEnabled()) {
       return ApiResult.fail('feature_disabled');
     }
@@ -72,24 +66,28 @@ class MarketingService {
     );
     return _postObject(
       uri: Uri.parse(url),
-      body: {
-        'name': name,
-        if (code != null && code.isNotEmpty) 'code': code,
-        if (companyId != null && companyId > 0) 'company_id': companyId,
-        if (sectorId != null && sectorId > 0) 'sector_id': sectorId,
-        if (divisionName != null && divisionName.isNotEmpty)
-          'division_name': divisionName,
-        if (district != null && district.isNotEmpty) 'district': district,
-        if (upazila != null && upazila.isNotEmpty) 'upazila': upazila,
-        if (unionName != null && unionName.isNotEmpty) 'union_name': unionName,
-        if (villageName != null && villageName.isNotEmpty)
-          'village_name': villageName,
-        if (address != null && address.isNotEmpty) 'address': address,
-        'lat': ?lat,
-        'lng': ?lng,
-        if (status != null && status.isNotEmpty) 'status': status,
-        if (notes != null && notes.isNotEmpty) 'notes': notes,
-      },
+      body: payload,
+      parse: Market.fromJson,
+    );
+  }
+
+  /// Update market intel + identity (any logged-in employee; the backend
+  /// stamps `updated_by_employee_id` from `employee_id`).
+  Future<ApiResult<Market>> updateMarket(
+    int marketId,
+    Map<String, dynamic> payload,
+  ) async {
+    if (!await isMarketingEnabled()) {
+      return ApiResult.fail('feature_disabled');
+    }
+    if (marketId <= 0) return ApiResult.fail('Invalid market.');
+    final base = await _url(
+      'marketing.markets',
+      '/api/v1/mobile/marketing/markets',
+    );
+    return _putObject(
+      uri: Uri.parse('$base/$marketId'),
+      body: payload,
       parse: Market.fromJson,
     );
   }
@@ -100,6 +98,7 @@ class MarketingService {
     String? q,
     String? status,
     int? marketId,
+    int? zoneId,
     int? limit,
   }) async {
     if (!await isMarketingEnabled()) {
@@ -122,6 +121,9 @@ class MarketingService {
     }
     if (marketId != null && marketId > 0) {
       params['market_id'] = '$marketId';
+    }
+    if (zoneId != null && zoneId > 0) {
+      params['zone_id'] = '$zoneId';
     }
     if (limit != null && limit > 0) {
       params['limit'] = '$limit';
@@ -176,6 +178,7 @@ class MarketingService {
     int? employeeId,
     int? partyId,
     String? status,
+    int? zoneId,
   }) async {
     if (!await isMarketingEnabled()) {
       return ApiResult.fail('feature_disabled');
@@ -189,6 +192,7 @@ class MarketingService {
       params['employee_id'] = '$employeeId';
     }
     if (partyId != null && partyId > 0) params['party_id'] = '$partyId';
+    if (zoneId != null && zoneId > 0) params['zone_id'] = '$zoneId';
     if (status != null && status.isNotEmpty && status.toLowerCase() != 'all') {
       params['status'] = status.toLowerCase();
     }
@@ -313,6 +317,7 @@ class MarketingService {
   Future<ApiResult<List<FarmSurvey>>> listFarmSurveys({
     int? employeeId,
     int? partyId,
+    int? zoneId,
   }) async {
     if (!await isMarketingEnabled()) {
       return ApiResult.fail('feature_disabled');
@@ -326,6 +331,7 @@ class MarketingService {
       params['employee_id'] = '$employeeId';
     }
     if (partyId != null && partyId > 0) params['party_id'] = '$partyId';
+    if (zoneId != null && zoneId > 0) params['zone_id'] = '$zoneId';
     final uri = Uri.parse(base).replace(queryParameters: params);
     return _getList(uri, FarmSurvey.fromJson);
   }
@@ -419,6 +425,8 @@ class MarketingService {
     );
   }
 
+  /// Uploads photos converted to compressed WebP inside the `image[]` field.
+  /// The backend also re-encodes to WebP; the wire format is already small.
   Future<ApiResult<List<Attachment>>> uploadAttachments({
     required String attachableType,
     required int attachableId,
@@ -436,6 +444,12 @@ class MarketingService {
       '/api/v1/mobile/marketing/attachments',
     );
 
+    final imageService = ImageUploadService();
+    final webpFiles = await imageService.convertAllToWebp(photos);
+    if (webpFiles.isEmpty) {
+      return ApiResult.fail('Could not process the selected photos.');
+    }
+
     try {
       final request = http.MultipartRequest('POST', Uri.parse(url));
       request.headers.addAll(_headers);
@@ -444,18 +458,16 @@ class MarketingService {
       request.fields['employee_id'] = '$employeeId';
       request.fields['uploaded_by_employee_id'] = '$employeeId';
 
-      for (final photo in photos) {
-        request.files.add(
-          await http.MultipartFile.fromPath('photos[]', photo.path),
-        );
-      }
+      request.files.addAll(await imageService.imageParts(webpFiles));
 
       final streamed = await request.send().timeout(const Duration(seconds: 90));
       final response = await http.Response.fromStream(streamed);
       if (response.statusCode < 200 || response.statusCode >= 300) {
         return ApiResult.fail(
-          _errorMessage(response) ??
-              'Could not upload photos (${response.statusCode}).',
+          UserFacingError.forSubmit(
+            statusCode: response.statusCode,
+            rawMessage: _errorMessage(response),
+          ),
           statusCode: response.statusCode,
         );
       }
@@ -463,7 +475,9 @@ class MarketingService {
       final list = marketingExtractList(decoded);
       return ApiResult.ok(list.map(Attachment.fromJson).toList());
     } catch (error) {
-      return ApiResult.fail('Network error: $error');
+      return ApiResult.fail(UserFacingError.forException(error));
+    } finally {
+      await imageService.cleanupAll(webpFiles);
     }
   }
 
@@ -476,23 +490,22 @@ class MarketingService {
           .get(uri, headers: _headers)
           .timeout(const Duration(seconds: 30));
       if (response.statusCode < 200 || response.statusCode >= 300) {
-        return ApiResult.fail(
-          _errorMessage(response) ??
-              'Request failed (${response.statusCode}).',
-          statusCode: response.statusCode,
-        );
+        return _failFrom(response);
       }
       final decoded = _decode(response.body);
       if (decoded is Map && decoded['success'] == false) {
         return ApiResult.fail(
-          decoded['message']?.toString() ?? 'Request failed.',
+          UserFacingError.forSubmit(
+            statusCode: response.statusCode,
+            rawMessage: decoded['message']?.toString(),
+          ),
           statusCode: response.statusCode,
         );
       }
       final list = marketingExtractList(decoded);
       return ApiResult.ok(list.map(parse).toList());
     } catch (error) {
-      return ApiResult.fail('Network error: $error');
+      return ApiResult.fail(UserFacingError.forException(error));
     }
   }
 
@@ -506,7 +519,7 @@ class MarketingService {
           .timeout(const Duration(seconds: 30));
       return _parseObjectResponse(response, parse);
     } catch (error) {
-      return ApiResult.fail('Network error: $error');
+      return ApiResult.fail(UserFacingError.forException(error));
     }
   }
 
@@ -528,7 +541,7 @@ class MarketingService {
           .timeout(const Duration(seconds: 45));
       return _parseObjectResponse(response, parse);
     } catch (error) {
-      return ApiResult.fail('Network error: $error');
+      return ApiResult.fail(UserFacingError.forException(error));
     }
   }
 
@@ -550,8 +563,18 @@ class MarketingService {
           .timeout(const Duration(seconds: 45));
       return _parseObjectResponse(response, parse);
     } catch (error) {
-      return ApiResult.fail('Network error: $error');
+      return ApiResult.fail(UserFacingError.forException(error));
     }
+  }
+
+  ApiResult<T> _failFrom<T>(http.Response response) {
+    return ApiResult.fail(
+      UserFacingError.forSubmit(
+        statusCode: response.statusCode,
+        rawMessage: _errorMessage(response),
+      ),
+      statusCode: response.statusCode,
+    );
   }
 
   ApiResult<T> _parseObjectResponse<T>(
@@ -559,16 +582,15 @@ class MarketingService {
     T Function(Map<String, dynamic>) parse,
   ) {
     if (response.statusCode < 200 || response.statusCode >= 300) {
-      return ApiResult.fail(
-        _errorMessage(response) ??
-            'Request failed (${response.statusCode}).',
-        statusCode: response.statusCode,
-      );
+      return _failFrom(response);
     }
     final decoded = _decode(response.body);
     if (decoded is Map && decoded['success'] == false) {
       return ApiResult.fail(
-        decoded['message']?.toString() ?? 'Request failed.',
+        UserFacingError.forSubmit(
+          statusCode: response.statusCode,
+          rawMessage: decoded['message']?.toString(),
+        ),
         statusCode: response.statusCode,
       );
     }
