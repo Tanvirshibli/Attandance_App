@@ -4,6 +4,7 @@ import 'package:google_fonts/google_fonts.dart';
 
 import '../../config/theme.dart';
 import '../../models/marketing_models.dart';
+import '../../services/auth_service.dart';
 import '../../services/marketing_service.dart';
 import '../../widgets/api_empty_state.dart';
 import '../../widgets/gradient_screen_header.dart';
@@ -27,10 +28,16 @@ class _MarketingHubScreenState extends State<MarketingHubScreen> {
   static const _previewLimit = 5;
 
   final MarketingService _service = MarketingService();
+  final AuthService _authService = AuthService();
 
   bool _loadingFeature = true;
   bool _enabled = true;
   bool _loadingPreviews = false;
+
+  /// Logged-in employee's zone — when the HRM profile exposes it, every
+  /// marketing list narrows to that zone. Null until the backend adds it;
+  /// lists then stay unfiltered.
+  int? _zoneId;
 
   List<Party> _farms = const [];
   List<Party> _dealers = const [];
@@ -65,16 +72,23 @@ class _MarketingHubScreenState extends State<MarketingHubScreen> {
       _marketsError = null;
     });
 
-    // Master lists are company-wide (omit employee_id).
+    final profile = await _authService.getCurrentUserProfile();
+    _zoneId = profile?.zoneId;
+
+    // Master lists are company-wide (omit employee_id); zone narrows them
+    // when the profile provides one.
     final farmsFuture = _service.listParties(
       partyType: 'farm',
+      zoneId: _zoneId,
       limit: _previewLimit,
     );
     final dealersFuture = _service.listParties(
       partyType: 'dealer',
+      zoneId: _zoneId,
       limit: _previewLimit,
     );
-    final marketsFuture = _service.listMarkets(limit: _previewLimit);
+    final marketsFuture =
+        _service.listMarkets(limit: _previewLimit, zoneId: _zoneId);
 
     final farmsResult = await farmsFuture;
     final dealersResult = await dealersFuture;

@@ -4,11 +4,13 @@ import 'package:google_fonts/google_fonts.dart';
 
 import '../../config/theme.dart';
 import '../../models/marketing_models.dart';
+import '../../services/auth_service.dart';
 import '../../services/marketing_service.dart';
 import '../../widgets/api_empty_state.dart';
 import '../../widgets/filter_chip_row.dart';
 import '../../widgets/gradient_screen_header.dart';
 import '../../widgets/section_card.dart';
+import '../../widgets/voice_input_field.dart';
 import 'party_detail_screen.dart';
 
 class PartyListScreen extends StatefulWidget {
@@ -27,6 +29,7 @@ class PartyListScreen extends StatefulWidget {
 
 class _PartyListScreenState extends State<PartyListScreen> {
   final MarketingService _service = MarketingService();
+  final AuthService _authService = AuthService();
   final TextEditingController _searchController = TextEditingController();
 
   bool _loading = true;
@@ -34,6 +37,7 @@ class _PartyListScreenState extends State<PartyListScreen> {
   List<Party> _parties = const [];
   late String _typeFilter;
   String _statusFilter = 'All';
+  int? _zoneId;
 
   static const _typeOptions = ['All', 'dealer', 'farm', 'farmer', 'outlet', 'prospect'];
   static const _statusOptions = ['All', 'active', 'inactive', 'prospect'];
@@ -60,12 +64,15 @@ class _PartyListScreenState extends State<PartyListScreen> {
       _error = null;
     });
 
-    // Master lists are company-wide (omit employee_id).
+    // Master lists are company-wide (omit employee_id); zone narrows them
+    // when the profile provides one.
+    _zoneId ??= (await _authService.getCurrentUserProfile())?.zoneId;
     final result = await _service.listParties(
       partyType: _typeFilter == 'All' ? null : _typeFilter,
       q: _searchController.text,
       status: _statusFilter,
       marketId: widget.marketId,
+      zoneId: _zoneId,
     );
 
     if (!mounted) return;
@@ -135,9 +142,15 @@ class _PartyListScreenState extends State<PartyListScreen> {
                       decoration: InputDecoration(
                         hintText: 'Search name, phone, code…',
                         prefixIcon: const Icon(Icons.search_rounded),
-                        suffixIcon: IconButton(
-                          icon: const Icon(Icons.arrow_forward_rounded),
-                          onPressed: _load,
+                        suffixIcon: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            VoiceMicButton(controller: _searchController),
+                            IconButton(
+                              icon: const Icon(Icons.arrow_forward_rounded),
+                              onPressed: _load,
+                            ),
+                          ],
                         ),
                         filled: true,
                         fillColor: AppColors.surface,

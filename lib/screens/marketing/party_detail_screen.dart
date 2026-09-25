@@ -150,6 +150,8 @@ class _PartyDetailScreenState extends State<PartyDetailScreen> {
                             _row('Address', party.address!),
                           if (party.parentPartyName != null)
                             _row('Dealer', party.parentPartyName!),
+                          if (party.zoneName != null)
+                            _row('Zone', party.zoneName!),
                           if (party.businessYears != null)
                             _row('Farming years', '${party.businessYears}'),
                         ],
