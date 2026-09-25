@@ -295,19 +295,39 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     );
     if (!mounted) return;
 
+    final punchDays = _punchDays();
+
     if (result.success && result.data != null) {
       final summary = result.data!;
       // Prefer API rows/summary when shape is known and has KPIs, or when
       // there are no local punches to estimate from.
       if (summary.parsedFromKnownShape) {
         if (summary.hasAnyKpi || _monthPunchPresentDays(from, to) == 0) {
-          setState(() => _summary = summary);
+          setState(
+            () => _summary = summary.reconciledWithPunchDays(punchDays),
+          );
           return;
         }
       }
     }
 
-    setState(() => _summary = _summaryFromPunchRecords(from, to));
+    setState(
+      () => _summary = _summaryFromPunchRecords(from, to)
+          .reconciledWithPunchDays(punchDays),
+    );
+  }
+
+  /// Calendar days with a non-rejected punch this employee made.
+  Set<DateTime> _punchDays() {
+    final days = <DateTime>{};
+    for (final record in _requestedRecords) {
+      if (record.isRejected) continue;
+      if (!record.hasCheckIn && !record.hasCheckOut) continue;
+      final day = record.effectiveCalendarDay;
+      if (day == null) continue;
+      days.add(DateTime(day.year, day.month, day.day));
+    }
+    return days;
   }
 
   int _monthPunchPresentDays(DateTime from, DateTime to) {
@@ -327,8 +347,22 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   AttendanceSummary _summaryFromPunchRecords(DateTime from, DateTime to) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final end = to.isBefore(today) ? to : today;
+    final punched = _punchDays();
+
+    // Days in [from, today] without any punch count as absent.
+    var absentDays = 0;
+    for (var i = 0;; i++) {
+      final day = DateTime(from.year, from.month, from.day + i);
+      if (day.isAfter(end)) break;
+      if (!punched.contains(day)) absentDays++;
+    }
+
     return AttendanceSummary.fromPunchRecords(
       presentDays: _monthPunchPresentDays(from, to),
+      absentDays: absentDays,
     );
   }
 

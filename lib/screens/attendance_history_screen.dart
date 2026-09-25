@@ -72,12 +72,29 @@ class _AttendanceHistoryScreenState extends State<AttendanceHistoryScreen> {
       }
     }
 
+    // HRM rows can mark punched days absent (mobile punches live in
+    // ZKTeco) — move days with a real punch back to present.
+    summary = summary.reconciledWithPunchDays(_punchDaysFrom(records));
+
     if (!mounted) return;
     setState(() {
       _records = records;
       _summary = summary;
       _isLoading = false;
     });
+  }
+
+  /// Calendar days with a non-rejected check-in or check-out.
+  Set<DateTime> _punchDaysFrom(List<AttendanceRequestRecord> records) {
+    final days = <DateTime>{};
+    for (final record in records) {
+      if (record.isRejected) continue;
+      if (!record.hasCheckIn && !record.hasCheckOut) continue;
+      final day = record.effectiveCalendarDay;
+      if (day == null) continue;
+      days.add(DateTime(day.year, day.month, day.day));
+    }
+    return days;
   }
 
   double get _attendancePercent {

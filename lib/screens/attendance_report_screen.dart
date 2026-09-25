@@ -86,6 +86,10 @@ class _AttendanceReportScreenState extends State<AttendanceReportScreen> {
       rejected: records.where((r) => r.status.toLowerCase() == 'rejected').length,
     );
 
+    // HRM rows can mark punched days absent (mobile punches live in
+    // ZKTeco) — move days with a real punch back to present.
+    summary = summary.reconciledWithPunchDays(_punchDaysFrom(records));
+
     if (!mounted) return;
     setState(() {
       _records = records;
@@ -93,6 +97,19 @@ class _AttendanceReportScreenState extends State<AttendanceReportScreen> {
       _isLoading = false;
       _error = records.isEmpty ? 'No attendance records for this period.' : null;
     });
+  }
+
+  /// Calendar days with a non-rejected check-in or check-out.
+  Set<DateTime> _punchDaysFrom(List<AttendanceRequestRecord> records) {
+    final days = <DateTime>{};
+    for (final record in records) {
+      if (record.isRejected) continue;
+      if (!record.hasCheckIn && !record.hasCheckOut) continue;
+      final day = record.effectiveCalendarDay;
+      if (day == null) continue;
+      days.add(DateTime(day.year, day.month, day.day));
+    }
+    return days;
   }
 
   List<Map<String, dynamic>> get _filteredRecords {

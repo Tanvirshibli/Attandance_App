@@ -6,6 +6,7 @@ class AttendanceSummary {
     this.holidayCount = 0,
     this.totalDays = 0,
     this.parsedFromKnownShape = false,
+    this.dayTypes = const {},
   });
 
   final int presentCount;
@@ -16,6 +17,10 @@ class AttendanceSummary {
 
   /// True when [fromJson] recognized a `summary` object or `rows` list.
   final bool parsedFromKnownShape;
+
+  /// Calendar day → normalized lowercase attendance type, built from
+  /// daily `rows` (see [fromDailyRows]). Empty for other sources.
+  final Map<DateTime, String> dayTypes;
 
   bool get hasAnyKpi =>
       presentCount > 0 ||
@@ -60,6 +65,7 @@ class AttendanceSummary {
     var absent = 0;
     var leave = 0;
     var holiday = 0;
+    final dayTypes = <DateTime, String>{};
 
     for (final row in rows) {
       if (row is! Map) continue;
@@ -67,6 +73,14 @@ class AttendanceSummary {
           .toString()
           .trim()
           .toLowerCase();
+
+      final rawDate = row['date'] ?? row['attendance_date'] ?? row['attDate'];
+      final parsedDate = DateTime.tryParse(rawDate?.toString() ?? '');
+      if (parsedDate != null) {
+        dayTypes[DateTime(parsedDate.year, parsedDate.month, parsedDate.day)] =
+            type;
+      }
+
       if (type.isEmpty) continue;
 
       if (type.contains('present') || type == 'p') {
@@ -88,6 +102,62 @@ class AttendanceSummary {
       holidayCount: holiday,
       totalDays: counted > 0 ? counted : rows.length,
       parsedFromKnownShape: true,
+      dayTypes: dayTypes,
+    );
+  }
+
+  /// Moves punched days out of `absent` into `present`.
+  ///
+  /// Mobile punches live in the ZKTeco backend, not in HRM tables, so a
+  /// punched day can come back as `absent` in the daily rows. [punchDays]
+  /// holds calendar days with a non-rejected check-in or check-out.
+  ///
+  /// Per punch day inside the rows' coverage window:
+  /// - `absent`/`a` → absent−1, present+1
+  /// - missing from rows or untyped → present+1
+  /// - any other type (`present`, `leave`, `holiday`, …) → unchanged
+  ///
+  /// When there is no per-day data at all (local fallbacks, `summary`
+  /// objects) the counts are already consistent and this returns `this`.
+  AttendanceSummary reconciledWithPunchDays(Set<DateTime> punchDays) {
+    if (punchDays.isEmpty || dayTypes.isEmpty) return this;
+
+    DateTime? firstDay;
+    DateTime? lastDay;
+    for (final day in dayTypes.keys) {
+      if (firstDay == null || day.isBefore(firstDay)) firstDay = day;
+      if (lastDay == null || day.isAfter(lastDay)) lastDay = day;
+    }
+
+    var present = presentCount;
+    var absent = absentCount;
+
+    for (final raw in punchDays) {
+      final day = DateTime(raw.year, raw.month, raw.day);
+      // Punches outside the rows' window are not represented here.
+      if (day.isBefore(firstDay!) || day.isAfter(lastDay!)) continue;
+
+      final type = dayTypes[day];
+      if (type == null || type.isEmpty) {
+        present++;
+      } else if (type.contains('absent') || type == 'a') {
+        if (absent > 0) absent--;
+        present++;
+      }
+      // Any non-absent type already counts the day correctly.
+    }
+
+    final counted = presentCount + leaveCount + absentCount + holidayCount;
+    return AttendanceSummary(
+      presentCount: present,
+      leaveCount: leaveCount,
+      absentCount: absent,
+      holidayCount: holidayCount,
+      totalDays: totalDays == 0 || totalDays == counted
+          ? present + absent + leaveCount + holidayCount
+          : totalDays,
+      parsedFromKnownShape: parsedFromKnownShape,
+      dayTypes: dayTypes,
     );
   }
 
