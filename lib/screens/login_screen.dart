@@ -9,6 +9,7 @@ import '../screens/main_shell.dart';
 import '../services/auth_service.dart';
 import '../services/endpoint_config_service.dart';
 import '../services/face_recognition_service.dart';
+import '../widgets/voice_input_field.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -239,7 +240,7 @@ class _LoginScreenState extends State<LoginScreen> {
                           ),
                         ),
                         const SizedBox(height: 8),
-                        TextField(
+                        VoiceTextField(
                           controller: _emailController,
                           keyboardType: TextInputType.emailAddress,
                           decoration: InputDecoration(

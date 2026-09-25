@@ -8,6 +8,7 @@ import '../services/auth_service.dart';
 import '../services/payment_service.dart';
 import '../widgets/gradient_screen_header.dart';
 import '../widgets/section_card.dart';
+import '../widgets/voice_input_field.dart';
 
 class PostPaymentScreen extends StatefulWidget {
   const PostPaymentScreen({super.key});
@@ -145,7 +146,7 @@ class _PostPaymentScreenState extends State<PostPaymentScreen> {
                             ),
                           ],
                           const SizedBox(height: 16),
-                          TextField(
+                          VoiceTextField(
                             controller: _amountController,
                             keyboardType: const TextInputType.numberWithOptions(
                               decimal: true,

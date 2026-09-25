@@ -9,6 +9,7 @@ import '../services/auth_service.dart';
 import '../services/leave_service.dart';
 import '../widgets/gradient_screen_header.dart';
 import '../widgets/section_card.dart';
+import '../widgets/voice_input_field.dart';
 
 class ApplyLeaveScreen extends StatefulWidget {
   const ApplyLeaveScreen({super.key});
@@ -175,7 +176,7 @@ class _ApplyLeaveScreenState extends State<ApplyLeaveScreen> {
                           ),
                           const SizedBox(height: 16),
                           _label('Reason'),
-                          TextField(
+                          VoiceTextField(
                             controller: _reasonController,
                             maxLines: 3,
                             decoration: _inputDecoration(hint: 'Enter reason'),

@@ -3,6 +3,7 @@ import 'package:google_fonts/google_fonts.dart';
 
 import '../config/theme.dart';
 import '../services/endpoint_config_service.dart';
+import '../widgets/voice_input_field.dart';
 import 'login_screen.dart';
 
 class ServerBootstrapScreen extends StatefulWidget {
@@ -117,7 +118,7 @@ class _ServerBootstrapScreenState extends State<ServerBootstrapScreen> {
                         ),
                       ),
                       const SizedBox(height: 8),
-                      TextField(
+                      VoiceTextField(
                         controller: _controller,
                         keyboardType: TextInputType.url,
                         decoration: InputDecoration(
