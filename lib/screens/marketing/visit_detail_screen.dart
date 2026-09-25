@@ -127,6 +127,8 @@ class _VisitDetailScreenState extends State<VisitDetailScreen> {
                         _row('Status', visit.status),
                         _row('Objective', visit.objective ?? visit.purpose),
                         _row('Findings', visit.findings),
+                        _row('Feed findings', visit.feedFindings),
+                        _row('Chicks findings', visit.chicksFindings),
                         _row('Result', visit.result ?? visit.outcome),
                         _row('Next plan', visit.nextPlan),
                         _row('Next visit', visit.nextVisitDate),

@@ -53,6 +53,7 @@ class _VisitListScreenState extends State<VisitListScreen> {
       employeeId: profile?.canonicalEmployeeId,
       partyId: widget.partyId,
       status: _statusFilter,
+      zoneId: profile?.zoneId,
     );
     if (!mounted) return;
     if (!result.success) {

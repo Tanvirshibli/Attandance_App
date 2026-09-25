@@ -6,7 +6,7 @@ import 'package:image_picker/image_picker.dart';
 
 import '../../config/theme.dart';
 import '../../data/marketing_demo_masters.dart';
-import '../../models/booking_form_data_models.dart';
+import '../../models/dealer_list_models.dart';
 import '../../models/marketing_models.dart';
 import '../../services/auth_service.dart';
 import '../../services/marketing_service.dart';
@@ -15,6 +15,7 @@ import '../../utils/marketing_location_helper.dart';
 import '../../widgets/gradient_screen_header.dart';
 import '../../widgets/searchable_select_field.dart';
 import '../../widgets/section_card.dart';
+import '../../widgets/voice_input_field.dart';
 
 class _ProductRow {
   final name = TextEditingController();
@@ -79,10 +80,12 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
   List<Party> _dealers = const [];
   List<BookingFormCompany> _companies = MarketingDemoMasters.companies;
   List<BookingFormSector> _sectors = MarketingDemoMasters.sectors;
+  List<MarketingDemoNamed> _zones = MarketingDemoMasters.zones;
   Market? _selectedMarket;
   Party? _parentParty;
   BookingFormCompany? _selectedCompany;
   BookingFormSector? _selectedSector;
+  MarketingDemoNamed? _selectedZone;
   MarketingDemoNamed? _existingDealer;
   MarketingDemoNamed? _capacityUnit;
   double? _lat;
@@ -159,7 +162,8 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
   }
 
   Future<void> _loadMarkets() async {
-    final result = await _service.listMarkets();
+    final profile = await _authService.getCurrentUserProfile();
+    final result = await _service.listMarkets(zoneId: profile?.zoneId);
     if (!mounted) return;
     setState(() {
       _markets = result.data ?? const [];
@@ -168,6 +172,13 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
   }
 
   Future<void> _loadFormMasters() async {
+    List<DealerZone> salesZones = const [];
+    try {
+      final dealers = await _salesService.fetchAllDealerLists();
+      if (dealers.success && dealers.data != null) {
+        salesZones = dealers.data!.zones;
+      }
+    } catch (_) {}
     final result = await _salesService.fetchBookingFormData();
     if (!mounted) return;
     setState(() {
@@ -175,8 +186,36 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
       if (result.success && result.data != null) {
         _companies = MarketingDemoMasters.companiesOr(result.data!.companies);
         _sectors = MarketingDemoMasters.sectorsOr(result.data!.sectors);
+        _zones = MarketingDemoMasters.zonesFrom(
+          salesZones: salesZones,
+          formZones: result.data!.chicksZones,
+        );
+      } else {
+        _zones = MarketingDemoMasters.zonesFrom(salesZones: salesZones);
       }
+      // Default to the logged-in employee's own zone when the profile has one.
+      _prefillZoneFromProfile();
     });
+  }
+
+  Future<void> _prefillZoneFromProfile() async {
+    final profile = await _authService.getCurrentUserProfile();
+    if (!mounted || _selectedZone != null) return;
+    final zoneId = profile?.zoneId;
+    final zoneName = profile?.zoneName;
+    MarketingDemoNamed? match;
+    if (zoneId != null) {
+      match = MarketingDemoMasters.byId(_zones, zoneId, (z) => z.id);
+    }
+    if (match == null && zoneName != null && zoneName.isNotEmpty) {
+      for (final z in _zones) {
+        if (z.name.toLowerCase() == zoneName.toLowerCase()) {
+          match = z;
+          break;
+        }
+      }
+    }
+    if (match != null) setState(() => _selectedZone = match);
   }
 
   Future<void> _loadDealers() async {
@@ -239,6 +278,10 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
   Future<void> _submit() async {
     if (_name.text.trim().isEmpty) {
       _snack('Name is required.');
+      return;
+    }
+    if (_partyType == 'dealer' && _selectedZone == null) {
+      _snack('Select a zone for this dealer.');
       return;
     }
     final profile = await _authService.getCurrentUserProfile();
@@ -318,6 +361,8 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
       if (_existingDealer != null) 'existing_dealer_id': _existingDealer!.id,
       if (_selectedCompany != null) 'company_id': _selectedCompany!.id,
       if (_selectedSector != null) 'sector_id': _selectedSector!.id,
+      if (_selectedZone != null) 'zone_id': _selectedZone!.id,
+      if (_selectedZone != null) 'zone_name': _selectedZone!.name,
       if (_isFarm && _farmType.text.trim().isNotEmpty)
         'farm_type': _farmType.text.trim(),
       if (_isFarm && _capacity.text.trim().isNotEmpty)
@@ -470,19 +515,19 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
                         ),
                         const SizedBox(height: 14),
                         _label('Name *'),
-                        TextField(
+                        VoiceTextField(
                           controller: _name,
                           decoration: _decoration(hint: 'Party name'),
                         ),
                         const SizedBox(height: 14),
                         _label('Trade name'),
-                        TextField(
+                        VoiceTextField(
                           controller: _tradeName,
                           decoration: _decoration(hint: 'Optional'),
                         ),
                         const SizedBox(height: 14),
                         _label('Code'),
-                        TextField(
+                        VoiceTextField(
                           controller: _code,
                           decoration: _decoration(hint: 'Party code'),
                         ),
@@ -520,6 +565,17 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
                             }),
                           ),
                           const SizedBox(height: 14),
+                          SearchableSelectField<MarketingDemoNamed>(
+                            label: _partyType == 'dealer' ? 'Zone *' : 'Zone',
+                            icon: Icons.map_outlined,
+                            options: _zones,
+                            selected: _selectedZone,
+                            displayString: (z) => z.name,
+                            searchText: (z) => z.searchText,
+                            onSelected: (z) =>
+                                setState(() => _selectedZone = z),
+                          ),
+                          const SizedBox(height: 14),
                           SearchableSelectField<BookingFormSector>(
                             label: 'Sector',
                             icon: Icons.hub_outlined,
@@ -541,46 +597,46 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
                       children: [
                         _sectionTitle('Contact'),
                         _label('Contact person'),
-                        TextField(
+                        VoiceTextField(
                           controller: _contact,
                           decoration: _decoration(),
                         ),
                         const SizedBox(height: 14),
                         _label('Owner name'),
-                        TextField(
+                        VoiceTextField(
                           controller: _ownerName,
                           decoration: _decoration(hint: 'Owner / proprietor'),
                         ),
                         const SizedBox(height: 14),
                         _label('Phone'),
-                        TextField(
+                        VoiceTextField(
                           controller: _phone,
                           keyboardType: TextInputType.phone,
                           decoration: _decoration(),
                         ),
                         const SizedBox(height: 14),
                         _label('Alt phone'),
-                        TextField(
+                        VoiceTextField(
                           controller: _altPhone,
                           keyboardType: TextInputType.phone,
                           decoration: _decoration(),
                         ),
                         const SizedBox(height: 14),
                         _label('Email'),
-                        TextField(
+                        VoiceTextField(
                           controller: _email,
                           keyboardType: TextInputType.emailAddress,
                           decoration: _decoration(),
                         ),
                         const SizedBox(height: 14),
                         _label('NID'),
-                        TextField(
+                        VoiceTextField(
                           controller: _nid,
                           decoration: _decoration(),
                         ),
                         const SizedBox(height: 14),
                         _label('Trade license'),
-                        TextField(
+                        VoiceTextField(
                           controller: _tradeLicense,
                           decoration: _decoration(),
                         ),
@@ -613,14 +669,14 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
                             ),
                           const SizedBox(height: 14),
                           _label('Farm type'),
-                          TextField(
+                          VoiceTextField(
                             controller: _farmType,
                             decoration:
                                 _decoration(hint: 'e.g. Broiler, Layer'),
                           ),
                           const SizedBox(height: 14),
                           _label('Capacity'),
-                          TextField(
+                          VoiceTextField(
                             controller: _capacity,
                             keyboardType: TextInputType.number,
                             decoration: _decoration(),
@@ -639,14 +695,14 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
                           const SizedBox(height: 14),
                         ],
                         _label('Business years'),
-                        TextField(
+                        VoiceTextField(
                           controller: _businessYears,
                           keyboardType: TextInputType.number,
                           decoration: _decoration(),
                         ),
                         const SizedBox(height: 14),
                         _label('Credit limit'),
-                        TextField(
+                        VoiceTextField(
                           controller: _creditLimit,
                           keyboardType: TextInputType.number,
                           decoration: _decoration(),
@@ -695,7 +751,7 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
                       children: [
                         _sectionTitle('Location'),
                         _label('Address'),
-                        TextField(
+                        VoiceTextField(
                           controller: _address,
                           maxLines: 2,
                           decoration: _decoration(),
@@ -711,7 +767,17 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
                           SearchableSelectField<Market>(
                             label: 'Market',
                             icon: Icons.store_mall_directory_outlined,
-                            options: _markets,
+                            // Zone-scoped markets first — markets without zone
+                            // data stay visible for backward compatibility.
+                            options: _selectedZone == null
+                                ? _markets
+                                : _markets
+                                    .where(
+                                      (m) =>
+                                          m.zoneId == null ||
+                                          m.zoneId == _selectedZone!.id,
+                                    )
+                                    .toList(),
                             selected: _selectedMarket,
                             displayString: (m) => m.displayName,
                             searchText: (m) => m.displayName.toLowerCase(),
@@ -736,7 +802,7 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
                           const SizedBox(height: 14),
                         ],
                         _label('Notes'),
-                        TextField(
+                        VoiceTextField(
                           controller: _notes,
                           maxLines: 2,
                           decoration: _decoration(),
@@ -803,7 +869,7 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
                                     },
                                   ),
                                   const SizedBox(height: 8),
-                                  TextField(
+                                  VoiceTextField(
                                     controller: row.name,
                                     decoration: _decoration(
                                       hint: 'Product name (required)',
@@ -863,7 +929,7 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
                                         setState(() => row.company = c),
                                   ),
                                   const SizedBox(height: 8),
-                                  TextField(
+                                  VoiceTextField(
                                     controller: row.brand,
                                     decoration:
                                         _decoration(hint: 'Brand name'),
@@ -872,7 +938,7 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
                                   Row(
                                     children: [
                                       Expanded(
-                                        child: TextField(
+                                        child: VoiceTextField(
                                           controller: row.demand,
                                           keyboardType: TextInputType.number,
                                           decoration: _decoration(
@@ -882,7 +948,7 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
                                       ),
                                       const SizedBox(width: 8),
                                       Expanded(
-                                        child: TextField(
+                                        child: VoiceTextField(
                                           controller: row.stock,
                                           keyboardType: TextInputType.number,
                                           decoration:
@@ -892,14 +958,14 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
                                     ],
                                   ),
                                   const SizedBox(height: 8),
-                                  TextField(
+                                  VoiceTextField(
                                     controller: row.unitPrice,
                                     keyboardType: TextInputType.number,
                                     decoration:
                                         _decoration(hint: 'Unit price'),
                                   ),
                                   const SizedBox(height: 8),
-                                  TextField(
+                                  VoiceTextField(
                                     controller: row.competitor,
                                     decoration: _decoration(
                                       hint: 'Competitor company',
@@ -916,7 +982,7 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
                                     onChanged: (v) =>
                                         setState(() => row.isOurProduct = v),
                                   ),
-                                  TextField(
+                                  VoiceTextField(
                                     controller: row.notes,
                                     decoration:
                                         _decoration(hint: 'Product notes'),

@@ -7,7 +7,6 @@ import 'package:intl/intl.dart';
 
 import '../../config/theme.dart';
 import '../../data/marketing_demo_masters.dart';
-import '../../models/booking_form_data_models.dart';
 import '../../models/marketing_models.dart';
 import '../../services/auth_service.dart';
 import '../../services/marketing_service.dart';
@@ -18,9 +17,10 @@ import '../../widgets/marketing_photo_widgets.dart';
 import '../../widgets/searchable_select_field.dart';
 import '../../widgets/searchable_text_field.dart';
 import '../../widgets/section_card.dart';
+import '../../widgets/voice_input_field.dart';
 import 'visit_detail_screen.dart';
 
-/// Visit types for dealer and market visits (farm surveys use a separate form).
+/// Visit types for dealer visits (farm surveys use a separate form).
 const kPartyVisitTypes = [
   'regular',
   'order',
@@ -49,15 +49,6 @@ const kDealerObservationTypes = [
   'demand',
   'price',
   'competitor',
-  'other',
-];
-
-const kMarketObservationTypes = [
-  'demand',
-  'price',
-  'competitor',
-  'sells',
-  'sample',
   'other',
 ];
 
@@ -159,26 +150,12 @@ class VisitObsRow {
   }
 }
 
-enum VisitFormMode { dealer, market }
-
-/// Shared visit form for dealer and market entry points.
+/// Dealer visit form — market/company/sector/zone autofill from the party,
+/// required photo, and split feed/chicks findings.
 class SharedVisitFormScreen extends StatefulWidget {
-  const SharedVisitFormScreen.dealer({super.key, required this.party})
-      : mode = VisitFormMode.dealer,
-        market = null,
-        partiesInMarket = null;
+  const SharedVisitFormScreen.dealer({super.key, required this.party});
 
-  const SharedVisitFormScreen.market({
-    super.key,
-    required this.market,
-    required this.partiesInMarket,
-  })  : mode = VisitFormMode.market,
-        party = null;
-
-  final VisitFormMode mode;
   final Party? party;
-  final Market? market;
-  final List<Party>? partiesInMarket;
 
   @override
   State<SharedVisitFormScreen> createState() => _SharedVisitFormScreenState();
@@ -190,6 +167,8 @@ class _SharedVisitFormScreenState extends State<SharedVisitFormScreen> {
   final SalesService _salesService = SalesService();
   final _objective = TextEditingController();
   final _findings = TextEditingController();
+  final _feedFindings = TextEditingController();
+  final _chicksFindings = TextEditingController();
   final _result = TextEditingController();
   final _nextPlan = TextEditingController();
   final _notes = TextEditingController();
@@ -205,6 +184,8 @@ class _SharedVisitFormScreenState extends State<SharedVisitFormScreen> {
   Party? _selectedParty;
   BookingFormCompany? _selectedCompany;
   BookingFormSector? _selectedSector;
+  int? _zoneId;
+  String? _zoneName;
   DateTime? _nextVisitDate;
   double? _lat;
   double? _lng;
@@ -219,37 +200,27 @@ class _SharedVisitFormScreenState extends State<SharedVisitFormScreen> {
   final List<VisitObsRow> _products = [VisitObsRow()];
   final List<XFile> _photos = [];
 
-  bool get _isDealer => widget.mode == VisitFormMode.dealer;
   bool get _locked => _savedVisit != null;
 
   String get _headerTitle {
     if (_locked) return 'Visit in progress';
-    return _isDealer ? 'Dealer visit' : 'Market visit';
+    return 'Dealer visit';
   }
 
-  String get _headerSubtitle {
-    if (_isDealer) return widget.party!.displayName;
-    return widget.market!.displayName;
-  }
+  String get _headerSubtitle => widget.party!.displayName;
 
   @override
   void initState() {
     super.initState();
     _clientUuid = marketingNewClientUuid();
-    if (_isDealer) {
-      _selectedParty = widget.party;
-      _loadMarkets();
-    } else {
-      _selectedMarket = widget.market;
-      _loadingMarkets = false;
-    }
+    _selectedParty = widget.party;
+    _zoneId = widget.party?.zoneId;
+    _zoneName = widget.party?.zoneName;
+    _loadMarkets();
     _loadMasters();
     _autoFillLocation();
     for (final row in _products) {
-      row.attachAmountListeners(_isDealer);
-    }
-    if (!_isDealer) {
-      _products.first.observationType = kMarketObservationTypes.first;
+      row.attachAmountListeners(true);
     }
   }
 
@@ -257,6 +228,8 @@ class _SharedVisitFormScreenState extends State<SharedVisitFormScreen> {
   void dispose() {
     _objective.dispose();
     _findings.dispose();
+    _feedFindings.dispose();
+    _chicksFindings.dispose();
     _result.dispose();
     _nextPlan.dispose();
     _notes.dispose();
@@ -270,7 +243,7 @@ class _SharedVisitFormScreenState extends State<SharedVisitFormScreen> {
   }
 
   Future<void> _loadMarkets() async {
-    final result = await _service.listMarkets();
+    final result = await _service.listMarkets(zoneId: _zoneId);
     if (!mounted) return;
     setState(() {
       _markets = result.data ?? const [];
@@ -280,6 +253,11 @@ class _SharedVisitFormScreenState extends State<SharedVisitFormScreen> {
         widget.party!.marketId,
         (m) => m.id,
       );
+      // A market's zone is a good fallback when the party itself has none.
+      if (_zoneId == null && _selectedMarket?.zoneId != null) {
+        _zoneId = _selectedMarket!.zoneId;
+        _zoneName = _selectedMarket!.zoneName;
+      }
     });
   }
 
@@ -292,6 +270,25 @@ class _SharedVisitFormScreenState extends State<SharedVisitFormScreen> {
         _sectors = MarketingDemoMasters.sectorsOr(result.data!.sectors);
         _catalogProducts =
             MarketingDemoMasters.productsFromBookingForm(result.data);
+      }
+      // Autofill company/sector from the party (dealer info).
+      final party = widget.party;
+      if (party != null) {
+        _selectedCompany ??= MarketingDemoMasters.byId(
+          _companies,
+          party.companyId,
+          (c) => c.id,
+        );
+        _selectedSector ??= MarketingDemoMasters.byId(
+          _sectors,
+          party.sectorId,
+          (s) => s.id,
+        );
+        // Dealer zone name fallback: match against sales/booking zones.
+        if (_zoneId == null && party.zoneId != null) {
+          _zoneId = party.zoneId;
+          _zoneName = party.zoneName;
+        }
       }
     });
   }
@@ -364,6 +361,10 @@ class _SharedVisitFormScreenState extends State<SharedVisitFormScreen> {
       _snack('Select a party to visit.');
       return;
     }
+    if (_photos.isEmpty) {
+      _snack('Add at least one photo to start the visit.');
+      return;
+    }
 
     final profile = await _authService.getCurrentUserProfile();
     final employeeId = profile?.canonicalEmployeeId;
@@ -423,12 +424,18 @@ class _SharedVisitFormScreenState extends State<SharedVisitFormScreen> {
       if (_selectedMarket != null) 'market_id': _selectedMarket!.id,
       if (_selectedCompany != null) 'company_id': _selectedCompany!.id,
       if (_selectedSector != null) 'sector_id': _selectedSector!.id,
+      if (_zoneId != null && _zoneId! > 0) 'zone_id': _zoneId,
+      if (_zoneName != null && _zoneName!.isNotEmpty) 'zone_name': _zoneName,
       'check_in_at': now.toIso8601String(),
       if (_lat != null) 'check_in_lat': _lat,
       if (_lng != null) 'check_in_lng': _lng,
       if (objective.isNotEmpty) 'objective': objective,
       if (objective.isNotEmpty && objective.length <= 120) 'purpose': objective,
       if (_findings.text.trim().isNotEmpty) 'findings': _findings.text.trim(),
+      if (_feedFindings.text.trim().isNotEmpty)
+        'feed_findings': _feedFindings.text.trim(),
+      if (_chicksFindings.text.trim().isNotEmpty)
+        'chicks_findings': _chicksFindings.text.trim(),
       if (resultText.isNotEmpty) 'result': resultText,
       if (resultText.isNotEmpty && resultText.length <= 120)
         'outcome': resultText,
@@ -464,13 +471,17 @@ class _SharedVisitFormScreenState extends State<SharedVisitFormScreen> {
       }
     }
 
+    String? uploadError;
     if (_photos.isNotEmpty) {
-      await _service.uploadAttachments(
+      final upload = await _service.uploadAttachments(
         attachableType: 'visit',
         attachableId: visit.id,
         employeeId: employeeId,
         photos: _photos.map((x) => File(x.path)).toList(),
       );
+      if (!upload.success) {
+        uploadError = upload.message ?? 'Photo upload failed.';
+      }
     }
 
     if (!mounted) return;
@@ -478,7 +489,12 @@ class _SharedVisitFormScreenState extends State<SharedVisitFormScreen> {
       _submitting = false;
       _savedVisit = visit;
     });
-    _snack('Visit started (in progress).');
+    if (uploadError != null) {
+      _snack('Visit started, but photos failed to upload — '
+          'retry from the visit detail. ($uploadError)');
+    } else {
+      _snack('Visit started (in progress).');
+    }
   }
 
   Future<void> _completeCheckout() async {
@@ -502,6 +518,10 @@ class _SharedVisitFormScreenState extends State<SharedVisitFormScreen> {
         lng: lng,
         extra: {
           if (_findings.text.trim().isNotEmpty) 'findings': _findings.text.trim(),
+          if (_feedFindings.text.trim().isNotEmpty)
+            'feed_findings': _feedFindings.text.trim(),
+          if (_chicksFindings.text.trim().isNotEmpty)
+            'chicks_findings': _chicksFindings.text.trim(),
           if (_result.text.trim().isNotEmpty) 'result': _result.text.trim(),
           if (_nextPlan.text.trim().isNotEmpty) 'next_plan': _nextPlan.text.trim(),
           if (_nextVisitDate != null)
@@ -601,12 +621,8 @@ class _SharedVisitFormScreenState extends State<SharedVisitFormScreen> {
     );
   }
 
-  List<String> get _observationTypesForMode =>
-      _isDealer ? kDealerObservationTypes : kMarketObservationTypes;
-
   @override
   Widget build(BuildContext context) {
-    final parties = widget.partiesInMarket ?? const [];
     return Scaffold(
       backgroundColor: AppColors.background,
       body: marketingFormDismissible(
@@ -626,20 +642,13 @@ class _SharedVisitFormScreenState extends State<SharedVisitFormScreen> {
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
                           _sectionTitle('Identity'),
-                          if (_isDealer) ...[
-                            _readOnly('Dealer', widget.party!.displayName),
-                            if (widget.party!.address != null)
-                              _readOnly('Address', widget.party!.address),
-                            if (widget.party!.phone != null)
-                              _readOnly('Contact', widget.party!.phone),
-                          ] else ...[
-                            _readOnly('Market', widget.market!.displayName),
-                            if (widget.market!.address != null)
-                              _readOnly(
-                                'Market address',
-                                widget.market!.address,
-                              ),
-                          ],
+                          _readOnly('Dealer', widget.party!.displayName),
+                          if (widget.party!.address != null)
+                            _readOnly('Address', widget.party!.address),
+                          if (widget.party!.phone != null)
+                            _readOnly('Contact', widget.party!.phone),
+                          if (_zoneName != null && _zoneName!.isNotEmpty)
+                            _readOnly('Zone', _zoneName),
                           if (_locationStatus != null) ...[
                             const SizedBox(height: 8),
                             Text(
@@ -665,45 +674,25 @@ class _SharedVisitFormScreenState extends State<SharedVisitFormScreen> {
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
                           _sectionTitle('Visit'),
-                          if (!_isDealer) ...[
-                            SearchableSelectField<Party>(
-                              label: 'Party to visit',
-                              icon: Icons.person_outline,
-                              options: parties,
-                              selected: _selectedParty,
-                              displayString: (p) => p.displayName,
-                              searchText: (p) =>
-                                  '${p.displayName} ${p.partyType} ${p.phone ?? ''}'
-                                      .toLowerCase(),
+                          if (_loadingMarkets)
+                            const Padding(
+                              padding: EdgeInsets.symmetric(vertical: 12),
+                              child:
+                                  Center(child: CircularProgressIndicator()),
+                            )
+                          else
+                            SearchableSelectField<Market>(
+                              label: 'Market',
+                              icon: Icons.store_mall_directory_outlined,
+                              options: _markets,
+                              selected: _selectedMarket,
+                              displayString: (m) => m.displayName,
+                              searchText: (m) => m.displayName.toLowerCase(),
                               enabled: !_locked,
-                              validator: (v) =>
-                                  v == null ? 'Select a party' : null,
-                              onSelected: (p) =>
-                                  setState(() => _selectedParty = p),
+                              onSelected: (m) =>
+                                  setState(() => _selectedMarket = m),
                             ),
-                            const SizedBox(height: 14),
-                          ],
-                          if (_isDealer) ...[
-                            if (_loadingMarkets)
-                              const Padding(
-                                padding: EdgeInsets.symmetric(vertical: 12),
-                                child:
-                                    Center(child: CircularProgressIndicator()),
-                              )
-                            else
-                              SearchableSelectField<Market>(
-                                label: 'Market',
-                                icon: Icons.store_mall_directory_outlined,
-                                options: _markets,
-                                selected: _selectedMarket,
-                                displayString: (m) => m.displayName,
-                                searchText: (m) => m.displayName.toLowerCase(),
-                                enabled: !_locked,
-                                onSelected: (m) =>
-                                    setState(() => _selectedMarket = m),
-                              ),
-                            const SizedBox(height: 14),
-                          ],
+                          const SizedBox(height: 14),
                           SearchableSelectField<BookingFormCompany>(
                             label: 'Company',
                             icon: Icons.apartment_outlined,
@@ -751,51 +740,40 @@ class _SharedVisitFormScreenState extends State<SharedVisitFormScreen> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
-                          _sectionTitle(
-                            _isDealer ? 'Commercial' : 'Market intel',
+                          _sectionTitle('Commercial'),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment:
+                                      CrossAxisAlignment.start,
+                                  children: [
+                                    _label('Order amount'),
+                                    VoiceTextField(
+                                      controller: _orderAmount,
+                                      keyboardType: TextInputType.number,
+                                      decoration: _decoration(),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment:
+                                      CrossAxisAlignment.start,
+                                  children: [
+                                    _label('Collection amount'),
+                                    VoiceTextField(
+                                      controller: _collectionAmount,
+                                      keyboardType: TextInputType.number,
+                                      decoration: _decoration(),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
                           ),
-                          if (_isDealer)
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      _label('Order amount'),
-                                      TextField(
-                                        controller: _orderAmount,
-                                        keyboardType: TextInputType.number,
-                                        decoration: _decoration(),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                                const SizedBox(width: 12),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      _label('Collection amount'),
-                                      TextField(
-                                        controller: _collectionAmount,
-                                        keyboardType: TextInputType.number,
-                                        decoration: _decoration(),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ],
-                            )
-                          else ...[
-                            _label('Order amount'),
-                            TextField(
-                              controller: _orderAmount,
-                              keyboardType: TextInputType.number,
-                              decoration: _decoration(),
-                            ),
-                          ],
                         ],
                       ),
                     ),
@@ -806,31 +784,47 @@ class _SharedVisitFormScreenState extends State<SharedVisitFormScreen> {
                         children: [
                           _sectionTitle('Narrative'),
                           _label('Objective'),
-                          TextField(
+                          VoiceTextField(
                             controller: _objective,
                             enabled: !_locked,
                             decoration: _decoration(
-                              hint: _isDealer
-                                  ? 'e.g. Stock check, order, collection'
-                                  : 'e.g. Demand check, competitor scan',
+                              hint: 'e.g. Stock check, order, collection',
                             ),
                           ),
                           const SizedBox(height: 14),
                           _label('Findings'),
-                          TextField(
+                          VoiceTextField(
                             controller: _findings,
                             maxLines: 2,
                             decoration: _decoration(),
                           ),
                           const SizedBox(height: 14),
+                          _label('Feed findings'),
+                          VoiceTextField(
+                            controller: _feedFindings,
+                            maxLines: 2,
+                            decoration: _decoration(
+                              hint: 'Feed stock, brands, movement…',
+                            ),
+                          ),
+                          const SizedBox(height: 14),
+                          _label('Chicks findings'),
+                          VoiceTextField(
+                            controller: _chicksFindings,
+                            maxLines: 2,
+                            decoration: _decoration(
+                              hint: 'Chicks demand, hatchery sources…',
+                            ),
+                          ),
+                          const SizedBox(height: 14),
                           _label('Result'),
-                          TextField(
+                          VoiceTextField(
                             controller: _result,
                             decoration: _decoration(),
                           ),
                           const SizedBox(height: 14),
                           _label('Next plan'),
-                          TextField(
+                          VoiceTextField(
                             controller: _nextPlan,
                             maxLines: 2,
                             decoration: _decoration(),
@@ -870,7 +864,7 @@ class _SharedVisitFormScreenState extends State<SharedVisitFormScreen> {
                           ),
                           const SizedBox(height: 14),
                           _label('Notes'),
-                          TextField(
+                          VoiceTextField(
                             controller: _notes,
                             maxLines: 2,
                             decoration: _decoration(),
@@ -905,8 +899,8 @@ class _SharedVisitFormScreenState extends State<SharedVisitFormScreen> {
                                   onPressed: () => setState(() {
                                     final row = VisitObsRow();
                                     row.observationType =
-                                        _observationTypesForMode.first;
-                                    row.attachAmountListeners(_isDealer);
+                                        kDealerObservationTypes.first;
+                                    row.attachAmountListeners(true);
                                     _products.add(row);
                                   }),
                                   icon: const Icon(Icons.add, size: 18),
@@ -929,7 +923,7 @@ class _SharedVisitFormScreenState extends State<SharedVisitFormScreen> {
                           const SizedBox(height: 8),
                           ...List.generate(_products.length, (i) {
                             final row = _products[i];
-                            final obsTypes = _observationTypesForMode;
+                            const obsTypes = kDealerObservationTypes;
                             if (!obsTypes.contains(row.observationType)) {
                               row.observationType = obsTypes.first;
                             }
@@ -961,7 +955,7 @@ class _SharedVisitFormScreenState extends State<SharedVisitFormScreen> {
                                       },
                                     ),
                                     const SizedBox(height: 8),
-                                    TextField(
+                                    VoiceTextField(
                                       controller: row.name,
                                       enabled: !_locked,
                                       decoration:
@@ -1005,14 +999,14 @@ class _SharedVisitFormScreenState extends State<SharedVisitFormScreen> {
                                           setState(() => row.unit = u),
                                     ),
                                     const SizedBox(height: 8),
-                                    TextField(
+                                    VoiceTextField(
                                       controller: row.brand,
                                       enabled: !_locked,
                                       decoration:
                                           _decoration(hint: 'Brand name'),
                                     ),
                                     const SizedBox(height: 8),
-                                    TextField(
+                                    VoiceTextField(
                                       controller: row.competitor,
                                       enabled: !_locked,
                                       decoration: _decoration(
@@ -1020,117 +1014,71 @@ class _SharedVisitFormScreenState extends State<SharedVisitFormScreen> {
                                       ),
                                     ),
                                     const SizedBox(height: 8),
-                                    if (_isDealer) ...[
-                                      Row(
-                                        children: [
-                                          Expanded(
-                                            child: TextField(
-                                              controller: row.stock,
-                                              enabled: !_locked,
-                                              keyboardType:
-                                                  TextInputType.number,
-                                              decoration:
-                                                  _decoration(hint: 'Stock'),
-                                            ),
+                                    Row(
+                                      children: [
+                                        Expanded(
+                                          child: VoiceTextField(
+                                            controller: row.stock,
+                                            enabled: !_locked,
+                                            keyboardType:
+                                                TextInputType.number,
+                                            decoration:
+                                                _decoration(hint: 'Stock'),
                                           ),
-                                          const SizedBox(width: 8),
-                                          Expanded(
-                                            child: TextField(
-                                              controller: row.demand,
-                                              enabled: !_locked,
-                                              keyboardType:
-                                                  TextInputType.number,
-                                              decoration:
-                                                  _decoration(hint: 'Demand'),
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                      const SizedBox(height: 8),
-                                      Row(
-                                        children: [
-                                          Expanded(
-                                            child: TextField(
-                                              controller: row.order,
-                                              enabled: !_locked,
-                                              keyboardType:
-                                                  TextInputType.number,
-                                              decoration: _decoration(
-                                                hint: 'Order qty',
-                                              ),
-                                            ),
-                                          ),
-                                          const SizedBox(width: 8),
-                                          Expanded(
-                                            child: TextField(
-                                              controller: row.price,
-                                              enabled: !_locked,
-                                              keyboardType:
-                                                  TextInputType.number,
-                                              decoration: _decoration(
-                                                hint: 'Unit price',
-                                              ),
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                      const SizedBox(height: 8),
-                                      TextField(
-                                        controller: row.amount,
-                                        readOnly: true,
-                                        keyboardType: TextInputType.number,
-                                        decoration: _decoration(
-                                          hint: 'Amount',
-                                          readOnly: true,
                                         ),
-                                      ),
-                                    ] else ...[
-                                      TextField(
-                                        controller: row.quantity,
-                                        enabled: !_locked,
-                                        keyboardType: TextInputType.number,
-                                        decoration:
-                                            _decoration(hint: 'Quantity'),
-                                      ),
-                                      const SizedBox(height: 8),
-                                      Row(
-                                        children: [
-                                          Expanded(
-                                            child: TextField(
-                                              controller: row.demand,
-                                              enabled: !_locked,
-                                              keyboardType:
-                                                  TextInputType.number,
-                                              decoration:
-                                                  _decoration(hint: 'Demand'),
-                                            ),
+                                        const SizedBox(width: 8),
+                                        Expanded(
+                                          child: VoiceTextField(
+                                            controller: row.demand,
+                                            enabled: !_locked,
+                                            keyboardType:
+                                                TextInputType.number,
+                                            decoration:
+                                                _decoration(hint: 'Demand'),
                                           ),
-                                          const SizedBox(width: 8),
-                                          Expanded(
-                                            child: TextField(
-                                              controller: row.price,
-                                              enabled: !_locked,
-                                              keyboardType:
-                                                  TextInputType.number,
-                                              decoration:
-                                                  _decoration(hint: 'Price'),
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                      const SizedBox(height: 8),
-                                      TextField(
-                                        controller: row.amount,
-                                        readOnly: true,
-                                        keyboardType: TextInputType.number,
-                                        decoration: _decoration(
-                                          hint: 'Amount',
-                                          readOnly: true,
                                         ),
-                                      ),
-                                    ],
+                                      ],
+                                    ),
+                                    const SizedBox(height: 8),
+                                    Row(
+                                      children: [
+                                        Expanded(
+                                          child: VoiceTextField(
+                                            controller: row.order,
+                                            enabled: !_locked,
+                                            keyboardType:
+                                                TextInputType.number,
+                                            decoration: _decoration(
+                                              hint: 'Order qty',
+                                            ),
+                                          ),
+                                        ),
+                                        const SizedBox(width: 8),
+                                        Expanded(
+                                          child: VoiceTextField(
+                                            controller: row.price,
+                                            enabled: !_locked,
+                                            keyboardType:
+                                                TextInputType.number,
+                                            decoration: _decoration(
+                                              hint: 'Unit price',
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
                                     const SizedBox(height: 8),
                                     TextField(
+                                      controller: row.amount,
+                                      readOnly: true,
+                                      keyboardType: TextInputType.number,
+                                      decoration: _decoration(
+                                        hint: 'Amount',
+                                        readOnly: true,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 8),
+                                    VoiceTextField(
                                       controller: row.notes,
                                       enabled: !_locked,
                                       decoration:
@@ -1149,7 +1097,18 @@ class _SharedVisitFormScreenState extends State<SharedVisitFormScreen> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
-                          _sectionTitle('Photos'),
+                          _sectionTitle('Photos *'),
+                          if (!_locked)
+                            Padding(
+                              padding: const EdgeInsets.only(bottom: 8),
+                              child: Text(
+                                'At least one photo is required to start the visit.',
+                                style: GoogleFonts.poppins(
+                                  fontSize: 11,
+                                  color: AppColors.textHint,
+                                ),
+                              ),
+                            ),
                           if (!_locked)
                             MarketingPhotoPicker(
                               photos: _photos,
