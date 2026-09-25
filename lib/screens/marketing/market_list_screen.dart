@@ -4,10 +4,12 @@ import 'package:google_fonts/google_fonts.dart';
 
 import '../../config/theme.dart';
 import '../../models/marketing_models.dart';
+import '../../services/auth_service.dart';
 import '../../services/marketing_service.dart';
 import '../../widgets/api_empty_state.dart';
 import '../../widgets/gradient_screen_header.dart';
 import '../../widgets/section_card.dart';
+import '../../widgets/voice_input_field.dart';
 import 'market_detail_screen.dart';
 
 class MarketListScreen extends StatefulWidget {
@@ -19,11 +21,13 @@ class MarketListScreen extends StatefulWidget {
 
 class _MarketListScreenState extends State<MarketListScreen> {
   final MarketingService _service = MarketingService();
+  final AuthService _authService = AuthService();
   final TextEditingController _search = TextEditingController();
 
   bool _loading = true;
   String? _error;
   List<Market> _markets = const [];
+  int? _zoneId;
 
   @override
   void initState() {
@@ -42,7 +46,12 @@ class _MarketListScreenState extends State<MarketListScreen> {
       _loading = true;
       _error = null;
     });
-    final result = await _service.listMarkets(q: _search.text);
+    _zoneId ??=
+        (await _authService.getCurrentUserProfile())?.zoneId;
+    final result = await _service.listMarkets(
+      q: _search.text,
+      zoneId: _zoneId,
+    );
     if (!mounted) return;
     if (!result.success) {
       setState(() {
@@ -92,9 +101,15 @@ class _MarketListScreenState extends State<MarketListScreen> {
                       borderRadius: BorderRadius.circular(14),
                       borderSide: BorderSide.none,
                     ),
-                    suffixIcon: IconButton(
-                      onPressed: _load,
-                      icon: const Icon(Icons.arrow_forward),
+                    suffixIcon: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        VoiceMicButton(controller: _search),
+                        IconButton(
+                          onPressed: _load,
+                          icon: const Icon(Icons.arrow_forward),
+                        ),
+                      ],
                     ),
                   ),
                 ),

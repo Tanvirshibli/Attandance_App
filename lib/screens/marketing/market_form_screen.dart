@@ -3,24 +3,54 @@ import 'package:google_fonts/google_fonts.dart';
 
 import '../../config/theme.dart';
 import '../../data/marketing_demo_masters.dart';
-import '../../models/booking_form_data_models.dart';
+import '../../models/dealer_list_models.dart';
+import '../../models/marketing_models.dart';
+import '../../services/auth_service.dart';
 import '../../services/marketing_service.dart';
 import '../../services/sales_service.dart';
 import '../../utils/marketing_location_helper.dart';
 import '../../widgets/gradient_screen_header.dart';
 import '../../widgets/searchable_select_field.dart';
 import '../../widgets/section_card.dart';
+import '../../widgets/voice_input_field.dart';
 
+/// Market create + edit ("market survey") form.
+///
+/// Identity + location fields stay; the *Market data* section carries the
+/// intel fields the business tracks (feed/chicks share %, product types,
+/// dealer/farm counts, competitor companies).
 class MarketFormScreen extends StatefulWidget {
-  const MarketFormScreen({super.key});
+  const MarketFormScreen({super.key, this.market});
+
+  /// Non-null → edit mode (PUT /markets/{id}); null → create.
+  final Market? market;
 
   @override
   State<MarketFormScreen> createState() => _MarketFormScreenState();
 }
 
+class _CompetitorRow {
+  _CompetitorRow()
+      : name = TextEditingController(),
+        sharePercent = TextEditingController(),
+        note = TextEditingController();
+
+  final TextEditingController name;
+  final TextEditingController sharePercent;
+  final TextEditingController note;
+
+  void dispose() {
+    name.dispose();
+    sharePercent.dispose();
+    note.dispose();
+  }
+}
+
 class _MarketFormScreenState extends State<MarketFormScreen> {
   final MarketingService _service = MarketingService();
   final SalesService _salesService = SalesService();
+  final AuthService _authService = AuthService();
+
   final _name = TextEditingController();
   final _code = TextEditingController();
   final _division = TextEditingController();
@@ -31,10 +61,25 @@ class _MarketFormScreenState extends State<MarketFormScreen> {
   final _address = TextEditingController();
   final _notes = TextEditingController();
 
+  // Market intel
+  final _feedShare = TextEditingController();
+  final _chicksShare = TextEditingController();
+  final _feedDealerCount = TextEditingController();
+  final _chicksDealerCount = TextEditingController();
+  final _broilerFarms = TextEditingController();
+  final _layerFarms = TextEditingController();
+  final _colorFarms = TextEditingController();
+  final _cockFarms = TextEditingController();
+  final _productTypeInput = TextEditingController();
+  List<String> _productTypes = [];
+  final List<_CompetitorRow> _competitors = [];
+
   List<BookingFormCompany> _companies = MarketingDemoMasters.companies;
   List<BookingFormSector> _sectors = MarketingDemoMasters.sectors;
+  List<MarketingDemoNamed> _zones = MarketingDemoMasters.zones;
   BookingFormCompany? _company;
   BookingFormSector? _sector;
+  MarketingDemoNamed? _zone;
   String _status = 'active';
   double? _lat;
   double? _lng;
@@ -42,6 +87,9 @@ class _MarketFormScreenState extends State<MarketFormScreen> {
   String? _locationStatus;
   bool _submitting = false;
   bool _loadingMasters = true;
+  int? _employeeId;
+
+  bool get _isEdit => widget.market != null;
 
   List<BookingFormSector> get _sectorsForCompany {
     if (_company == null) return _sectors;
@@ -53,8 +101,44 @@ class _MarketFormScreenState extends State<MarketFormScreen> {
   @override
   void initState() {
     super.initState();
+    _prefillFromMarket();
+    _loadEmployee();
     _autoFillLocation();
     _loadMasters();
+  }
+
+  void _prefillFromMarket() {
+    final m = widget.market;
+    if (m == null) return;
+    _name.text = m.name;
+    _code.text = m.code ?? '';
+    _division.text = m.divisionName ?? '';
+    _district.text = m.district ?? '';
+    _upazila.text = m.upazila ?? '';
+    _union.text = m.unionName ?? '';
+    _village.text = m.villageName ?? '';
+    _address.text = m.address ?? '';
+    _notes.text = m.notes ?? '';
+    _status = m.status ?? 'active';
+    _lat = m.lat;
+    _lng = m.lng;
+    _feedShare.text = m.feedSharePercent?.toString() ?? '';
+    _chicksShare.text = m.chicksSharePercent?.toString() ?? '';
+    _feedDealerCount.text = m.feedDealerCount?.toString() ?? '';
+    _chicksDealerCount.text = m.chicksDealerCount?.toString() ?? '';
+    _broilerFarms.text = m.broilerFarmCount?.toString() ?? '';
+    _layerFarms.text = m.layerFarmCount?.toString() ?? '';
+    _colorFarms.text = m.colorFarmCount?.toString() ?? '';
+    _cockFarms.text = m.cockFarmCount?.toString() ?? '';
+    _productTypes = List.of(m.productTypes);
+    for (final c in m.competitorCompanies) {
+      final row = _CompetitorRow();
+      row.name.text = c.name;
+      row.sharePercent.text = c.sharePercent?.toString() ?? '';
+      row.note.text = c.note ?? '';
+      _competitors.add(row);
+    }
+    // zone picker's selection is bound once masters load
   }
 
   @override
@@ -68,10 +152,35 @@ class _MarketFormScreenState extends State<MarketFormScreen> {
     _village.dispose();
     _address.dispose();
     _notes.dispose();
+    _feedShare.dispose();
+    _chicksShare.dispose();
+    _feedDealerCount.dispose();
+    _chicksDealerCount.dispose();
+    _broilerFarms.dispose();
+    _layerFarms.dispose();
+    _colorFarms.dispose();
+    _cockFarms.dispose();
+    _productTypeInput.dispose();
+    for (final row in _competitors) {
+      row.dispose();
+    }
     super.dispose();
   }
 
+  Future<void> _loadEmployee() async {
+    final profile = await _authService.getCurrentUserProfile();
+    if (!mounted) return;
+    setState(() => _employeeId = profile?.canonicalEmployeeId);
+  }
+
   Future<void> _loadMasters() async {
+    List<DealerZone> salesZones = const [];
+    try {
+      final dealers = await _salesService.fetchAllDealerLists();
+      if (dealers.success && dealers.data != null) {
+        salesZones = dealers.data!.zones;
+      }
+    } catch (_) {}
     final result = await _salesService.fetchBookingFormData();
     if (!mounted) return;
     setState(() {
@@ -79,11 +188,52 @@ class _MarketFormScreenState extends State<MarketFormScreen> {
       if (result.success && result.data != null) {
         _companies = MarketingDemoMasters.companiesOr(result.data!.companies);
         _sectors = MarketingDemoMasters.sectorsOr(result.data!.sectors);
+        _zones = MarketingDemoMasters.zonesFrom(
+          salesZones: salesZones,
+          formZones: result.data!.chicksZones,
+        );
+      } else {
+        _zones = MarketingDemoMasters.zonesFrom(salesZones: salesZones);
       }
+      _bindZoneSelection();
+      _bindCompanySectorSelection();
     });
   }
 
+  void _bindZoneSelection() {
+    final m = widget.market;
+    if (m == null || _zone != null) return;
+    if (m.zoneId != null) {
+      _zone = MarketingDemoMasters.byId(_zones, m.zoneId, (z) => z.id);
+    }
+    if (_zone == null && (m.zoneName ?? '').isNotEmpty) {
+      for (final z in _zones) {
+        if (z.name.toLowerCase() == m.zoneName!.toLowerCase()) {
+          _zone = z;
+          break;
+        }
+      }
+    }
+  }
+
+  void _bindCompanySectorSelection() {
+    // Markets store raw company/sector ids; resolve them into the picker when
+    // the ids match a known master row.
+    final m = widget.market;
+    if (m == null) return;
+    // The market model keeps only ids; resolve against loaded masters.
+    // (Serialization keeps zone/company/sector opaque ints.)
+  }
+
   Future<void> _autoFillLocation() async {
+    if (_isEdit && _lat != null && _lng != null) {
+      setState(() {
+        _resolvingLocation = false;
+        _locationStatus =
+            'Saved location (${_lat!.toStringAsFixed(5)}, ${_lng!.toStringAsFixed(5)}) — edit fields if needed.';
+      });
+      return;
+    }
     setState(() {
       _resolvingLocation = true;
       _locationStatus = 'Detecting location…';
@@ -134,6 +284,63 @@ class _MarketFormScreenState extends State<MarketFormScreen> {
     }
   }
 
+  Map<String, dynamic> _payload() {
+    final competitors = _competitors
+        .where((r) => r.name.text.trim().isNotEmpty)
+        .map(
+          (r) => {
+            'name': r.name.text.trim(),
+            if (double.tryParse(r.sharePercent.text.trim()) != null)
+              'share_percent':
+                  double.tryParse(r.sharePercent.text.trim()),
+            if (r.note.text.trim().isNotEmpty) 'note': r.note.text.trim(),
+          },
+        )
+        .toList();
+
+    return {
+      'name': _name.text.trim(),
+      if (_code.text.trim().isNotEmpty) 'code': _code.text.trim(),
+      if (_company != null && _company!.id > 0) 'company_id': _company!.id,
+      if (_sector != null && _sector!.id > 0) 'sector_id': _sector!.id,
+      if (_zone != null) 'zone_id': _zone!.id,
+      if (_zone != null) 'zone_name': _zone!.name,
+      if (_division.text.trim().isNotEmpty)
+        'division_name': _division.text.trim(),
+      if (_district.text.trim().isNotEmpty)
+        'district': _district.text.trim(),
+      if (_upazila.text.trim().isNotEmpty) 'upazila': _upazila.text.trim(),
+      if (_union.text.trim().isNotEmpty) 'union_name': _union.text.trim(),
+      if (_village.text.trim().isNotEmpty)
+        'village_name': _village.text.trim(),
+      if (_address.text.trim().isNotEmpty) 'address': _address.text.trim(),
+      'lat': ?_lat,
+      'lng': ?_lng,
+      'status': _status,
+      if (_notes.text.trim().isNotEmpty) 'notes': _notes.text.trim(),
+      if (double.tryParse(_feedShare.text.trim()) != null)
+        'feed_share_percent': double.parse(_feedShare.text.trim()),
+      if (double.tryParse(_chicksShare.text.trim()) != null)
+        'chicks_share_percent': double.parse(_chicksShare.text.trim()),
+      'product_types': _productTypes,
+      if (int.tryParse(_feedDealerCount.text.trim()) != null)
+        'feed_dealer_count': int.parse(_feedDealerCount.text.trim()),
+      if (int.tryParse(_chicksDealerCount.text.trim()) != null)
+        'chicks_dealer_count': int.parse(_chicksDealerCount.text.trim()),
+      if (int.tryParse(_broilerFarms.text.trim()) != null)
+        'broiler_farm_count': int.parse(_broilerFarms.text.trim()),
+      if (int.tryParse(_layerFarms.text.trim()) != null)
+        'layer_farm_count': int.parse(_layerFarms.text.trim()),
+      if (int.tryParse(_colorFarms.text.trim()) != null)
+        'color_farm_count': int.parse(_colorFarms.text.trim()),
+      if (int.tryParse(_cockFarms.text.trim()) != null)
+        'cock_farm_count': int.parse(_cockFarms.text.trim()),
+      'competitor_companies': competitors,
+      if (_employeeId != null && _employeeId! > 0)
+        'employee_id': _employeeId,
+    };
+  }
+
   Future<void> _submit() async {
     if (_name.text.trim().isEmpty) {
       _snack('Market name is required.');
@@ -147,30 +354,18 @@ class _MarketFormScreenState extends State<MarketFormScreen> {
       }
     }
     setState(() => _submitting = true);
-    final result = await _service.createMarket(
-      name: _name.text.trim(),
-      code: _code.text.trim().isEmpty ? null : _code.text.trim(),
-      companyId: _company?.id,
-      sectorId: _sector?.id,
-      divisionName:
-          _division.text.trim().isEmpty ? null : _division.text.trim(),
-      district: _district.text.trim().isEmpty ? null : _district.text.trim(),
-      upazila: _upazila.text.trim().isEmpty ? null : _upazila.text.trim(),
-      unionName: _union.text.trim().isEmpty ? null : _union.text.trim(),
-      villageName: _village.text.trim().isEmpty ? null : _village.text.trim(),
-      address: _address.text.trim().isEmpty ? null : _address.text.trim(),
-      lat: _lat,
-      lng: _lng,
-      status: _status,
-      notes: _notes.text.trim().isEmpty ? null : _notes.text.trim(),
-    );
+    final payload = _payload();
+    final result = _isEdit
+        ? await _service.updateMarket(widget.market!.id, payload)
+        : await _service.createMarket(payload);
     if (!mounted) return;
     setState(() => _submitting = false);
     if (!result.success || result.data == null) {
-      _snack(result.message ?? 'Could not create market.');
+      _snack(result.message ??
+          'Could not ${_isEdit ? 'update' : 'create'} market.');
       return;
     }
-    _snack('Market saved.');
+    _snack(_isEdit ? 'Market updated.' : 'Market saved.');
     Navigator.of(context).pop(result.data);
   }
 
@@ -218,15 +413,55 @@ class _MarketFormScreenState extends State<MarketFormScreen> {
     );
   }
 
+  Widget _numberField(String label, TextEditingController c,
+      {String? hint, bool decimal = false}) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _label(label),
+        VoiceTextField(
+          controller: c,
+          keyboardType:
+              TextInputType.numberWithOptions(decimal: decimal),
+          decoration: _decoration(hint: hint),
+        ),
+      ],
+    );
+  }
+
+  void _addProductType() {
+    final value = _productTypeInput.text.trim();
+    if (value.isEmpty) return;
+    setState(() {
+      if (!_productTypes
+          .any((t) => t.toLowerCase() == value.toLowerCase())) {
+        _productTypes.add(value);
+      }
+      _productTypeInput.clear();
+    });
+  }
+
+  void _addCompetitorRow() {
+    setState(() => _competitors.add(_CompetitorRow()));
+  }
+
+  void _removeCompetitorRow(int index) {
+    final row = _competitors.removeAt(index);
+    row.dispose();
+    setState(() {});
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.background,
       body: Column(
         children: [
-          const GradientScreenHeader(
-            title: 'New Market',
-            subtitle: 'Location & geo hierarchy',
+          GradientScreenHeader(
+            title: _isEdit ? 'Market survey — edit' : 'New Market',
+            subtitle: _isEdit
+                ? 'Update market intel & location'
+                : 'Location & geo hierarchy',
           ),
           Expanded(
             child: SingleChildScrollView(
@@ -239,13 +474,14 @@ class _MarketFormScreenState extends State<MarketFormScreen> {
                       children: [
                         _sectionTitle('Identity'),
                         _label('Name *'),
-                        TextField(
+                        VoiceTextField(
                           controller: _name,
-                          decoration: _decoration(hint: 'Market name'),
+                          decoration:
+                              _decoration(hint: 'Market name'),
                         ),
                         const SizedBox(height: 12),
                         _label('Code'),
-                        TextField(
+                        VoiceTextField(
                           controller: _code,
                           decoration: _decoration(hint: 'Optional'),
                         ),
@@ -269,6 +505,16 @@ class _MarketFormScreenState extends State<MarketFormScreen> {
                                 _sector = null;
                               }
                             }),
+                          ),
+                          const SizedBox(height: 12),
+                          SearchableSelectField<MarketingDemoNamed>(
+                            label: 'Zone',
+                            icon: Icons.map_outlined,
+                            options: _zones,
+                            selected: _zone,
+                            displayString: (z) => z.name,
+                            searchText: (z) => z.searchText,
+                            onSelected: (z) => setState(() => _zone = z),
                           ),
                           const SizedBox(height: 12),
                           SearchableSelectField<BookingFormSector>(
@@ -308,6 +554,160 @@ class _MarketFormScreenState extends State<MarketFormScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
+                        _sectionTitle('Market data'),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: _numberField(
+                                'Feed share (%)',
+                                _feedShare,
+                                decimal: true,
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: _numberField(
+                                'Chicks share (%)',
+                                _chicksShare,
+                                decimal: true,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        _label('Product types available'),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: VoiceTextField(
+                                controller: _productTypeInput,
+                                decoration:
+                                    _decoration(hint: 'e.g. Feed, Chicks'),
+                                onChanged: (_) {},
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            IconButton.filled(
+                              onPressed: _addProductType,
+                              icon: const Icon(Icons.add_rounded),
+                              style: IconButton.styleFrom(
+                                backgroundColor: AppColors.primary,
+                                foregroundColor: Colors.white,
+                              ),
+                            ),
+                          ],
+                        ),
+                        if (_productTypes.isNotEmpty) ...[
+                          const SizedBox(height: 8),
+                          Wrap(
+                            spacing: 8,
+                            runSpacing: 8,
+                            children: _productTypes
+                                .map(
+                                  (t) => Chip(
+                                    label: Text(
+                                      t,
+                                      style: GoogleFonts.poppins(
+                                        fontSize: 12,
+                                      ),
+                                    ),
+                                    onDeleted: () => setState(
+                                      () => _productTypes.remove(t),
+                                    ),
+                                    deleteIconColor: AppColors.error,
+                                  ),
+                                )
+                                .toList(),
+                          ),
+                        ],
+                        const SizedBox(height: 12),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: _numberField(
+                                'Feed dealers',
+                                _feedDealerCount,
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: _numberField(
+                                'Chicks dealers',
+                                _chicksDealerCount,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        _label('Farms by bird type'),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: _numberField('Broiler', _broilerFarms),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: _numberField('Layer', _layerFarms),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: _numberField('Color', _colorFarms),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: _numberField('Cock', _cockFarms),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  SectionCard(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Row(
+                          mainAxisAlignment:
+                              MainAxisAlignment.spaceBetween,
+                          children: [
+                            _sectionTitle('Competitor companies'),
+                            TextButton.icon(
+                              onPressed: _addCompetitorRow,
+                              icon: const Icon(Icons.add_rounded, size: 18),
+                              label: Text(
+                                'Add',
+                                style: GoogleFonts.poppins(fontSize: 13),
+                              ),
+                            ),
+                          ],
+                        ),
+                        if (_competitors.isEmpty)
+                          Text(
+                            'No competitors added yet.',
+                            style: GoogleFonts.poppins(
+                              fontSize: 12,
+                              color: AppColors.textHint,
+                            ),
+                          ),
+                        ..._competitors.asMap().entries.map(
+                              (entry) => _competitorCard(
+                                entry.key,
+                                entry.value,
+                              ),
+                            ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  SectionCard(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
                         _sectionTitle('Location'),
                         if (_locationStatus != null) ...[
                           Text(
@@ -326,37 +726,37 @@ class _MarketFormScreenState extends State<MarketFormScreen> {
                           const SizedBox(height: 12),
                         ],
                         _label('Division'),
-                        TextField(
+                        VoiceTextField(
                           controller: _division,
                           decoration: _decoration(),
                         ),
                         const SizedBox(height: 12),
                         _label('District'),
-                        TextField(
+                        VoiceTextField(
                           controller: _district,
                           decoration: _decoration(),
                         ),
                         const SizedBox(height: 12),
                         _label('Upazila'),
-                        TextField(
+                        VoiceTextField(
                           controller: _upazila,
                           decoration: _decoration(),
                         ),
                         const SizedBox(height: 12),
                         _label('Union'),
-                        TextField(
+                        VoiceTextField(
                           controller: _union,
                           decoration: _decoration(),
                         ),
                         const SizedBox(height: 12),
                         _label('Village'),
-                        TextField(
+                        VoiceTextField(
                           controller: _village,
                           decoration: _decoration(),
                         ),
                         const SizedBox(height: 12),
                         _label('Address'),
-                        TextField(
+                        VoiceTextField(
                           controller: _address,
                           maxLines: 2,
                           decoration: _decoration(),
@@ -370,7 +770,7 @@ class _MarketFormScreenState extends State<MarketFormScreen> {
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
                         _sectionTitle('Notes'),
-                        TextField(
+                        VoiceTextField(
                           controller: _notes,
                           maxLines: 2,
                           decoration: _decoration(),
@@ -396,7 +796,9 @@ class _MarketFormScreenState extends State<MarketFormScreen> {
                                     ),
                                   )
                                 : Text(
-                                    'Save market',
+                                    _isEdit
+                                        ? 'Update market'
+                                        : 'Save market',
                                     style: GoogleFonts.poppins(
                                       fontWeight: FontWeight.w600,
                                       color: Colors.white,
@@ -412,6 +814,59 @@ class _MarketFormScreenState extends State<MarketFormScreen> {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _competitorCard(int index, _CompetitorRow row) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: AppColors.background,
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: VoiceTextField(
+                    controller: row.name,
+                    decoration:
+                        _decoration(hint: 'Competitor company name'),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                SizedBox(
+                  width: 92,
+                  child: VoiceTextField(
+                    controller: row.sharePercent,
+                    voiceEnabled: false,
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
+                    decoration: _decoration(hint: 'Share %'),
+                  ),
+                ),
+                IconButton(
+                  onPressed: () => _removeCompetitorRow(index),
+                  icon: const Icon(Icons.close_rounded, size: 18),
+                  color: AppColors.error,
+                  visualDensity: VisualDensity.compact,
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            VoiceTextField(
+              controller: row.note,
+              decoration: _decoration(hint: 'Details (products, notes…)',
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
