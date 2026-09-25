@@ -211,6 +211,23 @@ After publishing build **N**:
 
 ---
 
+## September 25, 2026 Update (v2.3.0+85)
+
+**Field-app modernization release:**
+
+- **Login errors** — wrong credentials now show a plain "The provided credentials are wrong."; other auth/network failures map to short friendly messages (raw diagnostics stay in logs).
+- **Faster face check-in** — match threshold 0.80 → 0.60 (strong 0.72, adaptive-enroll 0.75), early verification after the first passed challenge, shorter hold/positioning windows.
+- **Attendance counts fixed** — home/history/report now reconcile HRM "absent" days against actual ZKTeco punch records (rejected punches excluded).
+- **Market survey rework** — "Market visit" flow removed; markets are editable market surveys (`PUT /markets/{id}`) with feed/chicks share %, product types, dealer/farm counts, and competitor rows.
+- **Zone hierarchy** — `company > zone > sector` client-side: profile `zoneId` filters market/party/visit lists; dealer create requires a zone.
+- **Dealer visit** — autofills market/company/sector from the party, requires a photo, and adds `feed_findings` + `chicks_findings`. Feed unit list includes **Ton**.
+- **Voice typing** — mic on every typed field (`speech_to_text`, English/Bangla picker).
+- **Universal WebP uploads** — all images compress client-side to WebP and post under `image`/`image[]` (legacy `photos[]` still accepted). Payment receive requires a receipt photo per entry.
+
+Backend: ZKTeco `2026_09_01` migration adds zone/market-intel columns; `PUT /markets/{id}` + `zone_id` list filters + `image[]` uploads. See `docs/MARKETING_MOBILE_API.md` (ZKTeco repo) and `docs/FARM_DEALER_MOBILE.md`.
+
+---
+
 ## August 26, 2026 Update (v2.2.3+82)
 
 **Face Registration Safety Fix:**
