@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 
 import '../config/app_config.dart';
 import '../models/attendance_request_record.dart';
+import '../utils/user_facing_error.dart';
 import 'auth_service.dart';
 import 'device_identity_service.dart';
 import 'endpoint_config_service.dart';
@@ -515,22 +516,23 @@ class AttendanceRequestService {
           );
         }
 
-        final serverMessage = _extractErrorMessage(data) ??
-            'Attendance request failed (${response.statusCode}).';
         return AttendanceSubmitResult(
           success: false,
-          message: serverMessage,
+          message: UserFacingError.forSubmit(
+            statusCode: response.statusCode,
+            rawMessage: _extractErrorMessage(data),
+          ),
         );
-      } on TimeoutException {
-        networkError = 'Request timed out.';
-      } catch (_) {
-        networkError = 'Unable to connect to backend.';
+      } on TimeoutException catch (error) {
+        networkError = UserFacingError.forException(error);
+      } catch (error) {
+        networkError = UserFacingError.forException(error);
       }
     }
 
     return AttendanceSubmitResult(
       success: false,
-      message: networkError ?? 'No reachable attendance endpoint.',
+      message: networkError ?? UserFacingError.noInternet,
     );
   }
 

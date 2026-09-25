@@ -2,11 +2,13 @@ import 'dart:convert';
 import 'dart:async';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../config/app_config.dart';
 import '../models/auth_user_profile.dart';
+import '../utils/user_facing_error.dart';
 import 'endpoint_config_service.dart';
 import 'fcm_wake_handler.dart';
 import 'geo_tracking_service.dart';
@@ -62,6 +64,7 @@ class AuthService {
     String? lastNetworkError;
     String? lastNetworkDetails;
     String? lastAttemptedLoginUrl;
+    Object? lastNetworkException;
 
     for (final loginUrl in await _loginUrls()) {
       lastAttemptedLoginUrl = loginUrl;
@@ -132,39 +135,41 @@ class AuthService {
         }
 
         if (response.statusCode == 422) {
-          final errors = data['errors'];
-          if (errors is Map<String, dynamic> && errors.isNotEmpty) {
-            final first = errors.values.first;
-            if (first is List && first.isNotEmpty) {
-              return AuthResult(
-                success: false,
-                message: first.first.toString(),
-              );
-            }
-          }
+          return const AuthResult(
+            success: false,
+            message: 'Please check your email and password format.',
+          );
         }
 
         return AuthResult(
           success: false,
-          message: data['message']?.toString() ??
-              'Login failed (${response.statusCode}).',
+          message: UserFacingError.forLogin(
+            statusCode: response.statusCode,
+            rawMessage:
+                data['message']?.toString() ?? data['error']?.toString(),
+          ),
         );
       } on TimeoutException catch (error) {
         lastNetworkError = 'Request timed out.';
         lastNetworkDetails = error.toString();
+        lastNetworkException = error;
       } on SocketException catch (error) {
         lastNetworkError = 'Unable to connect to backend.';
         lastNetworkDetails =
             'SocketException: ${error.message} (osError=${error.osError?.errorCode ?? 'n/a'})';
+        lastNetworkException = error;
       } on HandshakeException catch (error) {
         lastNetworkError = 'Secure connection failed.';
         lastNetworkDetails = 'HandshakeException: $error';
+        lastNetworkException = error;
       } on http.ClientException catch (error) {
         lastNetworkError = 'HTTP client connection failed.';
         lastNetworkDetails = 'ClientException: ${error.message}';
+        lastNetworkException = error;
       } catch (error) {
         lastNetworkError = 'Unexpected network error.';
         lastNetworkDetails = '$error';
+        lastNetworkException = error;
       }
     }
 
@@ -173,10 +178,16 @@ class AuthService {
     final devHint = AppConfig.useLocalTunnelBackends
         ? 'This build uses Cloudflare tunnel backends (USE_LOCAL_TUNNEL_BACKENDS=true). Ensure Cloudflared-hrmlocal is running and https://hrm.peoplesitsolution.online is healthy.'
         : 'Production builds target https://hrm.peoplesitsolution.com. For tunnel dev builds use --dart-define=USE_LOCAL_TUNNEL_BACKENDS=true.';
+    debugPrint(
+      'AuthService.login unreachable: $networkReason $devHint '
+      'Tried bases: $baseUrls. Last URL: ${lastAttemptedLoginUrl ?? 'n/a'}. '
+      'Details: ${lastNetworkDetails ?? 'n/a'}',
+    );
     return AuthResult(
       success: false,
-      message:
-          '$networkReason $devHint Tried bases: $baseUrls. Last URL: ${lastAttemptedLoginUrl ?? 'n/a'}. Details: ${lastNetworkDetails ?? 'n/a'}',
+      message: lastNetworkException is HandshakeException
+          ? UserFacingError.serverDown
+          : UserFacingError.noInternet,
     );
   }
 
