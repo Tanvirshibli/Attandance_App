@@ -1,6 +1,9 @@
+import 'dart:io';
+
 import 'package:animate_do/animate_do.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 
 import '../config/theme.dart';
@@ -13,6 +16,7 @@ import '../services/sales_service.dart';
 import '../widgets/gradient_screen_header.dart';
 import '../widgets/searchable_select_field.dart';
 import '../widgets/section_card.dart';
+import '../widgets/voice_input_field.dart';
 
 class _PaymentModeOption {
   const _PaymentModeOption(this.id, this.label);
@@ -30,6 +34,7 @@ class _QueuedPayment {
     required this.invoiceTypeName,
     required this.paymentModeName,
     required this.bankName,
+    required this.photo,
   });
 
   final AuthWisePaymentLineInput input;
@@ -39,6 +44,9 @@ class _QueuedPayment {
   final String invoiceTypeName;
   final String paymentModeName;
   final String bankName;
+
+  /// Receipt photo — required; uploaded as WebP `image[]` on save.
+  final File photo;
 }
 
 class PostAuthWisePaymentScreen extends StatefulWidget {
@@ -89,6 +97,7 @@ class _PostAuthWisePaymentScreenState extends State<PostAuthWisePaymentScreen> {
   final _ref = TextEditingController();
   final _checkNo = TextEditingController();
   DateTime? _checkDate;
+  XFile? _photo;
 
   final List<_QueuedPayment> _queue = [];
 
@@ -229,6 +238,35 @@ class _PostAuthWisePaymentScreenState extends State<PostAuthWisePaymentScreen> {
     });
   }
 
+  Future<void> _pickReceiptPhoto() async {
+    final source = await showModalBottomSheet<ImageSource>(
+      context: context,
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.photo_camera_outlined),
+              title: Text('Camera', style: GoogleFonts.poppins()),
+              onTap: () => Navigator.of(context).pop(ImageSource.camera),
+            ),
+            ListTile(
+              leading: const Icon(Icons.photo_library_outlined),
+              title: Text('Gallery', style: GoogleFonts.poppins()),
+              onTap: () => Navigator.of(context).pop(ImageSource.gallery),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (source == null) return;
+    final picked = await ImagePicker().pickImage(
+      source: source,
+      imageQuality: 90,
+    );
+    if (picked != null) setState(() => _photo = picked);
+  }
+
   int? _companyId() {
     if (_company != null && _company!.id > 0) return _company!.id;
     final fromBank = _bank?.company?.id;
@@ -299,6 +337,10 @@ class _PostAuthWisePaymentScreenState extends State<PostAuthWisePaymentScreen> {
       return null;
     }
 
+    if (_photo == null) {
+      _snack('Add a receipt photo for this payment.');
+      return null;
+    }
     var trxId = _trxId.text.trim();
     if (_usesTrx && trxId.isEmpty) trxId = '0';
     var ref = _ref.text.trim();
@@ -339,6 +381,7 @@ class _PostAuthWisePaymentScreenState extends State<PostAuthWisePaymentScreen> {
               _invoiceType == 1 ? 'With voucher' : 'Without voucher',
           paymentModeName: _paymentMode?.label ?? '',
           bankName: _bank?.displayLabel ?? '',
+          photo: File(_photo!.path),
         ),
       );
       _dealer = null;
@@ -352,6 +395,7 @@ class _PostAuthWisePaymentScreenState extends State<PostAuthWisePaymentScreen> {
       _ref.clear();
       _checkNo.clear();
       _checkDate = null;
+      _photo = null;
     });
     _snack('Payment added. Add another or tap Save.');
   }
@@ -372,7 +416,10 @@ class _PostAuthWisePaymentScreenState extends State<PostAuthWisePaymentScreen> {
       employeeId: employeeId,
       payments: _queue.map((e) => e.input).toList(),
     );
-    final result = await _paymentService.postAuthWisePayment(request);
+    final result = await _paymentService.postAuthWisePayment(
+      request,
+      images: _queue.map((e) => e.photo).toList(),
+    );
     if (!mounted) return;
     setState(() => _isSubmitting = false);
 
@@ -640,6 +687,8 @@ class _PostAuthWisePaymentScreenState extends State<PostAuthWisePaymentScreen> {
                             required: false,
                             maxLines: 3,
                           ),
+                          const SizedBox(height: 12),
+                          _receiptPhotoField(),
                           const SizedBox(height: 20),
                           SizedBox(
                             height: 48,
@@ -670,6 +719,15 @@ class _PostAuthWisePaymentScreenState extends State<PostAuthWisePaymentScreen> {
                                 margin: const EdgeInsets.only(bottom: 8),
                                 child: ListTile(
                                   dense: true,
+                                  leading: ClipRRect(
+                                    borderRadius: BorderRadius.circular(8),
+                                    child: Image.file(
+                                      row.photo,
+                                      width: 40,
+                                      height: 40,
+                                      fit: BoxFit.cover,
+                                    ),
+                                  ),
                                   title: Text(
                                     '${row.receiverName} · ৳${_fmtAmount(row.input.amount)}',
                                     style: GoogleFonts.poppins(fontSize: 13),
@@ -793,8 +851,51 @@ class _PostAuthWisePaymentScreenState extends State<PostAuthWisePaymentScreen> {
     );
   }
 
+  Widget _receiptPhotoField() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(
+          'Receipt photo *',
+          style: GoogleFonts.poppins(
+            fontSize: 12,
+            color: AppColors.textSecondary,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            if (_photo != null)
+              ClipRRect(
+                borderRadius: BorderRadius.circular(10),
+                child: Image.file(
+                  File(_photo!.path),
+                  width: 64,
+                  height: 64,
+                  fit: BoxFit.cover,
+                ),
+              ),
+            if (_photo != null) const SizedBox(width: 10),
+            Expanded(
+              child: OutlinedButton.icon(
+                onPressed: _pickReceiptPhoto,
+                icon: const Icon(Icons.add_a_photo_outlined, size: 18),
+                label: Text(
+                  _photo == null
+                      ? 'Add receipt photo (WebP upload)'
+                      : 'Replace photo',
+                  style: GoogleFonts.poppins(fontSize: 13),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
   Widget _money(TextEditingController c, String label) {
-    return TextFormField(
+    return VoiceTextField(
       controller: c,
       keyboardType: const TextInputType.numberWithOptions(decimal: true),
       validator: (v) {
@@ -814,7 +915,7 @@ class _PostAuthWisePaymentScreenState extends State<PostAuthWisePaymentScreen> {
     bool required = true,
     int maxLines = 1,
   }) {
-    return TextFormField(
+    return VoiceTextField(
       controller: c,
       maxLines: maxLines,
       validator: required

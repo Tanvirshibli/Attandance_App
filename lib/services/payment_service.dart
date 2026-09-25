@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart';
@@ -12,8 +13,10 @@ import '../models/payment_setup_models.dart';
 import '../models/payment_models.dart';
 import '../models/payment_report_failure.dart';
 import '../utils/multipart_form.dart';
+import '../utils/user_facing_error.dart';
 import 'endpoint_config_service.dart';
 import 'hrm_api_client.dart';
+import 'image_upload_service.dart';
 
 class PaymentService {
   PaymentService({
@@ -271,9 +274,13 @@ class PaymentService {
     return ApiResult.fail('Invalid loan response.');
   }
 
+  /// Posts payment-receive entries. Every payment line must carry a receipt
+  /// photo — files are converted to WebP and sent under the `image[]` parent
+  /// field, index-aligned with `payments[i]`.
   Future<ApiResult<AuthWisePaymentCreated>> postAuthWisePayment(
-    CreateAuthWisePaymentRequest request,
-  ) async {
+    CreateAuthWisePaymentRequest request, {
+    List<File> images = const [],
+  }) async {
     if (!await isPaymentEnabled()) {
       return ApiResult.fail('feature_disabled');
     }
@@ -282,22 +289,35 @@ class PaymentService {
       return ApiResult.fail('Missing employee profile.');
     }
 
+    if (images.length != request.payments.length) {
+      return ApiResult.fail('Each payment receive needs a receipt photo.');
+    }
+
     final url = await _configService.resolveUrl('payment.authWisePost') ??
         (await _configService.resolveUrl('payment.authWise')) ??
         '${AppConfig.salesApiBaseUrl.trim().replaceAll(RegExp(r'/+$'), '')}/api/auth-wise-payments';
 
     final uri = Uri.parse(url.replaceAll(RegExp(r'/+$'), ''));
 
+    final imageService = ImageUploadService();
+    final webpFiles = await imageService.convertAllToWebp(images);
+    if (webpFiles.length != images.length) {
+      return ApiResult.fail('Could not process one of the receipt photos.');
+    }
+
     try {
       final response = await postFormData(
         uri: uri,
         fields: request.toFormFields(),
+        files: await imageService.imageParts(webpFiles),
       );
 
       if (response.statusCode < 200 || response.statusCode >= 300) {
         return ApiResult.fail(
-          _messageFromBody(response.body) ??
-              'Could not submit payment (${response.statusCode}).',
+          UserFacingError.forSubmit(
+            statusCode: response.statusCode,
+            rawMessage: _messageFromBody(response.body),
+          ),
         );
       }
 
@@ -308,13 +328,17 @@ class PaymentService {
 
       if (decoded['success'] == false) {
         return ApiResult.fail(
-          decoded['message']?.toString() ?? 'Could not submit payment.',
+          UserFacingError.forSubmit(
+            rawMessage: decoded['message']?.toString(),
+          ),
         );
       }
 
       return ApiResult.ok(AuthWisePaymentCreated.fromResponse(decoded));
     } catch (error) {
-      return ApiResult.fail('Network error: $error');
+      return ApiResult.fail(UserFacingError.forException(error));
+    } finally {
+      await imageService.cleanupAll(webpFiles);
     }
   }
 
