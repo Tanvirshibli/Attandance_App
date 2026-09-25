@@ -1,8 +1,10 @@
 # Farm & Dealer Mobile Module
 
-Last updated: August 25, 2026
+Last updated: September 1, 2026
 
 Field data collection for **markets**, **dealers**, and **farms** in Attandance_App, backed by ZKTeco `/api/v1/mobile/marketing/*` (no JWT — same pattern as geo). Employee identity uses profile `canonicalEmployeeId` (`employees.id`).
+
+**v2.3.0+85:** Market rework — "Market visit" removed; markets are now **market surveys** (create once, **Edit** on the detail screen → `PUT /markets/{id}`). Market survey fields: `feed_share_percent`, `chicks_share_percent`, `product_types[]`, `feed_dealer_count`, `chicks_dealer_count`, `broiler_farm_count`, `layer_farm_count`, `color_farm_count`, `cock_farm_count`, `competitor_companies[]` (`name` + `share_percent`). **Zone hierarchy** (`company > zone > sector`): profile `zoneId`/`zoneName` filters all marketing lists (`zone_id` param); dealer create requires a zone; visits store `zone_id`/`zone_name` (party zone fallback server-side). Dealer visit: autofills market/company/sector from the party, **photo required**, new `feed_findings` + `chicks_findings`, feed unit catalog includes **Ton**. All uploads compress client-side to **WebP** (`flutter_image_compress`) and post under the **`image`/`image[]`** parent field (legacy `photos[]` still accepted server-side). Payment-receive posts require a receipt photo per line (`image[]`, index-aligned with `payments[i]`). Every manual-typing text field has a voice mic (`speech_to_text`, English/Bangla picker).
 
 **v2.2.3+78:** Farm visit report flock metrics reordered (present mortality before total; avg feed before read-only total feed kg; total body weight before Production% / FCR). Hatch date defaults today; per bag weight defaults **50** kg. Total feed intake auto-calculates `quantity × avg_feed_intake_g / 1000` (read-only). Mortality % and rest of bird stay auto-computed from quantity + total mortality. Dealer visit product rows: amount = order qty × unit price (read-only). Market visit rows: quantity above price; amount = quantity × price (read-only, included in payload).
 
@@ -24,7 +26,7 @@ Field data collection for **markets**, **dealers**, and **farms** in Attandance_
 
 **v2.2.3+59:** Create forms collect the full Phase-1 field set the current marketing API already accepts. ID fields are type-to-search (`SearchableSelectField`). Live lists are used for markets, parties, and visits (FK-checked). Demo catalog fills ERP-style IDs (dealers, products, units, employees) until live master APIs exist. Company / sector prefer Sales `GET /api/booking-person-books/form-data` (Bearer); demo companies/sectors fill the picker when that list is empty.
 
-Create forms auto-capture GPS + reverse-geocode address fields (no manual Capture GPS buttons). Attachments stay **photos only** (`photos[]` images → WebP). Documents, signature, audio, and video wait for a later API.
+Create forms auto-capture GPS + reverse-geocode address fields (no manual Capture GPS buttons). Attachments stay **photos only**: picked images are compressed to **WebP client-side** (`ImageUploadService`) and posted under the **`image[]`** field (legacy `photos[]` still accepted by ZKTeco). Documents, signature, audio, and video wait for a later API.
 
 ---
 
@@ -107,28 +109,30 @@ Server-generated `public_id` / `visit_no` stay off create forms. Visit `client_u
 
 ## Flows
 
-### Create market
+### Create / edit market (market survey)
 
-Searchable company and sector; status `active` / `inactive`; name, code, geo address fields, notes. On open, app auto-fills `lat`/`lng` and best-effort geo/address from reverse geocode (editable). No Capture GPS button. → `POST /markets` with `company_id` / `sector_id` when selected.
+Searchable company, **zone**, and sector; status `active` / `inactive`; name, code, geo address fields, notes. Market-intelligence fields: `feed_share_percent`, `chicks_share_percent`, `product_types` (multi-select chips), `feed_dealer_count`, `chicks_dealer_count`, `broiler_farm_count`, `layer_farm_count`, `color_farm_count`, `cock_farm_count`, plus dynamic **competitor rows** (`name` + `share_percent`). On open, app auto-fills `lat`/`lng` and best-effort geo/address from reverse geocode (editable). No Capture GPS button. → `POST /markets` create; **Edit market** on the detail screen → `PUT /markets/{id}` (partial fields; `updated_by_employee_id` stamped). There is **no market-visit flow** — markets are records, not visits.
 
 ### Create party (dealer / farm)
 
 1. Sections: Basic / Contact / Farm&Credit / Location / Products / Photos.
 2. Payload **requires** `employee_id` (plus `created_by_employee_id` / `owner_employee_id`).
 3. Scalars: `code`, `owner_name` (separate from contact person), `business_years`, `capacity_unit_id`, `existing_dealer_id`.
-4. Searchable: live market, live parent dealer (farms), company/sector (Sales then demo), existing ERP dealer (demo).
+4. Searchable: live market (filtered to the chosen zone when markets carry zone ids), live parent dealer (farms), company/sector (Sales then demo), existing ERP dealer (demo), **zone** (Sales `zoneList` / `cZoneList` / `chicksZoneList` merged with demo zones) — **required for dealers**, defaults to the logged-in employee's profile zone when present.
 5. Extra fields: email, alt phone, NID, trade license, `farm_type`, `capacity`, `credit_limit`, `payment_mode`, `lead_status`.
 6. Product rows: relation types include `business`; searchable product (fills `product_name` + `product_id`); category, unit, company; `brand_name`, `monthly_quantity` / `current_stock`, `unit_price`, `competitor_company`, `is_our_product`, notes. A row is sent only when `product_name` is present.
 7. Auto location on open → `lat`/`lng` + address prefill (editable). No Capture GPS button.
 8. Optional multi-photo gallery → attachments `attachable_type=party`.
 
-### Visit (dealer or market)
+### Visit (dealer)
 
-**Dealer visit** opens from a dealer record; **Market visit** opens from market detail (market fixed, searchable party picker). Both use `POST /visits` with `status: in_progress`. Visit types: `regular`, `order`, `collection`, `technical_support`, `complaint`, `dealer_opening`, `other` — **not** `survey` (farm report only). Visit type field is type-to-search autocomplete.
+**Dealer visit** opens from a dealer record (`DealerVisitFormScreen`); the market-visit variant was removed in v2.3.0. Uses `POST /visits` with `status: in_progress`. Visit types: `regular`, `order`, `collection`, `technical_support`, `complaint`, `dealer_opening`, `other` — **not** `survey` (farm report only). Visit type field is type-to-search autocomplete.
 
-Create with `status: in_progress` (not completed). Sends `visit_type`, live `market_id`, company/sector, `objective` / `purpose`, `findings`, `result` / `outcome`, `next_plan`, `next_visit_date`, `order_amount`, `collection_amount`, auto-generated `client_uuid`, `geo_verified` (defaults true when GPS is present), check-in GPS.
+Selecting a dealer **autofills market, company, and sector** from the party record when stored. Create with `status: in_progress` (not completed). Sends `visit_type`, live `market_id`, company/sector, `zone_id`/`zone_name` (party zone used as fallback server-side), `objective` / `purpose`, `findings`, **`feed_findings`**, **`chicks_findings`**, `result` / `outcome`, `next_plan`, `next_visit_date`, `order_amount`, `collection_amount`, auto-generated `client_uuid`, `geo_verified` (defaults true when GPS is present), check-in GPS.
 
-Observation types: `uses|sells|stock|demand|order|competitor|sample|price|other`. Product row: searchable product + unit, brand, competitor, quantity / demand / stock, unit price, **amount** (auto: dealer = order qty × unit price; market = quantity × price; read-only), notes.
+Observation types: `uses|sells|stock|demand|order|competitor|sample|price|other`. Product row: searchable product + unit, brand, competitor, stock / demand / order qty, unit price, **amount** (auto: order qty × unit price; read-only), notes.
+
+**At least one photo is required** to submit a dealer visit; photos upload as WebP under `image[]` via `uploadAttachments` (`attachable_type=visit`). If photo upload fails after the visit row is created, the visit is kept and flagged for retry on the detail screen (no duplicate create).
 
 Check-in coords are auto-captured on form open (and retried on submit); no Check-in GPS button. After save, UI offers **Complete / check-out** → `POST .../check-out` with auto GPS (and optional findings/amounts). `completeVisit` in the service delegates to `checkOutVisit`.
 
@@ -157,7 +161,7 @@ Fields:
 - `attachable_type` — `party` | `visit` | `survey` | `followup`
 - `attachable_id`
 - `employee_id` / `uploaded_by_employee_id`
-- `photos[]` — one or more image files (backend converts to WebP)
+- `image[]` — one or more **WebP** image files (compressed client-side via `ImageUploadService`; legacy `photos[]` / `image` still accepted server-side)
 
 ---
 
@@ -169,7 +173,7 @@ Fields:
 |--------|----------------|
 | ERP dealers | Bismillah PPHL Feed, Sunrise Agro Store, City Farm Depot |
 | Products | Peoples Feed Grower/Layer, Peoples DOC Chicks, Competitor Feed |
-| Units | KG, Bag, Pcs, Acre, Decimal |
+| Units | KG, Bag, Pcs, Ton, Acre, Decimal |
 | Employees | Sales officer 1001–1003 |
 | Companies / sectors | Peoples Poultry & Hatchery Ltd, Peoples Feed (used only when Sales form-data is empty) |
 | Breed / DOC / feed / shed / curtain / floor | Cobb 500, Peoples Hatchery, Peoples Feed, Open / Semi-closed / Closed, … |
@@ -183,13 +187,19 @@ Selecting a product fills `product_name` and related category/company when those
 
 | Path | Role |
 |------|------|
-| `lib/models/marketing_models.dart` | Models + JSON helpers (camelCase API fields) |
-| `lib/models/booking_form_data_models.dart` | Sales form-data companies/sectors |
+| `lib/models/marketing_models.dart` | Models + JSON helpers (camelCase API fields, zone + market intel) |
+| `lib/models/auth_user_profile.dart` | Profile incl. `zoneId` / `zoneName` |
+| `lib/models/booking_form_data_models.dart` | Sales form-data companies/sectors/zones |
+| `lib/models/dealer_list_models.dart` | Sales `zoneList` (`DealerZone`) |
 | `lib/data/marketing_demo_masters.dart` | Demo ERP-style IDs until live master APIs exist |
 | `lib/utils/marketing_location_helper.dart` | Auto GPS + reverse geocode for forms |
-| `lib/services/marketing_service.dart` | HTTP client (check-in/out, update party/followup) |
-| `lib/services/sales_service.dart` | `fetchBookingFormData()` for company/sector masters |
+| `lib/utils/multipart_form.dart` | Shared multipart builder (files supported) |
+| `lib/services/image_upload_service.dart` | Image → compressed **WebP**, `image[]` parts |
+| `lib/services/voice_typing_service.dart` | `speech_to_text` English/Bangla dictation |
+| `lib/services/marketing_service.dart` | HTTP client (check-in/out, market update, zone filters) |
+| `lib/services/sales_service.dart` | `fetchBookingFormData()` + `fetchAllDealerLists()` masters |
 | `lib/widgets/searchable_select_field.dart` | Type-to-search dropdown (shared with Post booking) |
+| `lib/widgets/voice_input_field.dart` | `VoiceTextField` + `VoiceMicButton` (mic on typed fields) |
 | `lib/screens/marketing/*` | Hub cards, lists, market/party records, farm visit report, visit form |
 | `lib/services/endpoint_config_service.dart` | Keys + `marketing.enabled` + `sales.booking.formData` |
 | `lib/screens/employee_services_hub_screen.dart` | Services tile |
@@ -200,12 +210,14 @@ Selecting a product fills `product_name` and related category/company when those
 
 | Resource | Params |
 |----------|--------|
-| Parties (master lists) | `party_type`, `market_id`, `q`, `status`, `limit` — **omit `employee_id`** so farms/dealers are company-wide for all authenticated users |
+| Parties (master lists) | `party_type`, `market_id`, `q`, `status`, `limit`, `zone_id` — **omit `employee_id`** so farms/dealers are company-wide for all authenticated users |
 | Parties (optional mine filter) | `employee_id` still supported by the API when a private list is needed |
-| Visits | `employee_id`, `party_id`, `status` |
+| Visits | `employee_id`, `party_id`, `status`, `zone_id` |
 | Farm surveys | `employee_id`, `party_id`, `from`, `to` |
 | Follow-ups | `employee_id`, `party_id`, `status` |
-| Markets | `q` (optional) — already company-wide |
+| Markets | `q`, `zone_id` (optional) — already company-wide |
+
+`zone_id` comes from the logged-in profile (`zoneId` ← `employees.zone_id` when the backend populates it); the app sends it on every list so the server-side `company > zone > sector` hierarchy filter activates as soon as the other backends implement it.
 
 Hub preview, View all parties, market-detail parties, and the parent-dealer picker **do not** send `employee_id`. Create still stamps `created_by_employee_id` / `owner_employee_id`.
 
@@ -218,7 +230,7 @@ Admin read-only pages (same Postgres `mkt_*` tables) live under **Reports** nest
 | Flutter | ZKTeco web |
 |---------|------------|
 | Markets list | `/reports/markets` |
-| Market visits | `/reports/markets/visits` (trail map + visit grid) |
+| Market visits | `/reports/markets/visits` (trail map + visit grid; legacy visit rows — new market edits go through `PUT /markets/{id}`) |
 | Dealers list | `/reports/dealers` |
 | Dealer visits | `/reports/dealers/visits` |
 | Farms list | `/reports/farms` |

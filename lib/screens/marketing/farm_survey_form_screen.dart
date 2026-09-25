@@ -15,6 +15,7 @@ import '../../widgets/gradient_screen_header.dart';
 import '../../widgets/marketing_photo_widgets.dart';
 import '../../widgets/searchable_text_field.dart';
 import '../../widgets/section_card.dart';
+import '../../widgets/voice_input_field.dart';
 import 'farm_survey_detail_screen.dart';
 
 ({double? productionPercent, double? fcr}) parseProductionFcr(String raw) {
@@ -589,28 +590,28 @@ class _FarmSurveyFormScreenState extends State<FarmSurveyFormScreen> {
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
                         _label('Quantity'),
-                        TextField(
+                        VoiceTextField(
                           controller: _quantity,
                           keyboardType: TextInputType.number,
                           decoration: _decoration(hint: 'Pcs'),
                         ),
                         const SizedBox(height: 12),
                         _label('Age'),
-                        TextField(
+                        VoiceTextField(
                           controller: _ageDays,
                           keyboardType: TextInputType.number,
                           decoration: _decoration(hint: 'Days'),
                         ),
                         const SizedBox(height: 12),
                         _label('Present mortality (today)'),
-                        TextField(
+                        VoiceTextField(
                           controller: _presentMortality,
                           keyboardType: TextInputType.number,
                           decoration: _decoration(hint: 'Pcs'),
                         ),
                         const SizedBox(height: 12),
                         _label('Total mortality'),
-                        TextField(
+                        VoiceTextField(
                           controller: _totalMortality,
                           keyboardType: TextInputType.number,
                           decoration: _decoration(hint: 'Pcs'),
@@ -633,7 +634,7 @@ class _FarmSurveyFormScreenState extends State<FarmSurveyFormScreen> {
                         ),
                         const SizedBox(height: 12),
                         _label('Av. feed intake'),
-                        TextField(
+                        VoiceTextField(
                           controller: _avgFeed,
                           keyboardType: TextInputType.number,
                           decoration: _decoration(hint: 'grams per bird'),
@@ -648,27 +649,27 @@ class _FarmSurveyFormScreenState extends State<FarmSurveyFormScreen> {
                         ),
                         const SizedBox(height: 12),
                         _label('Total body weight (kg)'),
-                        TextField(
+                        VoiceTextField(
                           controller: _totalBodyWeight,
                           keyboardType: TextInputType.number,
                           decoration: _decoration(),
                         ),
                         const SizedBox(height: 12),
                         _label('Production% / FCR'),
-                        TextField(
+                        VoiceTextField(
                           controller: _productionFcr,
                           decoration: _decoration(hint: 'e.g. 85% / 1.87'),
                         ),
                         const SizedBox(height: 12),
                         _label('Av. B/W'),
-                        TextField(
+                        VoiceTextField(
                           controller: _avgBodyWeight,
                           keyboardType: TextInputType.number,
                           decoration: _decoration(hint: 'grams'),
                         ),
                         const SizedBox(height: 12),
                         _label('Per bag weight (kg)'),
-                        TextField(
+                        VoiceTextField(
                           controller: _bagWeight,
                           keyboardType: TextInputType.number,
                           decoration: _decoration(),
@@ -703,27 +704,27 @@ class _FarmSurveyFormScreenState extends State<FarmSurveyFormScreen> {
                           ),
                         ),
                         _label('Quantity of feeder'),
-                        TextField(
+                        VoiceTextField(
                           controller: _feederQty,
                           keyboardType: TextInputType.number,
                           decoration: _decoration(hint: 'Pcs'),
                         ),
                         const SizedBox(height: 12),
                         _label('Quantity drinker'),
-                        TextField(
+                        VoiceTextField(
                           controller: _drinkerQty,
                           keyboardType: TextInputType.number,
                           decoration: _decoration(hint: 'Pcs'),
                         ),
                         const SizedBox(height: 12),
                         _label('Av. temperature'),
-                        TextField(
+                        VoiceTextField(
                           controller: _avgTemp,
                           decoration: _decoration(hint: 'e.g. 28-30'),
                         ),
                         const SizedBox(height: 12),
                         _label('Space'),
-                        TextField(
+                        VoiceTextField(
                           controller: _space,
                           decoration: _decoration(hint: 'sq ft'),
                         ),
@@ -741,7 +742,7 @@ class _FarmSurveyFormScreenState extends State<FarmSurveyFormScreen> {
                           (v) => setState(() => _biosecurity = v),
                         ),
                         _label('Uniformity'),
-                        TextField(
+                        VoiceTextField(
                           controller: _uniformity,
                           decoration: _decoration(hint: '% or note'),
                         ),
@@ -762,7 +763,7 @@ class _FarmSurveyFormScreenState extends State<FarmSurveyFormScreen> {
                               setState(() => _diseasePresent = v),
                         ),
                         if (_diseasePresent) ...[
-                          TextField(
+                          VoiceTextField(
                             controller: _diseaseDetails,
                             maxLines: 2,
                             decoration: _decoration(hint: 'Disease details'),
@@ -775,7 +776,7 @@ class _FarmSurveyFormScreenState extends State<FarmSurveyFormScreen> {
                           (v) => setState(() => _technical = v),
                         ),
                         _label('Problem facing'),
-                        TextField(
+                        VoiceTextField(
                           controller: _problems,
                           maxLines: 2,
                           decoration: _decoration(),
@@ -787,14 +788,14 @@ class _FarmSurveyFormScreenState extends State<FarmSurveyFormScreen> {
                           (v) => setState(() => _economic = v),
                         ),
                         _label('Remarks'),
-                        TextField(
+                        VoiceTextField(
                           controller: _remarks,
                           maxLines: 2,
                           decoration: _decoration(),
                         ),
                         const SizedBox(height: 12),
                         _label('Comments'),
-                        TextField(
+                        VoiceTextField(
                           controller: _comments,
                           maxLines: 2,
                           decoration: _decoration(),
