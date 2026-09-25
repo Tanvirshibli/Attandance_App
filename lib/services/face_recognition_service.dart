@@ -29,14 +29,15 @@ class FaceRecognitionService {
   static const int _inputSize = 112;
   static const int embeddingSize = 192;
 
-  // Core match threshold against registration templates (avg + captures)
-  static const double _matchThreshold = 0.80;
+  // Core match threshold against registration templates (avg + captures).
+  // Accepts a >=60% best-template match — goal is correct-user detection.
+  static const double _matchThreshold = 0.60;
 
   // Strong core-template match threshold
-  static const double _strongMatchThreshold = 0.88;
+  static const double _strongMatchThreshold = 0.72;
 
   // Minimum confidence to auto-enroll an adaptive template
-  static const double _adaptiveEnrollmentThreshold = 0.86;
+  static const double _adaptiveEnrollmentThreshold = 0.75;
 
   // Same-person threshold: captures during registration must be >= 65% similar
   static const double _samePersonThreshold = 0.65;
@@ -1040,7 +1041,7 @@ class FaceRecognitionService {
     final qualityAwareThreshold =
         qualityScore >= 75 ? _matchThreshold : _matchThreshold + 0.02;
     final coreConsistencyThreshold = qualityAwareThreshold - 0.02;
-    final requiredCoreHits = coreSimilarityScores.length >= 3 ? 2 : 1;
+    final requiredCoreHits = 1;
     final coreHitCount = coreSimilarityScores
         .where((sim) => sim >= coreConsistencyThreshold)
         .length;

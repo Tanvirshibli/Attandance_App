@@ -50,7 +50,7 @@ class CheckInScreen extends StatefulWidget {
 
 class _CheckInScreenState extends State<CheckInScreen>
     with TickerProviderStateMixin {
-  static const int _minChallengesBeforeEarlyVerify = 2;
+  static const int _minChallengesBeforeEarlyVerify = 1;
   static bool _routeActive = false;
 
   // ---- Services & Controllers ----
@@ -82,9 +82,9 @@ class _CheckInScreenState extends State<CheckInScreen>
   // Angle hold counter
   int _angleHoldFrames = 0;
   int _smileHoldFrames = 0;
-  static const int _requiredHoldFrames = 5;
-  static const int _requiredSmileHoldFrames = 3;
-  static const Duration _firstPositioningWindow = Duration(seconds: 2);
+  static const int _requiredHoldFrames = 3;
+  static const int _requiredSmileHoldFrames = 2;
+  static const Duration _firstPositioningWindow = Duration(seconds: 1);
   static const Duration _postCaptureSettle = Duration(milliseconds: 600);
   static const String _positioningMessage =
       'Position your face in the guide';
