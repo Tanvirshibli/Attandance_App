@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../config/theme.dart';
+import 'voice_input_field.dart';
 
 /// Free-text field with type-to-search suggestions (custom values allowed).
 /// Options render inline under the field so selection and page scroll work.
@@ -225,16 +226,24 @@ class _SearchableTextFieldState extends State<SearchableTextField> {
             hintText: widget.hintText,
             labelStyle: GoogleFonts.poppins(fontSize: 13),
             prefixIcon: Icon(widget.icon, size: 20),
-            suffixIcon: widget.suggestions.isNotEmpty
-                ? IconButton(
+            suffixIcon: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                VoiceMicButton(
+                  controller: widget.controller,
+                  enabled: widget.enabled,
+                ),
+                if (widget.suggestions.isNotEmpty)
+                  IconButton(
                     tooltip: 'Suggestions',
                     icon: Icon(
                       showList ? Icons.arrow_drop_up : Icons.arrow_drop_down,
                       size: 22,
                     ),
                     onPressed: widget.enabled ? _toggleSuffix : null,
-                  )
-                : null,
+                  ),
+              ],
+            ),
             filled: true,
             fillColor: AppColors.background,
             border: OutlineInputBorder(

@@ -16,6 +16,7 @@ import '../../widgets/filter_chip_row.dart';
 import '../../widgets/gradient_screen_header.dart';
 import '../../widgets/searchable_select_field.dart';
 import '../../widgets/section_card.dart';
+import '../../widgets/voice_input_field.dart';
 
 /// Create follow-up for a party, or list-mode hub for open follow-ups.
 class FollowupFormScreen extends StatefulWidget {
@@ -148,7 +149,7 @@ class _FollowupFormScreenState extends State<FollowupFormScreen> {
           'Mark completed',
           style: GoogleFonts.poppins(fontWeight: FontWeight.w600),
         ),
-        content: TextField(
+        content: VoiceTextField(
           controller: noteCtrl,
           maxLines: 3,
           decoration: const InputDecoration(
@@ -515,7 +516,7 @@ class _FollowupFormScreenState extends State<FollowupFormScreen> {
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     _label('Title *'),
-                    TextField(
+                    VoiceTextField(
                       controller: _title,
                       decoration: _decoration(
                         hint: 'e.g. Call back next week',
@@ -523,14 +524,14 @@ class _FollowupFormScreenState extends State<FollowupFormScreen> {
                     ),
                     const SizedBox(height: 14),
                     _label('Description'),
-                    TextField(
+                    VoiceTextField(
                       controller: _description,
                       maxLines: 3,
                       decoration: _decoration(),
                     ),
                     const SizedBox(height: 14),
                     _label('Action type'),
-                    TextField(
+                    VoiceTextField(
                       controller: _action,
                       decoration: _decoration(
                         hint: 'e.g. Call, Visit, Sample',
@@ -538,7 +539,7 @@ class _FollowupFormScreenState extends State<FollowupFormScreen> {
                     ),
                     const SizedBox(height: 14),
                     _label('Notes'),
-                    TextField(
+                    VoiceTextField(
                       controller: _notes,
                       maxLines: 2,
                       decoration: _decoration(),

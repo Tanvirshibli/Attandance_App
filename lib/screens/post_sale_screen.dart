@@ -11,6 +11,7 @@ import '../services/sales_service.dart';
 import '../widgets/gradient_screen_header.dart';
 import '../widgets/searchable_select_field.dart';
 import '../widgets/section_card.dart';
+import '../widgets/voice_input_field.dart';
 
 class PostSaleScreen extends StatefulWidget {
   const PostSaleScreen({super.key});
@@ -549,7 +550,7 @@ class _PostSaleScreenState extends State<PostSaleScreen> {
     IconData icon, {
     bool required = true,
   }) {
-    return TextFormField(
+    return VoiceTextField(
       controller: controller,
       keyboardType: TextInputType.text,
       validator: required
@@ -565,7 +566,7 @@ class _PostSaleScreenState extends State<PostSaleScreen> {
     String label, [
     IconData icon = Icons.tag_outlined,
   ]) {
-    return TextFormField(
+    return VoiceTextField(
       controller: controller,
       keyboardType: TextInputType.number,
       validator: (v) {
@@ -583,7 +584,7 @@ class _PostSaleScreenState extends State<PostSaleScreen> {
     String label, {
     String? Function(String?)? validator,
   }) {
-    return TextFormField(
+    return VoiceTextField(
       controller: controller,
       keyboardType: const TextInputType.numberWithOptions(decimal: true),
       validator: validator ??

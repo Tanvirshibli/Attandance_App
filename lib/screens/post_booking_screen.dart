@@ -12,6 +12,7 @@ import '../services/sales_service.dart';
 import '../widgets/gradient_screen_header.dart';
 import '../widgets/searchable_select_field.dart';
 import '../widgets/section_card.dart';
+import '../widgets/voice_input_field.dart';
 
 class _LineDraft {
   _LineDraft()
@@ -1043,7 +1044,7 @@ class _PostBookingScreenState extends State<PostBookingScreen> {
     IconData icon, {
     bool required = true,
   }) {
-    return TextFormField(
+    return VoiceTextField(
       controller: controller,
       validator: required
           ? (v) => (v == null || v.trim().isEmpty) ? 'Required' : null
@@ -1059,7 +1060,7 @@ class _PostBookingScreenState extends State<PostBookingScreen> {
     bool allowZero = false,
     bool required = true,
   }) {
-    return TextFormField(
+    return VoiceTextField(
       controller: controller,
       keyboardType: const TextInputType.numberWithOptions(decimal: true),
       validator: (v) {
