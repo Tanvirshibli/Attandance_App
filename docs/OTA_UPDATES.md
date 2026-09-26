@@ -222,7 +222,7 @@ After publishing build **N**:
 - **Zone hierarchy** — `company > zone > sector` client-side: profile `zoneId` filters market/party/visit lists; dealer create requires a zone.
 - **Dealer visit** — autofills market/company/sector from the party, requires a photo, and adds `feed_findings` + `chicks_findings`. Feed unit list includes **Ton**.
 - **Voice typing** — mic on every typed field (`speech_to_text`, English/Bangla picker).
-- **Universal WebP uploads** — all images compress client-side to WebP and post under `image`/`image[]` (legacy `photos[]` still accepted). Payment receive requires a receipt photo per entry.
+- **Universal WebP uploads** — all images compress client-side to WebP and post under `image`/`image[]` (legacy `photos[]` still accepted). Payment receive accepts an optional receipt photo per entry (`image[i]` field, index-aligned).
 
 Backend: ZKTeco `2026_09_01` migration adds zone/market-intel columns; `PUT /markets/{id}` + `zone_id` list filters + `image[]` uploads. See `docs/MARKETING_MOBILE_API.md` (ZKTeco repo) and `docs/FARM_DEALER_MOBILE.md`.
 
