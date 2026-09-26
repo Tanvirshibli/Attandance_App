@@ -1,3 +1,10 @@
+import 'auth_wise_payment_models.dart';
+
+int _int(Object? v) {
+  if (v is int) return v;
+  return int.tryParse(v?.toString() ?? '') ?? 0;
+}
+
 class AuthWisePaymentLineInput {
   const AuthWisePaymentLineInput({
     required this.companyId,
@@ -81,28 +88,76 @@ class CreateAuthWisePaymentRequest {
   }
 }
 
+class AuthWiseCreatedPayment {
+  const AuthWiseCreatedPayment({
+    required this.id,
+    this.voucherNo,
+    this.amount,
+    this.status,
+    this.image,
+  });
+
+  final int id;
+  final String? voucherNo;
+  final double? amount;
+  final String? status;
+  final AuthWisePaymentImage? image;
+
+  factory AuthWiseCreatedPayment.fromJson(Map<String, dynamic> json) {
+    return AuthWiseCreatedPayment(
+      id: _int(json['id']),
+      voucherNo:
+          (json['voucherNo'] ?? json['voucher_no'])?.toString(),
+      amount: json['amount'] is num ? (json['amount'] as num).toDouble() : null,
+      status: json['status']?.toString(),
+      image: json['image'] is Map<String, dynamic>
+          ? AuthWisePaymentImage.fromJson(
+              json['image'] as Map<String, dynamic>,
+            )
+          : null,
+    );
+  }
+}
+
 class AuthWisePaymentCreated {
   const AuthWisePaymentCreated({
     required this.createdPaymentCount,
     required this.voucherNos,
     required this.message,
+    this.employee,
+    this.payments = const [],
   });
 
   final int createdPaymentCount;
   final List<String> voucherNos;
   final String message;
+  final AuthWisePaymentEmployee? employee;
+  final List<AuthWiseCreatedPayment> payments;
+
+  /// How many created payments came back with an attached receipt image.
+  int get attachedImageCount =>
+      payments.where((p) => p.image != null).length;
 
   factory AuthWisePaymentCreated.fromResponse(Map<String, dynamic> json) {
     final data = json['data'];
     final vouchers = <String>[];
+    final payments = <AuthWiseCreatedPayment>[];
     var count = 0;
+    AuthWisePaymentEmployee? employee;
     if (data is Map<String, dynamic>) {
       count = _int(data['createdPaymentCount']);
-      final payments = data['payments'];
-      if (payments is List) {
-        for (final item in payments) {
+      if (data['employee'] is Map<String, dynamic>) {
+        employee = AuthWisePaymentEmployee.fromJson(
+          data['employee'] as Map<String, dynamic>,
+        );
+      }
+      final paymentsRaw = data['payments'];
+      if (paymentsRaw is List) {
+        for (final item in paymentsRaw) {
           if (item is Map) {
-            final v = item['voucherNo'] ?? item['voucher_no'];
+            final map = Map<String, dynamic>.from(item);
+            payments.add(AuthWiseCreatedPayment.fromJson(map));
+            final v = map['voucherNo'] ?? map['voucher_no'];
             if (v != null && v.toString().isNotEmpty) {
               vouchers.add(v.toString());
             }
@@ -114,11 +169,8 @@ class AuthWisePaymentCreated {
       createdPaymentCount: count,
       voucherNos: vouchers,
       message: json['message']?.toString() ?? 'Payment submitted.',
+      employee: employee,
+      payments: payments,
     );
-  }
-
-  static int _int(Object? v) {
-    if (v is int) return v;
-    return int.tryParse(v?.toString() ?? '') ?? 0;
   }
 }

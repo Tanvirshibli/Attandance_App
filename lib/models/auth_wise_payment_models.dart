@@ -245,6 +245,48 @@ class AuthWisePaymentMethodTotal {
   }
 }
 
+class AuthWisePaymentImage {
+  const AuthWisePaymentImage({
+    required this.id,
+    this.trType,
+    this.trId,
+    this.trfId,
+    this.image,
+    this.imageId,
+    this.imagePath,
+    this.imageUrl,
+    this.date,
+    this.status,
+  });
+
+  final int id;
+  final String? trType;
+  final int? trId;
+  final String? trfId;
+  final String? image;
+  final String? imageId;
+  final String? imagePath;
+  final String? imageUrl;
+  final String? date;
+  final String? status;
+
+  factory AuthWisePaymentImage.fromJson(Map<String, dynamic> json) {
+    return AuthWisePaymentImage(
+      id: _toInt(json['id']),
+      trType: json['trType']?.toString() ?? json['tr_type']?.toString(),
+      trId: _toIntNullable(json['trId'] ?? json['tr_id']),
+      trfId: json['trfId']?.toString() ?? json['trf_id']?.toString(),
+      image: json['image']?.toString(),
+      imageId: json['imageId']?.toString() ?? json['image_id']?.toString(),
+      imagePath:
+          json['imagePath']?.toString() ?? json['image_path']?.toString(),
+      imageUrl: json['imageUrl']?.toString() ?? json['image_url']?.toString(),
+      date: json['date']?.toString(),
+      status: json['status']?.toString(),
+    );
+  }
+}
+
 class AuthWisePaymentLine {
   const AuthWisePaymentLine({
     required this.id,
@@ -262,6 +304,7 @@ class AuthWisePaymentLine {
     this.reference,
     this.authByName,
     this.note,
+    this.image,
   });
 
   final int id;
@@ -279,6 +322,9 @@ class AuthWisePaymentLine {
   final String? authByName;
   final String? note;
   final String module;
+
+  /// Receipt photo attached at post time (server `payments[i][image]`).
+  final AuthWisePaymentImage? image;
 
   String get formattedDate {
     final parsed = DateTime.tryParse(receiveDate ?? '');
@@ -305,6 +351,11 @@ class AuthWisePaymentLine {
       authByName: json['auth_by_name']?.toString(),
       note: json['note']?.toString(),
       module: (json['module'] ?? '').toString(),
+      image: json['image'] is Map<String, dynamic>
+          ? AuthWisePaymentImage.fromJson(
+              json['image'] as Map<String, dynamic>,
+            )
+          : null,
     );
   }
 }

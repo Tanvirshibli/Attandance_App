@@ -891,11 +891,127 @@ class _ExpandableLines extends StatelessWidget {
                         ),
                       ),
                     ],
+                    if (line.image?.imageUrl != null &&
+                        line.image!.imageUrl!.isNotEmpty) ...[
+                      const SizedBox(height: 8),
+                      _ReceiptThumb(image: line.image!),
+                    ],
                   ],
                 ),
               ),
             ),
         ],
+      ),
+    );
+  }
+}
+
+class _ReceiptThumb extends StatelessWidget {
+  const _ReceiptThumb({required this.image});
+
+  final AuthWisePaymentImage image;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      borderRadius: BorderRadius.circular(10),
+      onTap: () => _showReceiptPreview(context, image),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          ClipRRect(
+            borderRadius: BorderRadius.circular(8),
+            child: Image.network(
+              image.imageUrl!,
+              width: 44,
+              height: 44,
+              fit: BoxFit.cover,
+              loadingBuilder: (context, child, progress) {
+                if (progress == null) return child;
+                return Container(
+                  width: 44,
+                  height: 44,
+                  color: AppColors.surface,
+                  child: const Center(
+                    child: SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+                  ),
+                );
+              },
+              errorBuilder: (context, error, stack) => Container(
+                width: 44,
+                height: 44,
+                color: AppColors.surface,
+                child: Icon(
+                  Icons.broken_image_outlined,
+                  size: 20,
+                  color: AppColors.textSecondary,
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Text(
+            image.status?.isNotEmpty == true
+                ? 'Receipt · ${image.status}'
+                : 'Receipt photo',
+            style: GoogleFonts.poppins(
+              fontSize: 11,
+              fontWeight: FontWeight.w500,
+              color: AppColors.textSecondary,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  static void _showReceiptPreview(
+    BuildContext context,
+    AuthWisePaymentImage image,
+  ) {
+    showDialog<void>(
+      context: context,
+      builder: (context) => Dialog(
+        backgroundColor: Colors.black,
+        insetPadding: const EdgeInsets.all(12),
+        child: Stack(
+          children: [
+            InteractiveViewer(
+              child: Center(
+                child: Image.network(
+                  image.imageUrl!,
+                  fit: BoxFit.contain,
+                  loadingBuilder: (context, child, progress) {
+                    if (progress == null) return child;
+                    return const Padding(
+                      padding: EdgeInsets.all(48),
+                      child: CircularProgressIndicator(),
+                    );
+                  },
+                  errorBuilder: (context, error, stack) => Padding(
+                    padding: const EdgeInsets.all(48),
+                    child: Text(
+                      'Could not load receipt image.',
+                      style: GoogleFonts.poppins(color: Colors.white70),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            Positioned(
+              top: 4,
+              right: 4,
+              child: IconButton(
+                icon: const Icon(Icons.close, color: Colors.white),
+                onPressed: () => Navigator.of(context).pop(),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
