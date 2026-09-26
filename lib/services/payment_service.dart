@@ -274,12 +274,12 @@ class PaymentService {
     return ApiResult.fail('Invalid loan response.');
   }
 
-  /// Posts payment-receive entries. Every payment line must carry a receipt
-  /// photo — files are converted to WebP and sent under the `image[]` parent
-  /// field, index-aligned with `payments[i]`.
+  /// Posts payment-receive entries. A receipt photo is optional per line —
+  /// photos are converted to WebP and sent under index-explicit `image[i]`
+  /// fields aligned with `payments[i]` (lines without a photo are omitted).
   Future<ApiResult<AuthWisePaymentCreated>> postAuthWisePayment(
     CreateAuthWisePaymentRequest request, {
-    List<File> images = const [],
+    List<File?> images = const [],
   }) async {
     if (!await isPaymentEnabled()) {
       return ApiResult.fail('feature_disabled');
@@ -289,8 +289,8 @@ class PaymentService {
       return ApiResult.fail('Missing employee profile.');
     }
 
-    if (images.length != request.payments.length) {
-      return ApiResult.fail('Each payment receive needs a receipt photo.');
+    if (images.isNotEmpty && images.length != request.payments.length) {
+      return ApiResult.fail('Photo count must match payment count.');
     }
 
     final url = await _configService.resolveUrl('payment.authWisePost') ??
@@ -300,16 +300,25 @@ class PaymentService {
     final uri = Uri.parse(url.replaceAll(RegExp(r'/+$'), ''));
 
     final imageService = ImageUploadService();
-    final webpFiles = await imageService.convertAllToWebp(images);
-    if (webpFiles.length != images.length) {
-      return ApiResult.fail('Could not process one of the receipt photos.');
+    final imageParts = <http.MultipartFile>[];
+    final webpFiles = <File>[];
+    for (var i = 0; i < images.length; i++) {
+      final source = images[i];
+      if (source == null) continue;
+      final webp = await imageService.convertToWebp(source);
+      if (webp == null) {
+        await imageService.cleanupAll(webpFiles);
+        return ApiResult.fail('Could not process one of the receipt photos.');
+      }
+      webpFiles.add(webp);
+      imageParts.add(await imageService.imagePartNamed('image[$i]', webp));
     }
 
     try {
       final response = await postFormData(
         uri: uri,
         fields: request.toFormFields(),
-        files: await imageService.imageParts(webpFiles),
+        files: imageParts,
       );
 
       if (response.statusCode < 200 || response.statusCode >= 300) {

@@ -34,7 +34,7 @@ class _QueuedPayment {
     required this.invoiceTypeName,
     required this.paymentModeName,
     required this.bankName,
-    required this.photo,
+    this.photo,
   });
 
   final AuthWisePaymentLineInput input;
@@ -45,8 +45,8 @@ class _QueuedPayment {
   final String paymentModeName;
   final String bankName;
 
-  /// Receipt photo — required; uploaded as WebP `image[]` on save.
-  final File photo;
+  /// Optional receipt photo — uploaded as WebP `image[i]` on save.
+  final File? photo;
 }
 
 class PostAuthWisePaymentScreen extends StatefulWidget {
@@ -337,10 +337,6 @@ class _PostAuthWisePaymentScreenState extends State<PostAuthWisePaymentScreen> {
       return null;
     }
 
-    if (_photo == null) {
-      _snack('Add a receipt photo for this payment.');
-      return null;
-    }
     var trxId = _trxId.text.trim();
     if (_usesTrx && trxId.isEmpty) trxId = '0';
     var ref = _ref.text.trim();
@@ -381,7 +377,7 @@ class _PostAuthWisePaymentScreenState extends State<PostAuthWisePaymentScreen> {
               _invoiceType == 1 ? 'With voucher' : 'Without voucher',
           paymentModeName: _paymentMode?.label ?? '',
           bankName: _bank?.displayLabel ?? '',
-          photo: File(_photo!.path),
+          photo: _photo == null ? null : File(_photo!.path),
         ),
       );
       _dealer = null;
@@ -721,12 +717,23 @@ class _PostAuthWisePaymentScreenState extends State<PostAuthWisePaymentScreen> {
                                   dense: true,
                                   leading: ClipRRect(
                                     borderRadius: BorderRadius.circular(8),
-                                    child: Image.file(
-                                      row.photo,
-                                      width: 40,
-                                      height: 40,
-                                      fit: BoxFit.cover,
-                                    ),
+                                    child: row.photo != null
+                                        ? Image.file(
+                                            row.photo!,
+                                            width: 40,
+                                            height: 40,
+                                            fit: BoxFit.cover,
+                                          )
+                                        : Container(
+                                            width: 40,
+                                            height: 40,
+                                            color: AppColors.background,
+                                            child: const Icon(
+                                              Icons.receipt_long_outlined,
+                                              size: 20,
+                                              color: AppColors.textHint,
+                                            ),
+                                          ),
                                   ),
                                   title: Text(
                                     '${row.receiverName} · ৳${_fmtAmount(row.input.amount)}',
@@ -856,7 +863,7 @@ class _PostAuthWisePaymentScreenState extends State<PostAuthWisePaymentScreen> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Text(
-          'Receipt photo *',
+          'Receipt photo (optional)',
           style: GoogleFonts.poppins(
             fontSize: 12,
             color: AppColors.textSecondary,
@@ -881,9 +888,7 @@ class _PostAuthWisePaymentScreenState extends State<PostAuthWisePaymentScreen> {
                 onPressed: _pickReceiptPhoto,
                 icon: const Icon(Icons.add_a_photo_outlined, size: 18),
                 label: Text(
-                  _photo == null
-                      ? 'Add receipt photo (WebP upload)'
-                      : 'Replace photo',
+                  _photo == null ? 'Add receipt photo' : 'Replace photo',
                   style: GoogleFonts.poppins(fontSize: 13),
                 ),
               ),

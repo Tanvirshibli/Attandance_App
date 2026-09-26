@@ -74,9 +74,14 @@ class ImageUploadService {
   }
 
   /// `image` multipart file for a single-image payload.
-  Future<http.MultipartFile> imagePart(File webpFile) {
+  Future<http.MultipartFile> imagePart(File webpFile) =>
+      imagePartNamed('image', webpFile);
+
+  /// Multipart file under an explicit field name (e.g. `image[2]` for
+  /// index-aligned uploads where some entries have no photo).
+  Future<http.MultipartFile> imagePartNamed(String name, File webpFile) {
     return http.MultipartFile.fromPath(
-      'image',
+      name,
       webpFile.path,
       contentType: MediaType('image', 'webp'),
       filename: p.basename(webpFile.path),
