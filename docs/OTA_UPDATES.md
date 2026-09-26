@@ -211,6 +211,12 @@ After publishing build **N**:
 
 ---
 
+## September 25, 2026 Update (v2.3.0+86)
+
+- **Payment receive** — the receipt photo is now **optional**; payments can be posted with no image. Photos that are attached upload as WebP `image[i]` fields index-aligned with `payments[i]`.
+
+---
+
 ## September 25, 2026 Update (v2.3.0+85)
 
 **Field-app modernization release:**
