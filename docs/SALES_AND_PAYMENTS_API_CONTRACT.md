@@ -450,7 +450,7 @@ Verified 2026-08-11: `GET .../auth-wise-payments/19` → **200**; `GET .../auth-
     },
     "egg": { "data": [], "summary": {}, "dealers": [], "companies": [], "payment_methods": [] },
     "chicks": {
-      "data": [{ "id": 27917, "voucher_no": "...", "amount": 2500, "dealer_name": "...", "module": "chicks" }],
+      "data": [{ "id": 27917, "voucher_no": "...", "amount": 2500, "dealer_name": "...", "module": "chicks", "image": null }],
       "summary": { "total_payments": 1, "total_amount": 2500 },
       "dealers": [],
       "companies": [],
@@ -460,7 +460,7 @@ Verified 2026-08-11: `GET .../auth-wise-payments/19` → **200**; `GET .../auth-
 }
 ```
 
-Modules: `egg`, `feed`, `fertilizer`, `chicks`, `liveBird`, `cullBird`, `unclassified`.
+Modules: `egg`, `feed`, `fertilizer`, `chicks`, `liveBird`, `cullBird`, `unclassified`. Each module row may carry `image` (`null` or `{id, trType, trId, trfId, image, imageId, imagePath, imageUrl, date, status}`) — the receipt photo attached at post time; the app renders it as a tappable thumbnail.
 
 HRM payslip/loan/PF screens are under **Services → HR Benefits** (`HrBenefitsHubScreen`) and still default to demo (`USE_PAYMENT_DEMO_DATA`).
 
@@ -486,12 +486,13 @@ HRM payslip/loan/PF screens are under **Services → HR Benefits** (`HrBenefitsH
 | `payments[0][trxId]` | Online / Mobile / Pay Order / DD / TT |
 | `payments[0][ref]` | typically Cash (default `0` if empty) |
 | `payments[0][checkNo]` / `[checkDate]` | Check only |
+| `payments[0][image]` | optional receipt photo — **file field nested inside `payments[i]`** (`nullable|image|mimes:jpg,jpeg,png,webp|max:10240`); app sends WebP |
 
 UI matches the sales web create page (Payment For → rec type → receiver cascade → invoice type → payment mode extras → ADD queue → SAVE). Multiple lines post as `payments[i]`. Pre-+43 app rows may still have swapped `paymentType`/`paymentMode`. Invoice allocation / `sale_order` is not sent (auth-wise store ignores it). Server mints `PRI…` voucher numbers.
 
 App config key: `payment.authWisePost` (POST; falls back to `payment.authWise` URL).
 
-**Success:** `success`, `message`, `data.createdPaymentCount`, `data.payments[].voucherNo`.
+**Success (201):** `success`, `message`, `data.employee` (`id`, `employeeId`, `employeeName`, `userId`, `userName`), `data.createdPaymentCount`, `data.payments[]` — each payment carries `id`, `voucherNo`, `companyId`, `receiverId`, `amount`, `recDate`, `paymentType`, `paymentMode`, `paymentFor`, `invoiceType`, `authBy`, `authByName`, `createdBy`, `status`, and `image` (`null` or `{id, trType:"Payment Receive", trId, trfId, image, imageId, imagePath, imageUrl, date, status}`). Older app builds sent the photo as top-level `image[i]` — that field name is ignored by the current API.
 
 ### C.2 Payment setup data (Post receive dropdowns)
 
