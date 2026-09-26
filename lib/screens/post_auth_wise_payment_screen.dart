@@ -45,7 +45,7 @@ class _QueuedPayment {
   final String paymentModeName;
   final String bankName;
 
-  /// Optional receipt photo — uploaded as WebP `image[i]` on save.
+  /// Optional receipt photo — uploaded as WebP `payments[i][image]` on save.
   final File? photo;
 }
 

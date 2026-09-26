@@ -275,8 +275,8 @@ class PaymentService {
   }
 
   /// Posts payment-receive entries. A receipt photo is optional per line —
-  /// photos are converted to WebP and sent under index-explicit `image[i]`
-  /// fields aligned with `payments[i]` (lines without a photo are omitted).
+  /// photos are converted to WebP and sent as `payments[i][image]` file
+  /// fields nested inside `payments[i]` (lines without a photo are omitted).
   Future<ApiResult<AuthWisePaymentCreated>> postAuthWisePayment(
     CreateAuthWisePaymentRequest request, {
     List<File?> images = const [],
@@ -311,7 +311,9 @@ class PaymentService {
         return ApiResult.fail('Could not process one of the receipt photos.');
       }
       webpFiles.add(webp);
-      imageParts.add(await imageService.imagePartNamed('image[$i]', webp));
+      imageParts.add(
+        await imageService.imagePartNamed('payments[$i][image]', webp),
+      );
     }
 
     try {
