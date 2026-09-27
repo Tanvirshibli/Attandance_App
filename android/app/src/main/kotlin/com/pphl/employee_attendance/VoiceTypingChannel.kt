@@ -3,7 +3,6 @@ package com.pphl.employee_attendance
 import android.Manifest
 import android.content.Context
 import android.content.Intent
-import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
@@ -42,18 +41,12 @@ class VoiceTypingChannel(
         private const val LOCALE_QUERY_TIMEOUT_MS = 1500L
         private const val MAX_EMPTY_RESTARTS = 8
         private const val MAX_ALTERNATES = 5
-        private const val ACTION_GET_LANGUAGE_DETAILS =
-            "com.google.android.speech.action.GET_LANGUAGE_DETAILS"
 
-        // Not exposed as RecognizerIntent constants. Both are consumed by the
-        // Google recognizer purely as intent extras, and any engine that does
-        // not know them ignores them.
+        // Not exposed as RecognizerIntent constants. Consumed by the Google
+        // recognizer purely as intent extras; engines that do not know them
+        // ignore them.
         private const val EXTRA_SPEECH_INPUT_PHRASES =
             "android.speech.extra.SPEECH_INPUT_PHRASES"
-        private const val EXTRA_ENABLE_FORMATTING =
-            "android.speech.extra.ENABLE_FORMATTING"
-        private const val EXTRA_ENABLE_LANGUAGE_DETECTION =
-            "android.speech.extra.ENABLE_LANGUAGE_DETECTION"
     }
 
     private val context: Context get() = activity
@@ -169,80 +162,65 @@ class VoiceTypingChannel(
     }
 
     /**
-     * BCP-47 tags the active recognizer reports, delivered asynchronously.
+     * BCP-47 tags the recognizer reports, delivered asynchronously.
      *
-     * This is the most accurate availability signal available: it comes from the
-     * engine itself rather than from the installed on-device language packs, so a
-     * device without a `bn` pack but with online recognition still reports Bangla
-     * as usable. Answered by broadcast on every supported release, so the result
-     * is always delivered asynchronously on the main thread.
+     * Uses [RecognizerIntent.getVoiceDetailsIntent] to build the broadcast and
+     * `sendOrderedBroadcast` with a result receiver, which is the only
+     * documented way to obtain EXTRA_SUPPORTED_LANGUAGES. The intent returned by
+     * getVoiceDetailsIntent is already targeted at the installed recognizer's
+     * DETAILS_META_DATA component, so no manual component resolution is needed.
+     *
+     * Returns an empty list whenever the query cannot be answered. Callers must
+     * treat that as "unknown", not as "unsupported" — see the Dart side, which
+     * fails open and lets the recognizer decide.
      */
     private fun querySupportedLocales(result: MethodChannel.Result) {
-        val recognizer = try {
-            SpeechRecognizer.createSpeechRecognizer(context)
+        val detailsIntent = try {
+            RecognizerIntent.getVoiceDetailsIntent(context)
         } catch (e: Exception) {
+            null
+        }
+
+        if (detailsIntent == null) {
             result.success(emptyList<String>())
             return
         }
-        val tags = mutableListOf<String>()
 
-        var timeoutRunnable: Runnable? = null
-        var receiver: android.content.BroadcastReceiver? = null
+        val received = booleanArrayOf(false)
 
-        fun unregister() {
-            val pending = receiver
-            if (pending == null) return
-            receiver = null
-            try {
-                context.unregisterReceiver(pending)
-            } catch (e: Exception) {
-                // Never registered, or already gone.
-            }
-        }
-
-        var answered = false
-        fun finish() {
-            if (answered) return
-            answered = true
-            timeoutRunnable?.let { handler.removeCallbacks(it) }
-            result.success(ArrayList(tags))
-        }
-
-        receiver = object : android.content.BroadcastReceiver() {
+        val resultReceiver = object : android.content.BroadcastReceiver() {
             override fun onReceive(ctx: Context?, intent: Intent?) {
-                intent?.getStringArrayListExtra(
+                if (received[0]) return
+                received[0] = true
+                val tags = intent?.getStringArrayListExtra(
                     RecognizerIntent.EXTRA_SUPPORTED_LANGUAGES,
-                )?.forEach { tags.add(it) }
-                unregister()
-                finish()
+                ) ?: emptyList<String>()
+                result.success(ArrayList(tags))
             }
         }
 
-        timeoutRunnable = Runnable {
-            unregister()
-            finish()
-        }
-
-        recognizer.destroy()
-
-        val filter = IntentFilter(ACTION_GET_LANGUAGE_DETAILS)
-
-        // The broadcast query is the only reliable source of the full online
-        // language list; `availableOnDeviceLanguages` reflects offline packs only,
-        // so it is deliberately not used here.
         try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                context.registerReceiver(receiver, filter, Context.RECEIVER_EXPORTED)
-            } else {
-                @Suppress("UnspecifiedRegisterReceiverFlag")
-                context.registerReceiver(receiver, filter)
-            }
+            context.sendOrderedBroadcast(
+                detailsIntent,
+                null,
+                resultReceiver,
+                handler,
+                android.app.Activity.RESULT_OK,
+                null,
+                null,
+            )
         } catch (e: Exception) {
-            receiver = null
-            finish()
+            if (!received[0]) result.success(emptyList<String>())
             return
         }
-        handler.postDelayed(timeoutRunnable, LOCALE_QUERY_TIMEOUT_MS)
+
+        // Nothing answered within the window: report unknown rather than empty
+        // support, and guard against a second success() call.
+        handler.postDelayed({
+            if (received[0]) return@postDelayed
+            received[0] = true
+            result.success(emptyList<String>())
+        }, LOCALE_QUERY_TIMEOUT_MS)
     }
 
     private fun hasRecordPermission(): Boolean =
@@ -315,15 +293,15 @@ class VoiceTypingChannel(
         }
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            // Auto-casing and punctuation are the bulk of what makes dictation
-            // read like typed text rather than a bare transcript.
-            putExtra(EXTRA_ENABLE_FORMATTING, true)
-        }
-
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-            // Without this the engine may silently switch away from Bangla when
-            // it thinks it hears another language.
-            putExtra(EXTRA_ENABLE_LANGUAGE_DETECTION, false)
+            // EXTRA_ENABLE_FORMATTING is a *String* strategy, not a boolean.
+            // The value is one of RecognizerIntent.FORMATTING_OPTIMIZE_*;
+            // "latency" keeps interim results responsive, "quality" produces the
+            // better punctuation. Passing a boolean here is silently ignored by
+            // the recognizer, which is why formatting never appeared.
+            putExtra(
+                RecognizerIntent.EXTRA_ENABLE_FORMATTING,
+                RecognizerIntent.FORMATTING_OPTIMIZE_LATENCY,
+            )
         }
     }
 

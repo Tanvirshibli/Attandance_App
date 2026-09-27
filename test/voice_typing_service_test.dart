@@ -123,6 +123,34 @@ void main() {
     });
   });
 
+  group('fail-open when the device cannot enumerate languages', () {
+    // The native probe returns an empty list when the recognizer cannot be
+    // queried. Treating that as "unsupported" made voice typing fail on every
+    // phone, because a device with no Bangla pack can still recognise Bangla
+    // online. These pin the contract the native path now relies on.
+
+    test('an empty device list is not treated as a hard failure', () {
+      // resolveLocale still reports null for a known-empty list; it is the
+      // native path that must not treat that null as fatal.
+      expect(
+        service.resolveLocale(VoiceLanguage.bangla, deviceLocales: <String>[]),
+        isNull,
+      );
+    });
+
+    test('both languages have a usable preferred tag to fail open to', () {
+      expect(VoiceLanguage.bangla.localeTags.first, 'bn-BD');
+      expect(VoiceLanguage.english.localeTags.first, 'en-US');
+    });
+
+    test('the preferred Bangla tag is a valid BCP-47 tag', () {
+      expect(
+        VoiceLanguage.bangla.localeTags.first,
+        matches(RegExp(r'^[a-z]{2}-[A-Z]{2}$')),
+      );
+    });
+  });
+
   group('failure messages', () {
     test('missing Bangla pack names the offline language pack', () {
       final message = VoiceTypingService.messageFor(

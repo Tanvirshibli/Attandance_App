@@ -241,6 +241,10 @@ class VoiceTypingService {
   VoiceFailure _mapNativeError(dynamic code) {
     if (code == 1) return VoiceFailure.network;
     if (code == 2) return VoiceFailure.microphoneDenied;
+    // ERROR_LANGUAGE_UNAVAILABLE / ERROR_LANGUAGE_NOT_SUPPORTED mean the engine
+    // itself rejected the requested locale — the only reliable point at which to
+    // tell the user their language pack is genuinely missing.
+    if (code == 12 || code == 13) return VoiceFailure.languageUnavailable;
     if (code == 8) return VoiceFailure.busy;
     return VoiceFailure.failed;
   }
@@ -346,15 +350,13 @@ class VoiceTypingService {
 
   Future<String?> _resolveNativeLocale(VoiceLanguage language) async {
     final available = await _queryNativeLocales();
-    final resolved = resolveLocale(language, deviceLocales: available);
-    if (resolved != null) return resolved;
-    // No `bn` on device: confirm the engine is not simply reporting only
-    // on-device packs while online recognition would still work.
-    final prefixMatches = available.any(
-      (tag) => _normalize(tag).startsWith(language.languageCode),
-    );
-    if (prefixMatches) return language.localeTags.first;
-    return null;
+    if (available.isEmpty) {
+      // The device could not enumerate its languages. That is "unknown", not
+      // "unsupported": a device with no Bangla pack can still recognise Bangla
+      // online, and blocking here made voice typing fail on every phone.
+      return language.localeTags.first;
+    }
+    return resolveLocale(language, deviceLocales: available);
   }
 
   Future<List<String>> _queryNativeLocales() async {
@@ -367,6 +369,8 @@ class VoiceTypingService {
       // Keep whatever we already know.
     } on MissingPluginException {
       // Not on the native path.
+    } catch (_) {
+      // Never let a failed probe block dictation.
     }
     return _availableLocales.toList();
   }
