@@ -35,6 +35,15 @@ class _VoiceMicButtonState extends State<VoiceMicButton> {
   final VoiceTypingService _service = VoiceTypingService();
   bool _listening = false;
   String _textBeforeSession = '';
+  VoiceLanguage _language = VoiceLanguage.english;
+
+  @override
+  void initState() {
+    super.initState();
+    _service.loadPreferredLanguage().then((language) {
+      if (mounted) _language = language;
+    });
+  }
 
   Future<void> _pickLanguageAndListen() async {
     if (_listening) {
@@ -45,23 +54,23 @@ class _VoiceMicButtonState extends State<VoiceMicButton> {
 
     final language = await showDialog<VoiceLanguage>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: Text(
-          'Voice typing language',
-          style: GoogleFonts.poppins(fontSize: 15, fontWeight: FontWeight.w600),
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
+      builder: (context) => RadioGroup<VoiceLanguage>(
+        groupValue: _language,
+        onChanged: (v) => Navigator.of(context).pop(v),
+        child: SimpleDialog(
+          title: Text(
+            'Voice typing language',
+            style: GoogleFonts.poppins(fontSize: 15, fontWeight: FontWeight.w600),
+          ),
           children: VoiceLanguage.values
               .map(
-                (lang) => ListTile(
+                (lang) => RadioListTile<VoiceLanguage>(
                   dense: true,
-                  leading: const Icon(Icons.mic_none_rounded, size: 20),
+                  value: lang,
                   title: Text(
                     lang.label,
                     style: GoogleFonts.poppins(fontSize: 14),
                   ),
-                  onTap: () => Navigator.of(context).pop(lang),
                 ),
               )
               .toList(),
@@ -69,6 +78,7 @@ class _VoiceMicButtonState extends State<VoiceMicButton> {
       ),
     );
     if (language == null || !mounted) return;
+    _language = language;
 
     final started = await _service.listen(
       language: language,
@@ -76,6 +86,8 @@ class _VoiceMicButtonState extends State<VoiceMicButton> {
         if (!mounted) return;
         final dictated = result.text.trim();
         final base = _textBeforeSession;
+        // Interim results are replaced on every update, so the field grows and
+        // revises live rather than duplicating itself.
         final next = widget.append && base.isNotEmpty
             ? (dictated.isEmpty ? base : '$base $dictated')
             : dictated;
@@ -85,23 +97,33 @@ class _VoiceMicButtonState extends State<VoiceMicButton> {
         );
       },
       onDone: () => _setListening(false),
+      onFailure: (failure) {
+        _setListening(false);
+        if (!mounted) return;
+        _showFailure(failure, language);
+      },
     );
 
     if (!started) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Voice typing is not available on this device. '
-            'Check microphone permission and internet.',
-          ),
-        ),
-      );
+      if (_service.isAvailable) {
+        // Failure already reported through onFailure.
+        return;
+      }
+      _showFailure(VoiceFailure.unavailable, language);
       return;
     }
 
     _textBeforeSession = widget.controller.text.trim();
     _setListening(true);
+  }
+
+  void _showFailure(VoiceFailure failure, VoiceLanguage language) {
+    final message = VoiceTypingService.messageFor(failure, language);
+    if (message.isEmpty) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message)),
+    );
   }
 
   void _setListening(bool value) {

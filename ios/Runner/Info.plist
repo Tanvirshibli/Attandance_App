@@ -26,6 +26,10 @@
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>PPHL Attendance uses the microphone so you can dictate text into forms instead of typing.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>Speech recognition turns your dictated words into Bangla or English text inside the app.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>
