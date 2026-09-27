@@ -65,6 +65,7 @@ class AuthService {
     String? lastNetworkDetails;
     String? lastAttemptedLoginUrl;
     Object? lastNetworkException;
+    AuthResult? credentialRejection;
 
     for (final loginUrl in await _loginUrls()) {
       lastAttemptedLoginUrl = loginUrl;
@@ -88,6 +89,22 @@ class AuthService {
         final data = _decodeMap(response.body);
 
         if (response.statusCode == 404) {
+          continue;
+        }
+
+        // A URL that does not implement the HRM login contract (an HTML login
+        // page, a 401 from a proxy, a misrouted host) must not be reported as a
+        // bad password. Try the remaining candidates and only surface the
+        // credential error if every URL genuinely rejected the credentials.
+        if (response.statusCode == 401 || response.statusCode == 403) {
+          credentialRejection = AuthResult(
+            success: false,
+            message: UserFacingError.forLogin(
+              statusCode: response.statusCode,
+              rawMessage:
+                  data['message']?.toString() ?? data['error']?.toString(),
+            ),
+          );
           continue;
         }
 
@@ -171,6 +188,12 @@ class AuthService {
         lastNetworkDetails = '$error';
         lastNetworkException = error;
       }
+    }
+
+    // Every URL answered 401/403, so the credentials really are the problem.
+    // Report that rather than the "no internet" fallback below.
+    if (credentialRejection != null && lastNetworkError == null) {
+      return credentialRejection;
     }
 
     final baseUrls = AppConfig.authApiBaseUrlCandidates.join(', ');

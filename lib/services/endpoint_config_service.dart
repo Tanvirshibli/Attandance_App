@@ -54,8 +54,13 @@ class EndpointConfigService {
         try {
           final decoded = jsonDecode(raw);
           if (decoded is Map<String, dynamic>) {
-            _cached = EndpointConfig.fromJson(decoded);
-            return _cached;
+            final config = EndpointConfig.fromJson(decoded);
+            // An empty payload cached by an older build is worthless; fall
+            // through to refresh so the device repairs itself.
+            if (config.endpoints.isNotEmpty || config.bases.isNotEmpty) {
+              _cached = config;
+              return config;
+            }
           }
         } catch (_) {}
       }
@@ -91,6 +96,14 @@ class EndpointConfigService {
         final decoded = jsonDecode(response.body);
         if (decoded is Map<String, dynamic>) {
           final config = EndpointConfig.fromJson(decoded);
+          // A 200 with an empty payload is not a usable config. The
+          // zkteco host answers `{"version":0,"bases":[],"endpoints":[],
+          // "features":[]}` when it has nothing published, and caching that
+          // would make every resolveUrl() fall through to the compile-time
+          // fallback while reporting the config as successfully loaded.
+          if (config.endpoints.isEmpty && config.bases.isEmpty) {
+            return _cached ?? _fallbackConfig();
+          }
           _cached = config;
           final prefs = await SharedPreferences.getInstance();
           await prefs.setString(configCacheKey, jsonEncode(decoded));
