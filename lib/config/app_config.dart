@@ -227,4 +227,10 @@ class AppConfig {
   );
 
   static const String appPackageId = 'com.pphl.employee_attendance';
+
+  /// Android app id of the Google offline speech pack installer, used to offer a
+  /// one-tap Bangla language-pack download when `bn` is missing on the device.
+  static const String androidLanguagePackInstaller =
+      'com.google.android.gms.tts.service';
 }
+
