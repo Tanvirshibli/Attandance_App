@@ -37,6 +37,23 @@ class PaymentSetupData {
     return list;
   }
 
+  /// Banks belonging to [companyId], so a payment can never be posted against a
+  /// bank owned by a different company.
+  ///
+  /// Returns every bank when [companyId] is null, and also as a fallback when
+  /// the payload carries no company on the banks at all. When the relationship
+  /// is present but no bank matches, the result is empty — that is a real
+  /// "no bank for this company", not a reason to show cross-company banks.
+  List<SetupBank> banksForCompany(int? companyId) {
+    if (companyId == null || companyId <= 0) return banks;
+    final scoped = banks
+        .where((b) => b.company?.id == companyId)
+        .toList(growable: false);
+    if (scoped.isNotEmpty) return scoped;
+    final anyCompany = banks.any((b) => (b.company?.id ?? 0) > 0);
+    return anyCompany ? const <SetupBank>[] : banks;
+  }
+
   static List<Map<String, dynamic>> _mapList(Object? value) {
     if (value is! List) return const [];
     return value

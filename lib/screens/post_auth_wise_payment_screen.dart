@@ -124,6 +124,11 @@ class _PostAuthWisePaymentScreenState extends State<PostAuthWisePaymentScreen> {
     );
   }
 
+  /// Banks narrowed to the selected company so a payment can never be posted
+  /// against a bank that belongs to a different company.
+  List<SetupBank> get _banksForCompany =>
+      _setup?.banksForCompany(_company?.id) ?? const <SetupBank>[];
+
   @override
   void initState() {
     super.initState();
@@ -159,12 +164,10 @@ class _PostAuthWisePaymentScreenState extends State<PostAuthWisePaymentScreen> {
       return;
     }
 
-    final companies = setup.uniqueCompanies;
     setState(() {
       _loadingSetup = false;
       _setup = setup;
       _dealerLists = dealerResult.data;
-      _company ??= companies.isNotEmpty ? companies.first : null;
       if (dealerResult.success != true || dealerResult.data == null) {
         _setupError = dealerResult.message ??
             'Dealer lists could not be loaded. Employee receive still works.';
@@ -206,6 +209,13 @@ class _PostAuthWisePaymentScreenState extends State<PostAuthWisePaymentScreen> {
       lastDate: DateTime.now().add(const Duration(days: 365)),
     );
     if (picked != null) setState(() => _checkDate = picked);
+  }
+
+  void _onCompanyChanged(SetupCompany? value) {
+    setState(() {
+      _company = value;
+      _bank = null;
+    });
   }
 
   void _onPaymentForChanged(SetupPaymentType? value) {
@@ -268,10 +278,8 @@ class _PostAuthWisePaymentScreenState extends State<PostAuthWisePaymentScreen> {
   }
 
   int? _companyId() {
-    if (_company != null && _company!.id > 0) return _company!.id;
-    final fromBank = _bank?.company?.id;
-    if (fromBank != null && fromBank > 0) return fromBank;
-    return null;
+    final id = _company?.id;
+    return (id != null && id > 0) ? id : null;
   }
 
   int? _receiverId() {
@@ -517,11 +525,8 @@ class _PostAuthWisePaymentScreenState extends State<PostAuthWisePaymentScreen> {
                             selected: _company,
                             displayString: (c) => c.displayLabel,
                             searchText: (c) => c.searchText,
-                            onSelected: (v) => setState(() => _company = v),
-                            validator: (v) =>
-                                v == null && _companyId() == null
-                                    ? 'Select a company'
-                                    : null,
+                            onSelected: _onCompanyChanged,
+                            validator: (v) => v == null ? 'Select a company' : null,
                           ),
                           const SizedBox(height: 12),
                           SearchableSelectField<SetupPaymentType>(
@@ -622,23 +627,18 @@ class _PostAuthWisePaymentScreenState extends State<PostAuthWisePaymentScreen> {
                           if (_paymentMode != null) ...[
                             const SizedBox(height: 12),
                             SearchableSelectField<SetupBank>(
+                              key: ValueKey(
+                                'bank_${_company?.id}_${_banksForCompany.length}',
+                              ),
                               label: 'Payment Type',
                               icon: Icons.account_balance_outlined,
-                              options: setup.banks,
+                              options: _banksForCompany,
                               selected: _bank,
                               displayString: (b) => b.displayLabel,
                               searchText: (b) => b.searchText,
                               subtitleFor: (b) =>
                                   b.company?.nameEn ?? 'ID ${b.id}',
-                              onSelected: (v) => setState(() {
-                                _bank = v;
-                                final company = v?.company;
-                                if (company != null &&
-                                    company.id > 0 &&
-                                    _company == null) {
-                                  _company = company;
-                                }
-                              }),
+                              onSelected: (v) => setState(() => _bank = v),
                               validator: (v) =>
                                   v == null ? 'Select payment type' : null,
                             ),
