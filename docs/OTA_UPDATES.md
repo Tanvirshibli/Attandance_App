@@ -211,6 +211,21 @@ After publishing build **N**:
 
 ---
 
+## September 29, 2026 Update (v2.3.0+93)
+
+**Tabbed marketing hub + labelled pill actions:**
+- **Farms, Dealers and Markets** is now a **three-tab page** instead of three stacked cards. Farms opens first; each tab shows one module's up-to-5 recent records
+- **Follow-ups** moves below the tabs, so it stays reachable from all three
+- The Create and View-all buttons were **icon-only 36 dp squares** whose meaning came from a tooltip. They are now **icon + text pills** — "Add farm" / "All farms", "Add dealer" / "All dealers", "Add market" / "All markets"
+- Party detail's **Post a visit** and **New follow-up** are pills too, replacing a mismatched full-width button beside a 48 dp icon square. New follow-up also had no label or tooltip at all
+- New shared UI component `AppPillButton`: 44 dp minimum height, filled for the primary action and tonal for the secondary beside it, with a `dense` variant
+- The hub card's action row is a `Wrap`, so the longest label pair falls to a second line instead of overflowing on a narrow handset
+- Zone scoping (v2.3.0+92) is unchanged; the zone note now sits above the tab bar
+
+Backend: none. No API, payload or zone-scoping change.
+
+---
+
 ## September 29, 2026 Update (v2.3.0+92)
 
 **Zone scoping:**

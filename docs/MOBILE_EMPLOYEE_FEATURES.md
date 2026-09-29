@@ -114,6 +114,15 @@ Handoff for backend teams: **[SALES_AND_PAYMENTS_API_CONTRACT.md](SALES_AND_PAYM
 - ZKTeco `/api/v1/mobile/marketing/*` including `GET /farm-surveys/{id}` and `visits/{id}/check-in|check-out` (no JWT); flag `marketing.enabled`
 - Attachments stay photos only (`photos[]`). See [FARM_DEALER_MOBILE.md](FARM_DEALER_MOBILE.md) for endpoint keys and payloads
 
+### Tabbed marketing hub (v2.3.0+93)
+
+- **Farms, Dealers and Markets** is a three-tab page (Farms opens first) rather than three stacked cards; each tab shows one module's up-to-5 recent records
+- **Follow-ups** stays as a tile below the tabs, reachable from all three
+- Create and View all are **icon + text pills** ("Add farm" / "All farms", and so on) instead of icon-only squares with tooltips
+- Party detail's **Post a visit** and **New follow-up** are pills as well, replacing a full-width button beside a 48 dp icon square
+- New shared UI component `AppPillButton` (44 dp min height, filled or tonal)
+- See [FARM_DEALER_MOBILE.md](FARM_DEALER_MOBILE.md#hub-layout)
+
 ### Zone scoping (v2.3.0+92)
 
 - Marketing lists, form pickers and dealer dropdowns are narrowed to the employee's zones. HRM returns `user.zoneId` as a **jsonb array**; the app resolves those ids against Sales `GET /api/get-zone` (public) for names and districts

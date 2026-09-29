@@ -25,6 +25,8 @@
 >
 > August 19, 2026 Geo Tracking: the live Google Maps panel can go **full screen** (same style, zoom, and recenter controls). System back exits fullscreen before leaving the screen.
 >
+> September 29, 2026 Tabbed marketing hub (v2.3.0+93): **Farms, Dealers and Markets** is a three-tab page (`TabController` + `TabBar` + fixed-height `TabBarView` inside the page's `CustomScrollView`) instead of three stacked cards. The zone note sits above the tabs; the Follow-ups tile below them. Create and View-all are now `AppPillButton` icon+text pills instead of icon-only squares, as are party detail's **Post a visit** and **New follow-up**. See `docs/FARM_DEALER_MOBILE.md#hub-layout`.
+>
 > September 29, 2026 Zone scoping (v2.3.0+92): Marketing lists, form zone pickers and dealer dropdowns narrow to the employee's zones. `AuthUserProfile.zoneIds` reads the HRM `user.zoneId` **jsonb array**; `ZoneScopeService` resolves those ids against Sales `GET /api/get-zone` (public, which supplies names and districts) and caches the result 24 h. `ZoneScope.matches` keeps a row on zone id, zone **name**, or a district of an assigned zone, so pre-tagging rows (`zone_id` NULL) stay visible. Multi-zone employees see the union; zones are joined **by name across systems, never by id**. No zones, or an unreachable master, renders unfiltered as before. See `docs/FARM_DEALER_MOBILE.md#zone-scoping`.
 >
 > August 18, 2026 Google Maps: Geo Tracking uses native Google Maps (`google_maps_flutter`) with Standard, Terrain, and Hybrid Satellite layers, live marker, accuracy circle, history pins, and the same zoom/recenter controls.

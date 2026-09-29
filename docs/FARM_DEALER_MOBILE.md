@@ -4,6 +4,8 @@ Last updated: September 29, 2026
 
 Field data collection for **markets**, **dealers**, and **farms** in Attandance_App, backed by ZKTeco `/api/v1/mobile/marketing/*` (no JWT — same pattern as geo). Employee identity uses profile `canonicalEmployeeId` (`employees.id`).
 
+**v2.3.0+93: Tabbed hub + labelled pill actions.** The hub is now three **tabs** (Farms / Dealers / Markets) instead of three stacked cards, and the icon-only Create / View-all buttons are **icon + text pills**. Party detail's "Post a visit" and "New follow-up" are pills too. See [Hub layout](#hub-layout).
+
 **v2.3.0+92: Zone scoping.** Every marketing list, form picker and dealer dropdown is now narrowed to the zones the employee is assigned. See [Zone scoping](#zone-scoping) below.
 
 **v2.3.0+85:** Market rework — "Market visit" removed; markets are now **market surveys** (create once, **Edit** on the detail screen → `PUT /markets/{id}`). Market survey fields: `feed_share_percent`, `chicks_share_percent`, `product_types[]`, `feed_dealer_count`, `chicks_dealer_count`, `broiler_farm_count`, `layer_farm_count`, `color_farm_count`, `cock_farm_count`, `competitor_companies[]` (`name` + `share_percent`). **Zone hierarchy** (`company > zone > sector`): profile `zoneId`/`zoneName` filters all marketing lists (`zone_id` param); dealer create requires a zone; visits store `zone_id`/`zone_name` (party zone fallback server-side). Dealer visit: autofills market/company/sector from the party, **photo required**, new `feed_findings` + `chicks_findings`, feed unit catalog includes **Ton**. All uploads compress client-side to **WebP** (`flutter_image_compress`) and post under the **`image`/`image[]`** parent field (legacy `photos[]` still accepted server-side). Payment-receive posts accept an optional receipt photo per line (`payments[i][image]` file field nested inside `payments[i]` — lines without a photo are omitted; the earlier top-level `image[i]` fields are ignored by the current API). The Payments list shows returned receipt thumbnails (tap to zoom). Every manual-typing text field has a voice mic (`speech_to_text`, English/Bangla picker).
@@ -36,20 +38,57 @@ Create forms auto-capture GPS + reverse-geocode address fields (no manual Captur
 
 Services tab → **Farms, Dealers and Markets** → `MarketingHubScreen`
 
-Hub sections (Farms → Dealers → Markets). Each section title row has compact **Create** (+) and **View all** (list) icon buttons on the right. Below: up to **5** recent preview rows (tap → record detail). **View all** opens the full list screen.
+The hub is a **three-tab page**: Farms, Dealers, Markets. Farms is selected on open. Each tab holds one module card with up to **5** recent preview rows (tap → record detail). **Follow-ups** is a tile below the tabs, reachable from all three. **View all** opens the full list screen.
 
-| Section | Create | View all | Preview tap |
-|---------|--------|----------|-------------|
+| Tab | Create | View all | Preview tap |
+|-----|--------|----------|-------------|
 | Farms | `PartyFormScreen(farm)` | `PartyListScreen(farm)` | `PartyDetailScreen` → Post visit report |
 | Dealers | `PartyFormScreen(dealer)` | `PartyListScreen(dealer)` | `PartyDetailScreen` → Post visit |
 | Markets | `MarketFormScreen` | `MarketListScreen` | `MarketDetailScreen` → Post visit |
-| Follow-ups | — | `FollowupFormScreen` (list mode) | — |
+| *(below the tabs)* Follow-ups | — | `FollowupFormScreen` (list mode) | — |
 
 | Visit entry | Screen | API |
 |-------------|--------|-----|
 | Farm party → Post a visit | `FarmSurveyFormScreen` | `POST /farm-surveys` |
 | Dealer party → Post a visit | `DealerVisitFormScreen` | `POST /visits` |
 | Market detail → Post a visit | `MarketVisitFormScreen` (pick party in market) | `POST /visits` |
+
+---
+
+## Hub layout
+
+### Tabs
+
+One `TabController` drives a `TabBar` plus a fixed-height `TabBarView`, both inside the page's `CustomScrollView` so pull-to-refresh and the page header are untouched.
+
+- The **zone note** sits **above** the tab bar: it describes every module, so it belongs to the page rather than to any one tab.
+- The tab body is a **fixed 268 dp** tall. All three cards carry identical chrome (icon tile, title, action row, up to five preview rows), so one height fits all three and the page does not reflow as the user swipes between tabs.
+- Tabs are built lazily: a module's preview is not constructed until its tab is first shown.
+- The **Follow-ups** tile sits **below** the `TabBarView` so it stays reachable from all three tabs.
+
+> **Why `SliverMainAxisGroup` and not one `SliverList`.** A `TabBar` and a `TabBarView` are box widgets and each needs its own sliver; a `SliverChildListDelegate` accepts widgets, not slivers. The group keeps the zone note, tab bar, tab body and follow-ups tile as siblings in the same scroll view.
+
+### Pill actions
+
+The Create and View-all buttons were icon-only 36 dp squares whose meaning came from a tooltip — unreadable without a hover or long press, and ambiguous next to each other. They are now **icon + text pills** built from the shared `AppPillButton`:
+
+| Where | Label |
+|---|---|
+| Farms tab | **Add farm** / **All farms** |
+| Dealers tab | **Add dealer** / **All dealers** |
+| Markets tab | **Add market** / **All markets** |
+| Party detail | **Post a visit** (filled) / **New follow-up** (tonal) |
+
+`AppPillButton` lives in `lib/widgets/ui/app_pill_button.dart`:
+
+- `filled: true` (default) is the primary action of a row — solid module colour, white glyph and label. `filled: false` is the secondary beside it — a 10% tint with a 25% border, label in the module colour.
+- `minHeight: 44`. One dp under `AppButton`'s 48, because a pill shares a row rather than owning it.
+- `dense: true` trims the horizontal padding, for the hub where two pills sit together.
+- The card's action row is a **`Wrap`**, not a `Row`. "Add dealer" and "All dealers" together are wider than a phone row, and a bare `Row` overflowed by 20 px on a 1080×2400 viewport; `Wrap` falls them to a second line instead.
+
+The `createTooltip` / `viewTooltip` fields on the hub card are gone — a visible label makes a tooltip redundant.
+
+> **Not changed:** the market detail screen's Edit button. It has no visit or follow-up action, so it was left alone rather than restyled on a guess.
 
 ---
 
@@ -202,6 +241,7 @@ Selecting a product fills `product_name` and related category/company when those
 | `lib/services/sales_service.dart` | `fetchBookingFormData()` + `fetchAllDealerLists()` + `fetchZoneList()` masters |
 | `lib/models/zone_models.dart` | `SalesZone` / `ZoneDistrict` wire models for `get-zone` |
 | `lib/models/zone_scope.dart` | `ZoneScope` — the resolved zone set and the `matches` predicate |
+| `lib/widgets/ui/app_pill_button.dart` | `AppPillButton` — icon + label action used across the hub and party detail |
 | `lib/services/zone_scope_service.dart` | Resolves the profile's zone ids against the master; 24 h cache |
 | `lib/widgets/searchable_select_field.dart` | Type-to-search dropdown (shared with Post booking) |
 | `lib/widgets/voice_input_field.dart` | `VoiceTextField` + `VoiceMicButton` (mic on typed fields) |
