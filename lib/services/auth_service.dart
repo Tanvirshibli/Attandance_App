@@ -12,6 +12,7 @@ import '../utils/user_facing_error.dart';
 import 'endpoint_config_service.dart';
 import 'fcm_wake_handler.dart';
 import 'geo_tracking_service.dart';
+import 'zone_scope_service.dart';
 
 class AuthResult {
   const AuthResult({
@@ -194,6 +195,11 @@ class AuthService {
           );
 
           AuthService.clearProfileCache();
+          // Zones belong to the user who just signed in; drop any scope left
+          // over from a previous session.
+          try {
+            await ZoneScopeService.instance.clear();
+          } catch (_) {}
           try {
             await GeoTrackingService().clearHrmPause();
             await GeoTrackingService().ensureEnabledIfAllowed();
@@ -523,6 +529,9 @@ class AuthService {
     }
 
     clearProfileCache();
+    try {
+      await ZoneScopeService.instance.clear();
+    } catch (_) {}
 
     try {
       await GeoTrackingService().pauseForLogout();

@@ -11,6 +11,7 @@ import '../models/sales_models.dart';
 import '../models/dealer_list_models.dart';
 import '../models/sales_booking_post_models.dart';
 import '../models/sales_post_models.dart';
+import '../models/zone_models.dart';
 import '../utils/multipart_form.dart';
 import 'auth_service.dart';
 import 'endpoint_config_service.dart';
@@ -30,6 +31,7 @@ class SalesService {
 
   AllDealerLists? _cachedDealerLists;
   BookingFormData? _cachedBookingFormData;
+  List<SalesZone>? _cachedZoneList;
 
   bool get useDemoData => AppConfig.useSalesDemoData;
 
@@ -222,6 +224,50 @@ class SalesService {
 
       _cachedDealerLists = AllDealerLists.fromJson(data);
       return ApiResult.ok(_cachedDealerLists!);
+    } catch (error) {
+      return ApiResult.fail('Network error: $error');
+    }
+  }
+
+  /// Sales zone master with its districts. Public endpoint — no token — and
+  /// cached for the process lifetime because zones change rarely.
+  Future<ApiResult<List<SalesZone>>> fetchZoneList({
+    bool forceRefresh = false,
+  }) async {
+    if (!forceRefresh && _cachedZoneList != null) {
+      return ApiResult.ok(_cachedZoneList!);
+    }
+
+    final url = await _configService.resolveUrl('sales.zoneList');
+    final uri = Uri.parse(
+      url ??
+          '${AppConfig.salesApiBaseUrl.trim().replaceAll(RegExp(r'/+$'), '')}/api/get-zone',
+    );
+
+    try {
+      final response = await http
+          .get(
+            uri,
+            headers: {
+              'Accept': 'application/json',
+              'User-Agent': 'PPHLAttendance/2.2 (Android; Flutter)',
+            },
+          )
+          .timeout(const Duration(seconds: 30));
+
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        return ApiResult.fail(
+          'Could not load zones (${response.statusCode}).',
+        );
+      }
+
+      final decoded = jsonDecode(response.body);
+      if (decoded is! Map<String, dynamic>) {
+        return ApiResult.fail('Invalid zone list response.');
+      }
+
+      _cachedZoneList = SalesZone.listFrom(decoded);
+      return ApiResult.ok(_cachedZoneList!);
     } catch (error) {
       return ApiResult.fail('Network error: $error');
     }

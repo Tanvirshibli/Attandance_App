@@ -272,6 +272,11 @@ class EndpointConfigService {
           url: '$sales/api/all-dealer-lists',
           backend: 'sales',
         ),
+        'sales.zoneList': EndpointDefinition(
+          method: 'GET',
+          url: '$sales/api/get-zone',
+          backend: 'sales',
+        ),
         'vehicle.list': EndpointDefinition(
           method: 'GET',
           url: '$transport/api/get-vehicle-active-list',
