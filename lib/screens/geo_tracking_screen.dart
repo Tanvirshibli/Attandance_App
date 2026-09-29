@@ -2,16 +2,15 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 
-import '../config/theme.dart';
+import '../widgets/ui/ui.dart' as ui;
 import '../models/geo_ping.dart';
 import '../services/fcm_wake_handler.dart';
 import '../services/geo_tracking_service.dart';
-import '../widgets/gradient_screen_header.dart';
 import '../widgets/live_location_map.dart';
 
 class GeoTrackingScreen extends StatefulWidget {
@@ -163,7 +162,7 @@ class _GeoTrackingScreenState extends State<GeoTrackingScreen> {
         setState(() => _mapFullscreen = false);
       },
       child: Scaffold(
-        backgroundColor: AppColors.background,
+        backgroundColor: ui.AppColors.canvas,
         body: _mapFullscreen ? _fullscreenMap() : _scrollBody(),
       ),
     );
@@ -195,36 +194,46 @@ class _GeoTrackingScreenState extends State<GeoTrackingScreen> {
         physics: const BouncingScrollPhysics(),
         slivers: [
           SliverToBoxAdapter(
-            child: GradientScreenHeader(
-              title: 'Geo Tracking',
+            child: ui.AppHeader(
+              title: 'Geo tracking',
               subtitle: 'Live map · every $_intervalMinutes min',
             ),
           ),
           SliverPadding(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 28),
+            padding: const EdgeInsets.fromLTRB(
+              ui.AppSpace.gutter,
+              ui.AppSpace.xs,
+              ui.AppSpace.gutter,
+              ui.AppSpace.xl,
+            ),
             sliver: SliverList(
               delegate: SliverChildListDelegate([
                 if (_needsLocationPermission) _permissionBanner(),
                 _mapPanel(expand: false),
-                const SizedBox(height: 14),
+                const SizedBox(height: ui.AppSpace.md),
                 _trackingCard(),
-                const SizedBox(height: 12),
+                const SizedBox(height: ui.AppSpace.sm),
                 _statusChips(),
-                const SizedBox(height: 16),
+                const SizedBox(height: ui.AppSpace.md),
                 _actionRow(),
-                const SizedBox(height: 8),
+                const SizedBox(height: ui.AppSpace.xs),
                 Align(
                   alignment: Alignment.centerLeft,
                   child: TextButton.icon(
                     onPressed: openAppSettings,
-                    icon: const Icon(Icons.settings_outlined, size: 18),
+                    icon: ui.AppIcon(
+                      ui.AppIcons.key,
+                      size: 16,
+                      color: ui.AppColors.inkMuted,
+                    ),
                     label: Text(
                       'Battery & app settings',
-                      style: GoogleFonts.poppins(fontSize: 12),
+                      style: ui.AppType.meta
+                          .copyWith(color: ui.AppColors.inkMuted),
                     ),
                   ),
                 ),
-                const SizedBox(height: 8),
+                const SizedBox(height: ui.AppSpace.xs),
                 _historySection(),
                 if (_isLoading) ...[
                   const SizedBox(height: 16),
@@ -245,36 +254,37 @@ class _GeoTrackingScreenState extends State<GeoTrackingScreen> {
 
   Widget _permissionBanner() {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.only(bottom: ui.AppSpace.sm),
       child: Material(
-        color: AppColors.warning.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(16),
+        color: ui.AppColors.warning.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(ui.AppRadius.lg),
         child: InkWell(
           onTap: _requestLivePermission,
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(ui.AppRadius.lg),
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            padding: const EdgeInsets.all(ui.AppSpace.sm),
             child: Row(
               children: [
-                const Icon(Icons.location_off_rounded,
-                    color: AppColors.warning),
-                const SizedBox(width: 10),
+                ui.AppIcon(
+                  ui.AppIcons.pin,
+                  size: 18,
+                  color: ui.AppColors.warning,
+                ),
+                const SizedBox(width: ui.AppSpace.xs),
                 Expanded(
                   child: Text(
                     'Enable location to see yourself on the map',
-                    style: GoogleFonts.poppins(
-                      fontSize: 12,
+                    style: ui.AppType.meta.copyWith(
+                      color: ui.AppColors.ink,
                       fontWeight: FontWeight.w500,
-                      color: AppColors.textPrimary,
                     ),
                   ),
                 ),
                 Text(
                   'Allow',
-                  style: GoogleFonts.poppins(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                    color: AppColors.primary,
+                  style: ui.AppType.meta.copyWith(
+                    color: ui.AppColors.mGeo,
+                    fontWeight: FontWeight.w700,
                   ),
                 ),
               ],
@@ -286,77 +296,33 @@ class _GeoTrackingScreenState extends State<GeoTrackingScreen> {
   }
 
   Widget _trackingCard() {
-    return Container(
-      padding: const EdgeInsets.fromLTRB(18, 16, 14, 16),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: _enabled
-              ? [
-                  AppColors.primary.withValues(alpha: 0.12),
-                  AppColors.accent.withValues(alpha: 0.08),
-                ]
-              : [
-                  AppColors.surface,
-                  AppColors.surface,
-                ],
-        ),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(
-          color: _enabled
-              ? AppColors.primary.withValues(alpha: 0.25)
-              : AppColors.divider,
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: AppColors.shadow.withValues(alpha: 0.06),
-            blurRadius: 16,
-            offset: const Offset(0, 6),
-          ),
-        ],
-      ),
+    final accent = _enabled ? ui.AppColors.mGeo : ui.AppColors.inkFaint;
+    return ui.AppCard(
+      padding: const EdgeInsets.all(ui.AppSpace.md),
       child: Row(
         children: [
-          Container(
-            width: 48,
-            height: 48,
-            decoration: BoxDecoration(
-              gradient: _enabled
-                  ? AppColors.primaryGradient
-                  : LinearGradient(
-                      colors: [
-                        AppColors.textHint.withValues(alpha: 0.35),
-                        AppColors.textHint.withValues(alpha: 0.2),
-                      ],
-                    ),
-              borderRadius: BorderRadius.circular(14),
-            ),
-            child: Icon(
-              _enabled ? Icons.radar_rounded : Icons.location_disabled_rounded,
-              color: Colors.white,
-            ),
+          ui.AppIconTile(
+            icon: _enabled ? ui.AppIcons.geo : ui.AppIcons.eyeOff,
+            color: accent,
+            size: ui.AppIconTileSize.large,
+            filled: _enabled,
+            semanticLabel: _statusTitle,
           ),
-          const SizedBox(width: 14),
+          const SizedBox(width: ui.AppSpace.md),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
                   _statusTitle,
-                  style: GoogleFonts.poppins(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                    color: AppColors.textPrimary,
-                  ),
+                  style: ui.AppType.h3.copyWith(color: ui.AppColors.ink),
                 ),
                 const SizedBox(height: 2),
                 Text(
                   _statusSubtitle,
-                  style: GoogleFonts.poppins(
-                    fontSize: 11,
-                    color: AppColors.textSecondary,
-                  ),
+                  style: ui.AppType.meta
+                      .copyWith(color: ui.AppColors.inkMuted),
                 ),
               ],
             ),
@@ -384,35 +350,40 @@ class _GeoTrackingScreenState extends State<GeoTrackingScreen> {
   Widget _statusChips() {
     final fcmShort = FcmWakeHandler.isConfigured ? 'FCM ready' : 'FCM scaffold';
     final chips = <_ChipData>[
-      _ChipData(Icons.schedule_rounded, 'Every $_intervalMinutes min'),
-      _ChipData(Icons.cloud_upload_outlined, '$_pendingCount pending'),
-      const _ChipData(Icons.work_outline_rounded, 'WorkManager'),
-      _ChipData(Icons.notifications_none_rounded, fcmShort),
+      _ChipData(ui.AppIcons.clock, 'Every $_intervalMinutes min'),
+      _ChipData(ui.AppIcons.upload, '$_pendingCount pending'),
+      const _ChipData(PhosphorIconsDuotone.batteryCharging, 'WorkManager'),
+      _ChipData(ui.AppIcons.bell, fcmShort),
     ];
 
     return Wrap(
-      spacing: 8,
-      runSpacing: 8,
+      spacing: ui.AppSpace.xs,
+      runSpacing: ui.AppSpace.xs,
       children: chips.map((chip) {
         return Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          padding: const EdgeInsets.symmetric(
+            horizontal: ui.AppSpace.sm,
+            vertical: ui.AppSpace.xs,
+          ),
           decoration: BoxDecoration(
-            color: AppColors.surface,
-            borderRadius: BorderRadius.circular(999),
-            border: Border.all(color: AppColors.divider),
+            color: ui.AppColors.surface,
+            borderRadius: BorderRadius.circular(ui.AppRadius.pill),
+            border: Border.all(color: ui.AppColors.line),
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(chip.icon, size: 15, color: AppColors.primary),
-              const SizedBox(width: 6),
+              ui.AppIcon(
+                chip.icon,
+                size: 14,
+                color: ui.AppColors.mGeo,
+                secondaryOpacity: 0.5,
+              ),
+              const SizedBox(width: ui.AppSpace.xxs + 2),
               Text(
                 chip.label,
-                style: GoogleFonts.poppins(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w500,
-                  color: AppColors.textSecondary,
-                ),
+                style: ui.AppType.micro
+                    .copyWith(color: ui.AppColors.inkMuted),
               ),
             ],
           ),
@@ -422,88 +393,47 @@ class _GeoTrackingScreenState extends State<GeoTrackingScreen> {
   }
 
   Widget _actionRow() {
-    return SizedBox(
-      width: double.infinity,
-      child: ElevatedButton.icon(
-        onPressed: _capturing ? null : _captureNow,
-        style: ElevatedButton.styleFrom(
-          backgroundColor: AppColors.primary,
-          foregroundColor: Colors.white,
-          disabledBackgroundColor: AppColors.primary.withValues(alpha: 0.5),
-          elevation: 0,
-          padding: const EdgeInsets.symmetric(vertical: 16),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-          ),
-        ),
-        icon: _capturing
-            ? const SizedBox(
-                width: 18,
-                height: 18,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  color: Colors.white,
-                ),
-              )
-            : const Icon(Icons.my_location_rounded),
-        label: Text(
-          _capturing ? 'Capturing…' : 'Capture Now',
-          style: GoogleFonts.poppins(
-            fontSize: 15,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-      ),
+    return ui.AppButton(
+      label: _capturing ? 'Capturing…' : 'Capture now',
+      icon: ui.AppIcons.target,
+      busy: _capturing,
+      accent: ui.AppColors.mGeo,
+      onPressed: _capturing ? null : _captureNow,
     );
   }
 
   Widget _historySection() {
-    return Container(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: AppColors.shadow.withValues(alpha: 0.05),
-            blurRadius: 14,
-            offset: const Offset(0, 5),
-          ),
-        ],
-      ),
+    return ui.AppCard(
+      padding: const EdgeInsets.all(ui.AppSpace.md),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              Text(
-                'Recent pings',
-                style: GoogleFonts.poppins(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w600,
+              // Expanded, not AppSectionTitle alone: the timestamp is a sibling
+              // in this Row, so the title needs a bounded share of the width.
+              Expanded(
+                child: ui.AppSectionTitle(
+                  title: 'Recent pings',
+                  accent: ui.AppColors.mGeo,
                 ),
               ),
-              const Spacer(),
               if (_lastPing != null)
                 Text(
                   DateFormat('hh:mm a').format(_lastPing!.capturedAt),
-                  style: GoogleFonts.poppins(
-                    fontSize: 11,
-                    color: AppColors.textHint,
-                  ),
+                  style: ui.AppType.micro
+                      .copyWith(color: ui.AppColors.inkFaint),
                 ),
             ],
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: ui.AppSpace.xs),
           if (_history.isEmpty)
             Padding(
-              padding: const EdgeInsets.only(bottom: 12),
+              padding: const EdgeInsets.only(bottom: ui.AppSpace.sm),
               child: Text(
                 'No history yet. Capture a ping or enable tracking.',
-                style: GoogleFonts.poppins(
-                  fontSize: 12,
-                  color: AppColors.textSecondary,
-                ),
+                style: ui.AppType.meta
+                    .copyWith(color: ui.AppColors.inkMuted),
               ),
             )
           else
@@ -517,51 +447,44 @@ class _GeoTrackingScreenState extends State<GeoTrackingScreen> {
     final point = LatLng(ping.latitude, ping.longitude);
     return InkWell(
       onTap: () => _mapKey.currentState?.moveTo(point),
-      borderRadius: BorderRadius.circular(12),
+      borderRadius: BorderRadius.circular(ui.AppRadius.md),
       child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 10),
+        padding: const EdgeInsets.symmetric(vertical: ui.AppSpace.xs + 2),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Container(
-              width: 36,
-              height: 36,
-              decoration: BoxDecoration(
-                color: AppColors.accent.withValues(alpha: 0.12),
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: const Icon(
-                Icons.place_rounded,
-                size: 18,
-                color: AppColors.accent,
-              ),
+            ui.AppIconTile(
+              icon: ui.AppIcons.pin,
+              color: ui.AppColors.mGeo,
+              size: ui.AppIconTileSize.small,
             ),
-            const SizedBox(width: 12),
+            const SizedBox(width: ui.AppSpace.sm),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
                 children: [
                   Text(
                     DateFormat('dd MMM · hh:mm a').format(ping.capturedAt),
-                    style: GoogleFonts.poppins(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                    ),
+                    style: ui.AppType.h3.copyWith(color: ui.AppColors.ink),
                   ),
                   const SizedBox(height: 2),
                   Text(
                     ping.address ??
                         '${ping.latitude.toStringAsFixed(4)}, ${ping.longitude.toStringAsFixed(4)}',
-                    style: GoogleFonts.poppins(
-                      fontSize: 11,
-                      color: AppColors.textSecondary,
-                    ),
+                    style: ui.AppType.micro
+                        .copyWith(color: ui.AppColors.inkFaint),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
                   ),
                 ],
               ),
             ),
-            Icon(Icons.chevron_right_rounded,
-                color: AppColors.textHint, size: 20),
+            ui.AppIcon(
+              ui.AppIcons.chevron,
+              size: 16,
+              color: ui.AppColors.inkFaint,
+            ),
           ],
         ),
       ),

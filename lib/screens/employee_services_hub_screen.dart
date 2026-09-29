@@ -1,8 +1,7 @@
 import 'package:animate_do/animate_do.dart';
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 
-import '../config/theme.dart';
+import '../widgets/ui/ui.dart';
 import 'attendance_report_screen.dart';
 import 'geo_tracking_screen.dart';
 import 'hr_benefits_hub_screen.dart';
@@ -11,7 +10,6 @@ import 'marketing/marketing_hub_screen.dart';
 import 'payment_hub_screen.dart';
 import 'sales_info_screen.dart';
 import 'vehicle_list_screen.dart';
-import '../widgets/gradient_screen_header.dart';
 
 class EmployeeServicesHubScreen extends StatelessWidget {
   const EmployeeServicesHubScreen({super.key, this.showAsTabRoot = false});
@@ -23,81 +21,86 @@ class EmployeeServicesHubScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final tiles = [
       _ServiceTileData(
-        icon: Icons.fact_check_outlined,
-        label: 'Attendance\nReport',
-        color: AppColors.primary,
+        icon: AppIcons.attendance,
+        label: 'Attendance report',
+        color: AppColors.mAttendance,
         screen: const AttendanceReportScreen(),
       ),
       _ServiceTileData(
-        icon: Icons.beach_access_outlined,
+        icon: AppIcons.leave,
         label: 'Leave',
-        color: AppColors.info,
+        color: AppColors.mLeave,
         screen: const LeaveHubScreen(),
       ),
       _ServiceTileData(
-        icon: Icons.payments_outlined,
+        icon: AppIcons.payments,
         label: 'Payments',
-        color: AppColors.success,
+        color: AppColors.mPayments,
         screen: const PaymentHubScreen(),
       ),
       _ServiceTileData(
-        icon: Icons.card_giftcard_outlined,
-        label: 'HR\nBenefits',
-        color: const Color(0xFF7C4DFF),
+        icon: AppIcons.hr,
+        label: 'HR benefits',
+        color: AppColors.mHr,
         screen: const HrBenefitsHubScreen(),
       ),
       _ServiceTileData(
-        icon: Icons.trending_up_outlined,
-        label: 'Sales Info',
-        color: AppColors.warning,
+        icon: AppIcons.sales,
+        label: 'Sales info',
+        color: AppColors.mSales,
         screen: const SalesInfoScreen(),
       ),
       _ServiceTileData(
-        icon: Icons.directions_car_outlined,
+        icon: AppIcons.vehicles,
         label: 'Vehicles',
-        color: AppColors.accent,
+        color: AppColors.mVehicles,
         screen: const VehicleListScreen(),
       ),
       _ServiceTileData(
-        icon: Icons.agriculture_outlined,
-        label: 'Farms, Dealers\n& Markets',
-        color: const Color(0xFF2E7D32),
+        icon: AppIcons.farms,
+        label: 'Farms & dealers',
+        color: AppColors.mFarms,
         screen: const MarketingHubScreen(),
       ),
       _ServiceTileData(
-        icon: Icons.my_location_outlined,
-        label: 'Geo\nTracking',
-        color: AppColors.error,
+        icon: AppIcons.geo,
+        label: 'Geo tracking',
+        color: AppColors.mGeo,
         screen: const GeoTrackingScreen(),
       ),
     ];
 
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: AppColors.canvas,
       body: CustomScrollView(
         physics: const BouncingScrollPhysics(),
         slivers: [
           SliverToBoxAdapter(
-            child: GradientScreenHeader(
+            child: AppHeader(
               title: showAsTabRoot ? 'Services' : 'Employee Services',
-              subtitle: 'Reports, leave, payments & more',
+              subtitle: 'Everything your role unlocks',
               showBack: !showAsTabRoot,
             ),
           ),
           SliverPadding(
-            padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
+            padding: const EdgeInsets.fromLTRB(
+              AppSpace.gutter,
+              AppSpace.md,
+              AppSpace.gutter,
+              AppSpace.lg,
+            ),
             sliver: SliverGrid(
               gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                 crossAxisCount: 2,
-                mainAxisSpacing: 10,
-                crossAxisSpacing: 10,
-                childAspectRatio: 1.0,
+                mainAxisSpacing: AppSpace.sm,
+                crossAxisSpacing: AppSpace.sm,
+                childAspectRatio: 0.92,
               ),
               delegate: SliverChildBuilderDelegate(
                 (context, index) {
                   final tile = tiles[index];
                   return FadeInUp(
-                    delay: Duration(milliseconds: 80 * index),
+                    delay: Duration(milliseconds: 60 * index),
                     child: _ServiceTile(tile: tile),
                   );
                 },
@@ -122,6 +125,9 @@ class _ServiceTileData {
   final IconData icon;
   final String label;
   final Color color;
+
+  /// Pre-built so the route stays an untyped
+  /// `MaterialPageRoute(builder: (_) => screen)`, exactly as before.
   final Widget screen;
 }
 
@@ -134,50 +140,44 @@ class _ServiceTile extends StatelessWidget {
   Widget build(BuildContext context) {
     return Material(
       color: AppColors.surface,
-      borderRadius: BorderRadius.circular(18),
-      elevation: 0,
-      shadowColor: AppColors.shadow.withValues(alpha: 0.06),
+      borderRadius: BorderRadius.circular(AppRadius.xl),
       child: InkWell(
         onTap: () {
           Navigator.of(context).push(
             MaterialPageRoute(builder: (_) => tile.screen),
           );
         },
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: BorderRadius.circular(AppRadius.xl),
         child: Container(
-          padding: const EdgeInsets.all(12),
+          padding: const EdgeInsets.all(AppSpace.sm + 2),
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(18),
-            boxShadow: [
-              BoxShadow(
-                color: AppColors.shadow.withValues(alpha: 0.05),
-                blurRadius: 10,
-                offset: const Offset(0, 3),
-              ),
-            ],
+            borderRadius: BorderRadius.circular(AppRadius.xl),
+            border: Border.all(color: AppColors.line),
+            boxShadow: AppShadows.card,
           ),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
-            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              Container(
-                width: 64,
-                height: 64,
-                decoration: BoxDecoration(
-                  color: tile.color.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(18),
-                ),
-                child: Icon(tile.icon, color: tile.color, size: 34),
+              AppIconTile(
+                icon: tile.icon,
+                color: tile.color,
+                size: AppIconTileSize.large,
+                semanticLabel: tile.label,
               ),
-              const SizedBox(height: 12),
-              Text(
-                tile.label,
-                textAlign: TextAlign.center,
-                style: GoogleFonts.poppins(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                  color: AppColors.textPrimary,
-                  height: 1.25,
+              const SizedBox(height: AppSpace.sm + 2),
+              Flexible(
+                child: Text(
+                  // No hard-coded line breaks: the old labels carried a "\n"
+                  // that split phrases mid-word ("Farms, Dealers\n& Markets").
+                  // The grid now sizes itself to the text instead.
+                  tile.label,
+                  textAlign: TextAlign.center,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppType.h3.copyWith(
+                    color: AppColors.ink,
+                    height: 1.25,
+                  ),
                 ),
               ),
             ],
