@@ -1,7 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 
-import '../../config/theme.dart';
 import '../../data/marketing_demo_masters.dart';
 import '../../models/dealer_list_models.dart';
 import '../../models/marketing_models.dart';
@@ -9,9 +7,8 @@ import '../../services/auth_service.dart';
 import '../../services/marketing_service.dart';
 import '../../services/sales_service.dart';
 import '../../utils/marketing_location_helper.dart';
-import '../../widgets/gradient_screen_header.dart';
 import '../../widgets/searchable_select_field.dart';
-import '../../widgets/section_card.dart';
+import '../../widgets/ui/ui.dart';
 import '../../widgets/voice_input_field.dart';
 
 /// Market create + edit ("market survey") form.
@@ -377,7 +374,7 @@ class _MarketFormScreenState extends State<MarketFormScreen> {
     return InputDecoration(
       hintText: hint,
       filled: true,
-      fillColor: AppColors.background,
+      fillColor: AppColors.surfaceSunk,
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
         borderSide: BorderSide.none,
@@ -390,11 +387,7 @@ class _MarketFormScreenState extends State<MarketFormScreen> {
       padding: const EdgeInsets.only(bottom: 6),
       child: Text(
         text,
-        style: GoogleFonts.poppins(
-          fontSize: 13,
-          fontWeight: FontWeight.w500,
-          color: AppColors.textSecondary,
-        ),
+        style: AppType.bodySm.copyWith(fontWeight: FontWeight.w500, color: AppColors.inkMuted),
       ),
     );
   }
@@ -404,11 +397,7 @@ class _MarketFormScreenState extends State<MarketFormScreen> {
       padding: const EdgeInsets.only(bottom: 12),
       child: Text(
         text,
-        style: GoogleFonts.poppins(
-          fontSize: 15,
-          fontWeight: FontWeight.w600,
-          color: AppColors.textPrimary,
-        ),
+        style: AppType.h3.copyWith(fontWeight: FontWeight.w600, color: AppColors.ink),
       ),
     );
   }
@@ -454,10 +443,10 @@ class _MarketFormScreenState extends State<MarketFormScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: AppColors.canvas,
       body: Column(
         children: [
-          GradientScreenHeader(
+          AppHeader(
             title: _isEdit ? 'Market survey — edit' : 'New Market',
             subtitle: _isEdit
                 ? 'Update market intel & location'
@@ -465,10 +454,10 @@ class _MarketFormScreenState extends State<MarketFormScreen> {
           ),
           Expanded(
             child: SingleChildScrollView(
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 28),
+              padding: const EdgeInsets.fromLTRB(AppSpace.md, AppSpace.md, AppSpace.md, AppSpace.xl),
               child: Column(
                 children: [
-                  SectionCard(
+                  AppCard(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
@@ -550,7 +539,7 @@ class _MarketFormScreenState extends State<MarketFormScreen> {
                     ),
                   ),
                   const SizedBox(height: 12),
-                  SectionCard(
+                  AppCard(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
@@ -607,9 +596,7 @@ class _MarketFormScreenState extends State<MarketFormScreen> {
                                   (t) => Chip(
                                     label: Text(
                                       t,
-                                      style: GoogleFonts.poppins(
-                                        fontSize: 12,
-                                      ),
+                                      style: AppType.meta,
                                     ),
                                     onDeleted: () => setState(
                                       () => _productTypes.remove(t),
@@ -667,7 +654,7 @@ class _MarketFormScreenState extends State<MarketFormScreen> {
                     ),
                   ),
                   const SizedBox(height: 12),
-                  SectionCard(
+                  AppCard(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
@@ -681,7 +668,7 @@ class _MarketFormScreenState extends State<MarketFormScreen> {
                               icon: const Icon(Icons.add_rounded, size: 18),
                               label: Text(
                                 'Add',
-                                style: GoogleFonts.poppins(fontSize: 13),
+                                style: AppType.bodySm,
                               ),
                             ),
                           ],
@@ -689,10 +676,7 @@ class _MarketFormScreenState extends State<MarketFormScreen> {
                         if (_competitors.isEmpty)
                           Text(
                             'No competitors added yet.',
-                            style: GoogleFonts.poppins(
-                              fontSize: 12,
-                              color: AppColors.textHint,
-                            ),
+                            style: AppType.meta.copyWith(color: AppColors.inkFaint),
                           ),
                         ..._competitors.asMap().entries.map(
                               (entry) => _competitorCard(
@@ -704,7 +688,7 @@ class _MarketFormScreenState extends State<MarketFormScreen> {
                     ),
                   ),
                   const SizedBox(height: 12),
-                  SectionCard(
+                  AppCard(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
@@ -712,11 +696,10 @@ class _MarketFormScreenState extends State<MarketFormScreen> {
                         if (_locationStatus != null) ...[
                           Text(
                             _locationStatus!,
-                            style: GoogleFonts.poppins(
-                              fontSize: 12,
+                            style: AppType.meta.copyWith(
                               color: _resolvingLocation
-                                  ? AppColors.textHint
-                                  : AppColors.textSecondary,
+                                  ? AppColors.inkFaint
+                                  : AppColors.inkMuted,
                             ),
                           ),
                           if (_resolvingLocation) ...[
@@ -765,7 +748,7 @@ class _MarketFormScreenState extends State<MarketFormScreen> {
                     ),
                   ),
                   const SizedBox(height: 12),
-                  SectionCard(
+                  AppCard(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
@@ -799,10 +782,7 @@ class _MarketFormScreenState extends State<MarketFormScreen> {
                                     _isEdit
                                         ? 'Update market'
                                         : 'Save market',
-                                    style: GoogleFonts.poppins(
-                                      fontWeight: FontWeight.w600,
-                                      color: Colors.white,
-                                    ),
+                                    style: AppType.body.copyWith(fontWeight: FontWeight.w600, color: Colors.white),
                                   ),
                           ),
                         ),
@@ -824,7 +804,7 @@ class _MarketFormScreenState extends State<MarketFormScreen> {
       child: Container(
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
-          color: AppColors.background,
+          color: AppColors.surfaceSunk,
           borderRadius: BorderRadius.circular(12),
         ),
         child: Column(

@@ -1,13 +1,9 @@
 import 'package:animate_do/animate_do.dart';
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 
-import '../../config/theme.dart';
 import '../../models/marketing_models.dart';
 import '../../services/marketing_service.dart';
-import '../../widgets/api_empty_state.dart';
-import '../../widgets/gradient_screen_header.dart';
-import '../../widgets/section_card.dart';
+import '../../widgets/ui/ui.dart';
 import 'market_form_screen.dart';
 import 'party_detail_screen.dart';
 
@@ -83,7 +79,7 @@ class _MarketDetailScreenState extends State<MarketDetailScreen> {
       ),
       child: Text(
         '$label: $value',
-        style: GoogleFonts.poppins(fontSize: 12, color: AppColors.textPrimary),
+        style: AppType.meta.copyWith(color: AppColors.ink),
       ),
     );
   }
@@ -102,10 +98,7 @@ class _MarketDetailScreenState extends State<MarketDetailScreen> {
     if (!hasAny) {
       return Text(
         'No market survey data yet — tap Edit to fill it in.',
-        style: GoogleFonts.poppins(
-          fontSize: 12,
-          color: AppColors.textHint,
-        ),
+        style: AppType.meta.copyWith(color: AppColors.inkFaint),
       );
     }
     return Column(
@@ -141,7 +134,7 @@ class _MarketDetailScreenState extends State<MarketDetailScreen> {
             children: m.productTypes
                 .map(
                   (t) => Chip(
-                    label: Text(t, style: GoogleFonts.poppins(fontSize: 11)),
+                    label: Text(t, style: AppType.micro),
                     visualDensity: VisualDensity.compact,
                   ),
                 )
@@ -152,11 +145,7 @@ class _MarketDetailScreenState extends State<MarketDetailScreen> {
           const SizedBox(height: 12),
           Text(
             'Competitor companies',
-            style: GoogleFonts.poppins(
-              fontSize: 13,
-              fontWeight: FontWeight.w600,
-              color: AppColors.textPrimary,
-            ),
+            style: AppType.bodySm.copyWith(fontWeight: FontWeight.w600, color: AppColors.ink),
           ),
           const SizedBox(height: 6),
           ...m.competitorCompanies.map(
@@ -174,7 +163,7 @@ class _MarketDetailScreenState extends State<MarketDetailScreen> {
                         if (c.sharePercent != null) '${c.sharePercent}%',
                         if (c.note != null && c.note!.isNotEmpty) '· ${c.note}',
                       ].join(' — '),
-                      style: GoogleFonts.poppins(fontSize: 12),
+                      style: AppType.meta,
                     ),
                   ),
                 ],
@@ -191,24 +180,25 @@ class _MarketDetailScreenState extends State<MarketDetailScreen> {
     final market = _market;
     final loc = market.locationLine;
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: AppColors.canvas,
       body: RefreshIndicator(
         onRefresh: _load,
+        color: AppColors.primary,
         child: CustomScrollView(
           physics: const AlwaysScrollableScrollPhysics(
             parent: BouncingScrollPhysics(),
           ),
           slivers: [
             SliverToBoxAdapter(
-              child: GradientScreenHeader(
+              child: AppHeader(
                 title: market.displayName,
                 subtitle: loc.isNotEmpty ? loc : 'Market survey',
               ),
             ),
             SliverPadding(
-              padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
+              padding: const EdgeInsets.fromLTRB(AppSpace.gutter, AppSpace.md, AppSpace.gutter, AppSpace.xs),
               sliver: SliverToBoxAdapter(
-                child: SectionCard(
+                child: AppCard(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -222,7 +212,7 @@ class _MarketDetailScreenState extends State<MarketDetailScreen> {
                                   Text(
                                     market.address!,
                                     style:
-                                        GoogleFonts.poppins(fontSize: 13),
+                                        AppType.bodySm,
                                   ),
                                 const SizedBox(height: 4),
                                 Text(
@@ -231,11 +221,7 @@ class _MarketDetailScreenState extends State<MarketDetailScreen> {
                                       'Zone ${market.zoneName}',
                                     if (market.status != null) market.status!,
                                   ].join(' · '),
-                                  style: GoogleFonts.poppins(
-                                    fontSize: 12,
-                                    color: AppColors.info,
-                                    fontWeight: FontWeight.w500,
-                                  ),
+                                  style: AppType.meta.copyWith(fontWeight: FontWeight.w500, color: AppColors.info),
                                 ),
                               ],
                             ),
@@ -259,15 +245,11 @@ class _MarketDetailScreenState extends State<MarketDetailScreen> {
               ),
             ),
             SliverPadding(
-              padding: const EdgeInsets.fromLTRB(20, 4, 20, 0),
+              padding: const EdgeInsets.fromLTRB(AppSpace.gutter, AppSpace.xxs, AppSpace.gutter, 0),
               sliver: SliverToBoxAdapter(
                 child: Text(
                   'Parties in this market',
-                  style: GoogleFonts.poppins(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                    color: AppColors.textPrimary,
-                  ),
+                  style: AppType.body.copyWith(fontWeight: FontWeight.w600, color: AppColors.ink),
                 ),
               ),
             ),
@@ -279,8 +261,8 @@ class _MarketDetailScreenState extends State<MarketDetailScreen> {
               SliverFillRemaining(
                 child: Center(
                   child: Padding(
-                    padding: const EdgeInsets.all(20),
-                    child: ApiEmptyState(
+                    padding: const EdgeInsets.all(AppSpace.lg),
+                    child: AppEmptyState(
                       icon: Icons.error_outline,
                       title: 'Could not load',
                       subtitle: _error,
@@ -293,8 +275,8 @@ class _MarketDetailScreenState extends State<MarketDetailScreen> {
               const SliverFillRemaining(
                 child: Center(
                   child: Padding(
-                    padding: EdgeInsets.all(20),
-                    child: ApiEmptyState(
+                    padding: EdgeInsets.all(AppSpace.lg),
+                    child: AppEmptyState(
                       icon: Icons.storefront_outlined,
                       title: 'No parties in this market',
                       subtitle: 'Create a dealer or farm and assign this market.',
@@ -304,7 +286,7 @@ class _MarketDetailScreenState extends State<MarketDetailScreen> {
               )
             else
               SliverPadding(
-                padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
+                padding: const EdgeInsets.fromLTRB(AppSpace.gutter, AppSpace.xs, AppSpace.gutter, AppSpace.xl),
                 sliver: SliverList(
                   delegate: SliverChildBuilderDelegate(
                     (context, index) {
@@ -313,7 +295,7 @@ class _MarketDetailScreenState extends State<MarketDetailScreen> {
                         delay: Duration(milliseconds: 30 * index),
                         child: Padding(
                           padding: const EdgeInsets.only(bottom: 10),
-                          child: SectionCard(
+                          child: AppCard(
                             padding: EdgeInsets.zero,
                             child: ListTile(
                               onTap: () async {
@@ -335,17 +317,14 @@ class _MarketDetailScreenState extends State<MarketDetailScreen> {
                               ),
                               title: Text(
                                 party.displayName,
-                                style: GoogleFonts.poppins(
-                                  fontWeight: FontWeight.w600,
-                                  fontSize: 14,
-                                ),
+                                style: AppType.body.copyWith(fontWeight: FontWeight.w600),
                               ),
                               subtitle: Text(
                                 [
                                   party.partyType,
                                   if (party.phone != null) party.phone!,
                                 ].join(' · '),
-                                style: GoogleFonts.poppins(fontSize: 12),
+                                style: AppType.meta,
                               ),
                               trailing: const Icon(Icons.chevron_right),
                             ),

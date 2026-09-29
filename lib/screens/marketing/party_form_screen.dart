@@ -1,10 +1,8 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
 
-import '../../config/theme.dart';
 import '../../data/marketing_demo_masters.dart';
 import '../../models/dealer_list_models.dart';
 import '../../models/marketing_models.dart';
@@ -12,9 +10,8 @@ import '../../services/auth_service.dart';
 import '../../services/marketing_service.dart';
 import '../../services/sales_service.dart';
 import '../../utils/marketing_location_helper.dart';
-import '../../widgets/gradient_screen_header.dart';
 import '../../widgets/searchable_select_field.dart';
-import '../../widgets/section_card.dart';
+import '../../widgets/ui/ui.dart';
 import '../../widgets/voice_input_field.dart';
 
 class _ProductRow {
@@ -419,7 +416,7 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
     return InputDecoration(
       hintText: hint,
       filled: true,
-      fillColor: AppColors.background,
+      fillColor: AppColors.surfaceSunk,
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
         borderSide: BorderSide.none,
@@ -432,11 +429,7 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
       padding: const EdgeInsets.only(bottom: 8),
       child: Text(
         text,
-        style: GoogleFonts.poppins(
-          fontSize: 12,
-          fontWeight: FontWeight.w500,
-          color: AppColors.textSecondary,
-        ),
+        style: AppType.meta.copyWith(fontWeight: FontWeight.w500, color: AppColors.inkMuted),
       ),
     );
   }
@@ -446,11 +439,7 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
       padding: const EdgeInsets.only(bottom: 12),
       child: Text(
         text,
-        style: GoogleFonts.poppins(
-          fontSize: 14,
-          fontWeight: FontWeight.w600,
-          color: AppColors.textPrimary,
-        ),
+        style: AppType.body.copyWith(fontWeight: FontWeight.w600, color: AppColors.ink),
       ),
     );
   }
@@ -459,19 +448,19 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
   Widget build(BuildContext context) {
     final title = _isFarm ? 'New Farm' : 'New Dealer';
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: AppColors.canvas,
       body: Column(
         children: [
-          GradientScreenHeader(
+          AppHeader(
             title: title,
             subtitle: 'Identity, contact, credit & products',
           ),
           Expanded(
             child: SingleChildScrollView(
-              padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
+              padding: const EdgeInsets.fromLTRB(AppSpace.gutter, AppSpace.md, AppSpace.gutter, AppSpace.xl),
               child: Column(
                 children: [
-                  SectionCard(
+                  AppCard(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
@@ -591,7 +580,7 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
                     ),
                   ),
                   const SizedBox(height: 12),
-                  SectionCard(
+                  AppCard(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
@@ -644,7 +633,7 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
                     ),
                   ),
                   const SizedBox(height: 12),
-                  SectionCard(
+                  AppCard(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
@@ -745,7 +734,7 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
                     ),
                   ),
                   const SizedBox(height: 12),
-                  SectionCard(
+                  AppCard(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
@@ -788,11 +777,10 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
                         if (_locationStatus != null) ...[
                           Text(
                             _locationStatus!,
-                            style: GoogleFonts.poppins(
-                              fontSize: 12,
+                            style: AppType.meta.copyWith(
                               color: _resolvingLocation
-                                  ? AppColors.textHint
-                                  : AppColors.textSecondary,
+                                  ? AppColors.inkFaint
+                                  : AppColors.inkMuted,
                             ),
                           ),
                           if (_resolvingLocation) ...[
@@ -811,7 +799,7 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
                     ),
                   ),
                   const SizedBox(height: 12),
-                  SectionCard(
+                  AppCard(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
@@ -833,7 +821,7 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
                             child: Container(
                               padding: const EdgeInsets.all(12),
                               decoration: BoxDecoration(
-                                color: AppColors.background,
+                                color: AppColors.surfaceSunk,
                                 borderRadius: BorderRadius.circular(12),
                               ),
                               child: Column(
@@ -976,7 +964,7 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
                                     contentPadding: EdgeInsets.zero,
                                     title: Text(
                                       'Our product',
-                                      style: GoogleFonts.poppins(fontSize: 13),
+                                      style: AppType.bodySm,
                                     ),
                                     value: row.isOurProduct,
                                     onChanged: (v) =>
@@ -1012,7 +1000,7 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
                     ),
                   ),
                   const SizedBox(height: 12),
-                  SectionCard(
+                  AppCard(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
@@ -1085,10 +1073,7 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
                                   )
                                 : Text(
                                     'Submit',
-                                    style: GoogleFonts.poppins(
-                                      fontWeight: FontWeight.w600,
-                                      color: Colors.white,
-                                    ),
+                                    style: AppType.body.copyWith(fontWeight: FontWeight.w600, color: Colors.white),
                                   ),
                           ),
                         ),

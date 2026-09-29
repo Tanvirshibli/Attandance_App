@@ -1,14 +1,10 @@
 import 'package:animate_do/animate_do.dart';
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 
-import '../../config/theme.dart';
 import '../../models/marketing_models.dart';
 import '../../services/auth_service.dart';
 import '../../services/marketing_service.dart';
-import '../../widgets/api_empty_state.dart';
-import '../../widgets/gradient_screen_header.dart';
-import '../../widgets/section_card.dart';
+import '../../widgets/ui/ui.dart';
 import '../../widgets/voice_input_field.dart';
 import 'market_detail_screen.dart';
 
@@ -72,23 +68,24 @@ class _MarketListScreenState extends State<MarketListScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: AppColors.canvas,
       body: RefreshIndicator(
         onRefresh: _load,
+        color: AppColors.primary,
         child: CustomScrollView(
           physics: const AlwaysScrollableScrollPhysics(
             parent: BouncingScrollPhysics(),
           ),
           slivers: [
             const SliverToBoxAdapter(
-              child: GradientScreenHeader(
+              child: AppHeader(
                 title: 'Markets',
                 subtitle: 'Bazaars & coverage areas',
               ),
             ),
             SliverToBoxAdapter(
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
+                padding: const EdgeInsets.fromLTRB(AppSpace.gutter, AppSpace.md, AppSpace.gutter, 0),
                 child: TextField(
                   controller: _search,
                   onSubmitted: (_) => _load(),
@@ -123,8 +120,8 @@ class _MarketListScreenState extends State<MarketListScreen> {
               SliverFillRemaining(
                 child: Center(
                   child: Padding(
-                    padding: const EdgeInsets.all(20),
-                    child: ApiEmptyState(
+                    padding: const EdgeInsets.all(AppSpace.lg),
+                    child: AppEmptyState(
                       icon: Icons.error_outline,
                       title: 'Could not load',
                       subtitle: _error,
@@ -137,8 +134,8 @@ class _MarketListScreenState extends State<MarketListScreen> {
               const SliverFillRemaining(
                 child: Center(
                   child: Padding(
-                    padding: EdgeInsets.all(20),
-                    child: ApiEmptyState(
+                    padding: EdgeInsets.all(AppSpace.lg),
+                    child: AppEmptyState(
                       icon: Icons.store_mall_directory_outlined,
                       title: 'No markets yet',
                       subtitle: 'Create a market to assign dealers and farms.',
@@ -148,7 +145,7 @@ class _MarketListScreenState extends State<MarketListScreen> {
               )
             else
               SliverPadding(
-                padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
+                padding: const EdgeInsets.fromLTRB(AppSpace.gutter, AppSpace.md, AppSpace.gutter, AppSpace.xl),
                 sliver: SliverList(
                   delegate: SliverChildBuilderDelegate(
                     (context, index) {
@@ -158,7 +155,7 @@ class _MarketListScreenState extends State<MarketListScreen> {
                         delay: Duration(milliseconds: 30 * index),
                         child: Padding(
                           padding: const EdgeInsets.only(bottom: 10),
-                          child: SectionCard(
+                          child: AppCard(
                             padding: EdgeInsets.zero,
                             child: InkWell(
                               onTap: () async {
@@ -178,30 +175,20 @@ class _MarketListScreenState extends State<MarketListScreen> {
                                   children: [
                                     Text(
                                       m.displayName,
-                                      style: GoogleFonts.poppins(
-                                        fontWeight: FontWeight.w600,
-                                        fontSize: 15,
-                                      ),
+                                      style: AppType.h3.copyWith(fontWeight: FontWeight.w600),
                                     ),
                                     if (loc.isNotEmpty) ...[
                                       const SizedBox(height: 4),
                                       Text(
                                         loc,
-                                        style: GoogleFonts.poppins(
-                                          fontSize: 12,
-                                          color: AppColors.textSecondary,
-                                        ),
+                                        style: AppType.meta.copyWith(color: AppColors.inkMuted),
                                       ),
                                     ],
                                     if (m.status != null) ...[
                                       const SizedBox(height: 6),
                                       Text(
                                         m.status!,
-                                        style: GoogleFonts.poppins(
-                                          fontSize: 11,
-                                          color: AppColors.info,
-                                          fontWeight: FontWeight.w500,
-                                        ),
+                                        style: AppType.micro.copyWith(fontWeight: FontWeight.w500, color: AppColors.info),
                                       ),
                                     ],
                                   ],
