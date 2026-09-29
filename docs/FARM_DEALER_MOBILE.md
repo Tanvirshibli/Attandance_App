@@ -1,8 +1,10 @@
 # Farm & Dealer Mobile Module
 
-Last updated: September 1, 2026
+Last updated: September 29, 2026
 
 Field data collection for **markets**, **dealers**, and **farms** in Attandance_App, backed by ZKTeco `/api/v1/mobile/marketing/*` (no JWT — same pattern as geo). Employee identity uses profile `canonicalEmployeeId` (`employees.id`).
+
+**v2.3.0+92: Zone scoping.** Every marketing list, form picker and dealer dropdown is now narrowed to the zones the employee is assigned. See [Zone scoping](#zone-scoping) below.
 
 **v2.3.0+85:** Market rework — "Market visit" removed; markets are now **market surveys** (create once, **Edit** on the detail screen → `PUT /markets/{id}`). Market survey fields: `feed_share_percent`, `chicks_share_percent`, `product_types[]`, `feed_dealer_count`, `chicks_dealer_count`, `broiler_farm_count`, `layer_farm_count`, `color_farm_count`, `cock_farm_count`, `competitor_companies[]` (`name` + `share_percent`). **Zone hierarchy** (`company > zone > sector`): profile `zoneId`/`zoneName` filters all marketing lists (`zone_id` param); dealer create requires a zone; visits store `zone_id`/`zone_name` (party zone fallback server-side). Dealer visit: autofills market/company/sector from the party, **photo required**, new `feed_findings` + `chicks_findings`, feed unit catalog includes **Ton**. All uploads compress client-side to **WebP** (`flutter_image_compress`) and post under the **`image`/`image[]`** parent field (legacy `photos[]` still accepted server-side). Payment-receive posts accept an optional receipt photo per line (`payments[i][image]` file field nested inside `payments[i]` — lines without a photo are omitted; the earlier top-level `image[i]` fields are ignored by the current API). The Payments list shows returned receipt thumbnails (tap to zoom). Every manual-typing text field has a voice mic (`speech_to_text`, English/Bangla picker).
 
@@ -118,7 +120,7 @@ Searchable company, **zone**, and sector; status `active` / `inactive`; name, co
 1. Sections: Basic / Contact / Farm&Credit / Location / Products / Photos.
 2. Payload **requires** `employee_id` (plus `created_by_employee_id` / `owner_employee_id`).
 3. Scalars: `code`, `owner_name` (separate from contact person), `business_years`, `capacity_unit_id`, `existing_dealer_id`.
-4. Searchable: live market (filtered to the chosen zone when markets carry zone ids), live parent dealer (farms), company/sector (Sales then demo), existing ERP dealer (demo), **zone** (Sales `zoneList` / `cZoneList` / `chicksZoneList` merged with demo zones) — **required for dealers**, defaults to the logged-in employee's profile zone when present.
+4. Searchable: live market (filtered to the chosen zone by name and that zone's districts), live parent dealer (farms), company/sector (Sales then demo), existing ERP dealer (demo), **zone** (Sales `get-zone`, demo zones as fallback) — **required for dealers**, pre-seeded to the employee's first assigned zone, matched by name.
 5. Extra fields: email, alt phone, NID, trade license, `farm_type`, `capacity`, `credit_limit`, `payment_mode`, `lead_status`.
 6. Product rows: relation types include `business`; searchable product (fills `product_name` + `product_id`); category, unit, company; `brand_name`, `monthly_quantity` / `current_stock`, `unit_price`, `competitor_company`, `is_our_product`, notes. A row is sent only when `product_name` is present.
 7. Auto location on open → `lat`/`lng` + address prefill (editable). No Capture GPS button.
@@ -196,8 +198,11 @@ Selecting a product fills `product_name` and related category/company when those
 | `lib/utils/multipart_form.dart` | Shared multipart builder (files supported) |
 | `lib/services/image_upload_service.dart` | Image → compressed **WebP**, `image[]` parts |
 | `lib/services/voice_typing_service.dart` | `speech_to_text` English/Bangla dictation |
-| `lib/services/marketing_service.dart` | HTTP client (check-in/out, market update, zone filters) |
-| `lib/services/sales_service.dart` | `fetchBookingFormData()` + `fetchAllDealerLists()` masters |
+| `lib/services/marketing_service.dart` | HTTP client (check-in/out, market update) |
+| `lib/services/sales_service.dart` | `fetchBookingFormData()` + `fetchAllDealerLists()` + `fetchZoneList()` masters |
+| `lib/models/zone_models.dart` | `SalesZone` / `ZoneDistrict` wire models for `get-zone` |
+| `lib/models/zone_scope.dart` | `ZoneScope` — the resolved zone set and the `matches` predicate |
+| `lib/services/zone_scope_service.dart` | Resolves the profile's zone ids against the master; 24 h cache |
 | `lib/widgets/searchable_select_field.dart` | Type-to-search dropdown (shared with Post booking) |
 | `lib/widgets/voice_input_field.dart` | `VoiceTextField` + `VoiceMicButton` (mic on typed fields) |
 | `lib/screens/marketing/*` | Hub cards, lists, market/party records, farm visit report, visit form |
@@ -210,16 +215,75 @@ Selecting a product fills `product_name` and related category/company when those
 
 | Resource | Params |
 |----------|--------|
-| Parties (master lists) | `party_type`, `market_id`, `q`, `status`, `limit`, `zone_id` — **omit `employee_id`** so farms/dealers are company-wide for all authenticated users |
+| Parties (master lists) | `party_type`, `market_id`, `q`, `status`, `limit` — **omit `employee_id`** so farms/dealers are company-wide for all authenticated users |
 | Parties (optional mine filter) | `employee_id` still supported by the API when a private list is needed |
-| Visits | `employee_id`, `party_id`, `status`, `zone_id` |
+| Visits | `employee_id`, `party_id`, `status` |
 | Farm surveys | `employee_id`, `party_id`, `from`, `to` |
 | Follow-ups | `employee_id`, `party_id`, `status` |
-| Markets | `q`, `zone_id` (optional) — already company-wide |
+| Markets | `q` — already company-wide |
 
-`zone_id` comes from the logged-in profile (`zoneId` ← `employees.zone_id` when the backend populates it); the app sends it on every list so the server-side `company > zone > sector` hierarchy filter activates as soon as the other backends implement it.
+Zone narrowing happens **client-side** after the response, not through a `zone_id` query param. See [Zone scoping](#zone-scoping).
 
 Hub preview, View all parties, market-detail parties, and the parent-dealer picker **do not** send `employee_id`. Create still stamps `created_by_employee_id` / `owner_employee_id`.
+
+---
+
+## Zone scoping
+
+### Where zones come from
+
+Two services hold half the answer each, so the app joins them:
+
+1. **HRM `pphl_erp`** — `GET /api/v1/get-my-info` returns `user.zoneId` as a **jsonb array** of ids (e.g. `[1, 2, 3]`). It carries **no names**, no FK and no validation. The app reads it into `AuthUserProfile.zoneIds`.
+2. **Sales** — `GET /api/get-zone` (public, no auth) returns the zone master with each zone's **name** and its **districts**: `{ id, zoneName, zonalInCharge, districts: [{ id, name }], note }`.
+
+`ZoneScopeService` resolves the profile's ids against that master and caches the result for 24 h. The cache is cleared on login and logout so one employee's zones never leak into another's session.
+
+> **Why the app did not simply send `zone_id`.** The HRM array made the old `zone_id` param dead code: `int.tryParse("[1,2,3]")` returned `null`, so no zone filter was ever sent. That is fixed. But `zone_id` is still the wrong mechanism, for two reasons:
+> - **It cannot express a union.** An employee in zones `[1,2,3]` needs all three in one list; `zone_id` takes a single value and would need three round-trips plus a merge.
+> - **It would blank every existing row.** `mkt_markets` / `mkt_parties` / `mkt_visits` have nullable `zone_id` columns with **no backfill**, so a `zone_id=1` query returns only rows explicitly tagged zone 1 — and today that is nothing. The district fallback would have nothing left to rescue.
+>
+> So lists are fetched with their normal filters and narrowed in Dart. `zone_id` is still **written** on create/update so new rows get tagged going forward.
+
+### The predicate
+
+`ZoneScope.matches(zoneId:, zoneName:, district:)` keeps a row when **any** of these hold:
+
+| Test | Why |
+|------|-----|
+| `zoneId` is one of the assigned zone ids | Row is explicitly tagged |
+| `zoneName` matches an assigned zone name (case-insensitive) | **Zone names are the only cross-system join key** — zone ids are assigned independently by HRM, Sales and ZKTeco, so an id from one is not an id in another. The nested `zone.id` in `all-dealer-lists` is deliberately ignored. |
+| `district` matches one of the assigned zones' districts | Rescues rows predating zone tagging, whose `zone_id` is `NULL` |
+
+The district test uses **bidirectional containment** (`"dhaka"` vs `"dhaka division"`) because `mkt_markets.district` is free text, not a foreign key.
+
+Parties carry no district of their own, so they inherit the district of the market they sit in. Visits carry no district either, so visits are matched on zone id and name only — **a visit predating zone tagging drops out of the visit list.**
+
+### What is scoped
+
+| Surface | Behaviour |
+|---------|-----------|
+| Marketing hub previews | Farms, dealers and markets, each the union of every assigned zone. A strip above them names the zones and lists their districts. |
+| Markets / Parties list screens | Full lists, filtered. An empty result names the zones rather than looking like a loading bug. |
+| Visits list | Filtered by zone id and name (no district available). |
+| Market + Party create forms | Zone picker options come from `get-zone`; pre-seeded to the employee's first assigned zone, matched **by name**. |
+| Party form market picker | Offers only markets inside the selected zone (name-matched, using that zone's district list). |
+| Post sale / Post booking / Receive payment | Dealer dropdowns scoped to the employee's zones **by zone name**. Dealers with no zone are kept — the payload cannot say which zone they belong to. |
+
+The market form previously had **no** profile prefill while the party form did; both now prefill by name.
+
+### Graceful degradation
+
+| Condition | Result |
+|-----------|--------|
+| Employee holds no zones (`zoneId: []`) | No chip, no filtering — exactly the pre-2.3.0+92 behaviour. |
+| Zone master unreachable | Scope resolves to `null`, lists render unfiltered, no crash and no empty screen. |
+| Profile holds an id the master does not know | That zone is skipped. If none resolve, unfiltered. |
+| The list is empty after filtering | The empty state names the zones, so a short list reads as scope rather than as a bug. |
+
+### Known limitation
+
+District **spelling drift** between the Sales `districts` table and the free-text `mkt_markets.district` column can miss rows — `Bogura`/`Bogra`, `Barishal`/`Barisal`. Proper district filtering needs a `district_id` on the marketing tables plus a district master synced from Sales. Not addressed here; the ZKTeco side has no `districts` table at all today.
 
 ---
 

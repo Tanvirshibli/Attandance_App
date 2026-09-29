@@ -114,6 +114,16 @@ Handoff for backend teams: **[SALES_AND_PAYMENTS_API_CONTRACT.md](SALES_AND_PAYM
 - ZKTeco `/api/v1/mobile/marketing/*` including `GET /farm-surveys/{id}` and `visits/{id}/check-in|check-out` (no JWT); flag `marketing.enabled`
 - Attachments stay photos only (`photos[]`). See [FARM_DEALER_MOBILE.md](FARM_DEALER_MOBILE.md) for endpoint keys and payloads
 
+### Zone scoping (v2.3.0+92)
+
+- Marketing lists, form pickers and dealer dropdowns are narrowed to the employee's zones. HRM returns `user.zoneId` as a **jsonb array**; the app resolves those ids against Sales `GET /api/get-zone` (public) for names and districts
+- Multi-zone employees see the **union** of every assigned zone — there is no active-zone switcher. The marketing hub names the zones above the previews
+- Rows are matched on zone id, zone **name**, or the districts of an assigned zone, so records created before zone tagging (`zone_id` NULL) are not hidden
+- Zone ids are never compared across systems; only names are
+- Post sale / Post booking / Receive payment dealer lists are scoped by zone name
+- No zones assigned, or the zone master unreachable → lists render unfiltered, as before
+- See [FARM_DEALER_MOBILE.md](FARM_DEALER_MOBILE.md#zone-scoping)
+
 ### Post booking Zone dropdown (v2.2.3+44)
 
 - Chicks **Zone** is a searchable dropdown from `GET /api/all-dealer-lists` `data.zoneList` (`id`, `zoneName`); selected `id` is posted as `cZoneId`

@@ -521,11 +521,44 @@ App config key: `payment.setupData`.
 
 App config key: `sales.allDealers`.
 
-**Success shape:** `data.eggDealList`, `feedDealList`, `fertilizerDealList`, `liveBirdDealList`, `wastageDealList` — each item includes `id`, `tradeName`, `dealerCode`, `zoneName`, etc. Dealer rows may also include nested `zone: { id, zoneName }`; the app does not use that nested object.
+**Success shape:** `data.eggDealList`, `feedDealList`, `fertilizerDealList`, `liveBirdDealList`, `wastageDealList` — each item includes `id`, `tradeName`, `dealerCode`, `zoneName`, etc. Dealer rows may also include nested `zone: { id, zoneName }`.
+
+> **v2.3.0+92:** Dealer dropdowns in Post sale, Post booking and Receive payment are scoped to the employee's zones, matched on the **flat `zoneName` string**. The nested `zone.id` is deliberately ignored — zone ids are assigned independently by HRM, Sales and ZKTeco, so an id from one system is not an id in another. Dealers with no `zoneName` are kept, since the payload cannot say which zone they belong to.
 
 **`data.zoneList` (v2.2.3+44):** array of `{ "id": 11, "zoneName": "Live Bird (Dhaka)" }`. Post Booking → Chicks shows a searchable **Zone** dropdown from this list and POSTs the selected `id` as `cZoneId`. There is no numeric Zone ID fallback. Until the sales server deploys `zoneList`, the dropdown is empty and chicks booking cannot be posted.
 
 **Module → list (app):** Post sale: `egg` → egg; `fertilizer` → fertilizer; `liveBird` / `cullBird` → liveBird. Post booking (feed and chicks): **feed** list (`feedDealList` already includes Feed / Feed And Chicks / Chicks). Receive payment dealers cascade from Payment For the same way (Egg, Feed/Chicks, Fertilizer, Live/Cull Bird, Wastage).
+
+### C.4 Zone list (get-zone)
+
+`GET {SALES_API_BASE_URL}/api/get-zone` — **no auth**.
+
+App config key: `sales.zoneList`. Added **v2.3.0+92**.
+
+**Success shape:**
+```json
+{
+  "message": "Success!",
+  "data": [
+    {
+      "id": 1,
+      "zoneName": "Zone A",
+      "zonalInCharge": "Mr: Sujat Ali (Regional Sales Manager)",
+      "districts": [
+        { "id": 3, "name": "Gazipur" },
+        { "id": 10, "name": "Mymensingh" }
+      ],
+      "note": "ok"
+    }
+  ]
+}
+```
+
+**App mapping:** `SalesZone` / `ZoneDistrict` in `lib/models/zone_models.dart`. Rows with a missing `id` or blank `zoneName` are dropped, as are districts with a missing id or name. `zonalInCharge` and `note` are nullable and parsed as `null`, never the string `"null"`.
+
+**What the app uses it for:** it is the **only** source of zone *names* and *districts*. HRM (`pphl_erp`) knows an employee's zones as a bare jsonb array of ids with no names and no FK, so the app joins the two to build its `ZoneScope`. The market and party zone pickers are populated from this endpoint too (falling back to the demo zone list when it is unreachable).
+
+**Ids are not comparable across systems.** The app uses this endpoint's `id` only to resolve HRM's ids, and passes the *same* id through to ZKTeco on create. Every other comparison is by name.
 
 ---
 
