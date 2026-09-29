@@ -92,6 +92,18 @@ class _PartyDetailScreenState extends State<PartyDetailScreen> {
     _loadRecords();
   }
 
+  Future<void> _openFollowup() async {
+    final party = _party;
+    if (party == null) return;
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => FollowupFormScreen(party: party),
+      ),
+    );
+    if (!mounted) return;
+    _loadRecords();
+  }
+
   @override
   Widget build(BuildContext context) {
     final party = _party;
@@ -158,41 +170,22 @@ class _PartyDetailScreenState extends State<PartyDetailScreen> {
                     Row(
                       children: [
                         Expanded(
-                          child: ElevatedButton.icon(
-                            onPressed: _postVisit,
-                            icon: const Icon(Icons.add, color: Colors.white),
-                            label: Text(
-                              'Post a visit',
-                              style: AppType.body.copyWith(fontWeight: FontWeight.w600, color: Colors.white),
-                            ),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: party.isFarm
-                                  ? AppColors.accent
-                                  : AppColors.primary,
-                              minimumSize: const Size.fromHeight(48),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(14),
-                              ),
-                            ),
+                          child: AppPillButton(
+                            icon: Icons.add_rounded,
+                            label: 'Post a visit',
+                            onTap: _postVisit,
+                            color: party.isFarm
+                                ? AppColors.accent
+                                : AppColors.primary,
                           ),
                         ),
-                        const SizedBox(width: 10),
-                        OutlinedButton(
-                          onPressed: () async {
-                            await Navigator.of(context).push(
-                              MaterialPageRoute(
-                                builder: (_) =>
-                                    FollowupFormScreen(party: party),
-                              ),
-                            );
-                          },
-                          style: OutlinedButton.styleFrom(
-                            minimumSize: const Size(48, 48),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(14),
-                            ),
-                          ),
-                          child: const Icon(Icons.event_note_outlined),
+                        const SizedBox(width: AppSpace.sm),
+                        AppPillButton(
+                          icon: Icons.event_note_outlined,
+                          label: 'New follow-up',
+                          onTap: _openFollowup,
+                          color: AppColors.warning,
+                          filled: false,
                         ),
                       ],
                     ),
