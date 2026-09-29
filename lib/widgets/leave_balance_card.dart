@@ -1,8 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 
-import '../config/theme.dart';
 import '../models/leave_balance.dart';
+import 'ui/ui.dart';
 
 class LeaveBalanceCard extends StatelessWidget {
   const LeaveBalanceCard({
@@ -12,6 +11,8 @@ class LeaveBalanceCard extends StatelessWidget {
 
   final LeaveBalance balance;
 
+  /// Share of the entitlement already consumed — `used / earned`, not the
+  /// remaining balance. Guards zero, negative and over-consumed values.
   double get _usageRatio {
     if (balance.earned <= 0) return 0;
     final ratio = balance.used / balance.earned;
@@ -32,20 +33,12 @@ class LeaveBalanceCard extends StatelessWidget {
     ];
 
     return Container(
-      padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
+      padding: const EdgeInsets.all(AppSpace.md),
       decoration: BoxDecoration(
         color: AppColors.surface,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(
-          color: AppColors.primary.withValues(alpha: 0.08),
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: AppColors.shadow.withValues(alpha: 0.04),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          ),
-        ],
+        borderRadius: BorderRadius.circular(AppRadius.lg),
+        border: Border.all(color: AppColors.line),
+        boxShadow: AppShadows.card,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -53,31 +46,21 @@ class LeaveBalanceCard extends StatelessWidget {
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Container(
-                width: 36,
-                height: 36,
-                decoration: BoxDecoration(
-                  color: AppColors.primary.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: const Icon(
-                  Icons.beach_access_rounded,
-                  color: AppColors.primary,
-                  size: 18,
-                ),
+              AppIconTile(
+                icon: AppIcons.leave,
+                color: AppColors.mLeave,
+                size: AppIconTileSize.small,
+                semanticLabel: balance.leaveTypeName,
               ),
-              const SizedBox(width: 10),
+              const SizedBox(width: AppSpace.sm),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
                   children: [
                     Text(
                       balance.leaveTypeName,
-                      style: GoogleFonts.poppins(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                        color: AppColors.textPrimary,
-                      ),
+                      style: AppType.h3.copyWith(color: AppColors.ink),
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                     ),
@@ -85,65 +68,53 @@ class LeaveBalanceCard extends StatelessWidget {
                       const SizedBox(height: 2),
                       Text(
                         metaParts.join(' · '),
-                        style: GoogleFonts.poppins(
-                          fontSize: 11,
-                          color: AppColors.textSecondary,
-                        ),
+                        style:
+                            AppType.micro.copyWith(color: AppColors.inkFaint),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                       ),
                     ],
                   ],
                 ),
               ),
-              const SizedBox(width: 8),
+              const SizedBox(width: AppSpace.xs),
               Column(
                 crossAxisAlignment: CrossAxisAlignment.end,
+                mainAxisSize: MainAxisSize.min,
                 children: [
                   Text(
                     _fmt(balance.balance),
-                    style: GoogleFonts.poppins(
-                      fontSize: 22,
-                      fontWeight: FontWeight.w700,
-                      color: AppColors.primary,
-                      height: 1.1,
-                    ),
+                    style: AppType.numeric.copyWith(color: AppColors.mLeave),
                   ),
                   Text(
                     'left',
-                    style: GoogleFonts.poppins(
-                      fontSize: 10,
-                      color: AppColors.textSecondary,
-                    ),
+                    style:
+                        AppType.micro.copyWith(color: AppColors.inkFaint),
                   ),
                 ],
               ),
             ],
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: AppSpace.sm),
           ClipRRect(
             borderRadius: BorderRadius.circular(4),
             child: LinearProgressIndicator(
               value: _usageRatio,
               minHeight: 4,
-              backgroundColor: AppColors.primary.withValues(alpha: 0.08),
-              valueColor: const AlwaysStoppedAnimation<Color>(AppColors.primary),
+              backgroundColor: AppColors.mLeave.withValues(alpha: 0.10),
+              valueColor: const AlwaysStoppedAnimation(AppColors.mLeave),
             ),
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: AppSpace.sm),
           Row(
             children: [
-              Expanded(
-                child: _metric(label: 'Earned', value: _fmt(balance.earned)),
-              ),
-              Expanded(
-                child: _metric(label: 'Used', value: _fmt(balance.used)),
-              ),
+              // The third column appears only when adjusted is non-zero, which
+              // also changes how wide these two become. Existing behaviour,
+              // deliberately preserved.
+              Expanded(child: _metric('Earned', _fmt(balance.earned))),
+              Expanded(child: _metric('Used', _fmt(balance.used))),
               if (balance.adjusted != null && balance.adjusted != 0)
-                Expanded(
-                  child: _metric(
-                    label: 'Adjusted',
-                    value: _fmt(balance.adjusted!),
-                  ),
-                ),
+                Expanded(child: _metric('Adjusted', _fmt(balance.adjusted!))),
             ],
           ),
         ],
@@ -151,25 +122,13 @@ class LeaveBalanceCard extends StatelessWidget {
     );
   }
 
-  Widget _metric({required String label, required String value}) {
+  Widget _metric(String label, String value) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
       children: [
-        Text(
-          label,
-          style: GoogleFonts.poppins(
-            fontSize: 10,
-            color: AppColors.textSecondary,
-          ),
-        ),
-        Text(
-          value,
-          style: GoogleFonts.poppins(
-            fontSize: 13,
-            fontWeight: FontWeight.w600,
-            color: AppColors.textPrimary,
-          ),
-        ),
+        Text(label, style: AppType.micro.copyWith(color: AppColors.inkFaint)),
+        Text(value, style: AppType.h3.copyWith(color: AppColors.ink)),
       ],
     );
   }
