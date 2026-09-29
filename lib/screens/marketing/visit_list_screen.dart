@@ -1,15 +1,11 @@
 import 'package:animate_do/animate_do.dart';
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 
-import '../../config/theme.dart';
 import '../../models/marketing_models.dart';
 import '../../services/auth_service.dart';
 import '../../services/marketing_service.dart';
-import '../../widgets/api_empty_state.dart';
 import '../../widgets/filter_chip_row.dart';
-import '../../widgets/gradient_screen_header.dart';
-import '../../widgets/section_card.dart';
+import '../../widgets/ui/ui.dart';
 
 class VisitListScreen extends StatefulWidget {
   const VisitListScreen({super.key, this.partyId});
@@ -86,23 +82,24 @@ class _VisitListScreenState extends State<VisitListScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: AppColors.canvas,
       body: RefreshIndicator(
         onRefresh: _load,
+        color: AppColors.primary,
         child: CustomScrollView(
           physics: const AlwaysScrollableScrollPhysics(
             parent: BouncingScrollPhysics(),
           ),
           slivers: [
             const SliverToBoxAdapter(
-              child: GradientScreenHeader(
+              child: AppHeader(
                 title: 'My visits',
                 subtitle: 'Visit history & outcomes',
               ),
             ),
             SliverToBoxAdapter(
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
+                padding: const EdgeInsets.fromLTRB(AppSpace.gutter, AppSpace.md, AppSpace.gutter, 0),
                 child: FilterChipRow(
                   options: _statusOptions,
                   selected: _statusFilter,
@@ -121,8 +118,8 @@ class _VisitListScreenState extends State<VisitListScreen> {
               SliverFillRemaining(
                 child: Center(
                   child: Padding(
-                    padding: const EdgeInsets.all(20),
-                    child: ApiEmptyState(
+                    padding: const EdgeInsets.all(AppSpace.lg),
+                    child: AppEmptyState(
                       icon: Icons.error_outline,
                       title: 'Could not load visits',
                       subtitle: _error,
@@ -135,8 +132,8 @@ class _VisitListScreenState extends State<VisitListScreen> {
               const SliverFillRemaining(
                 child: Center(
                   child: Padding(
-                    padding: EdgeInsets.all(20),
-                    child: ApiEmptyState(
+                    padding: EdgeInsets.all(AppSpace.lg),
+                    child: AppEmptyState(
                       icon: Icons.route_outlined,
                       title: 'No visits yet',
                       subtitle: 'Log visits from a dealer or farm detail page.',
@@ -146,7 +143,7 @@ class _VisitListScreenState extends State<VisitListScreen> {
               )
             else
               SliverPadding(
-                padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
+                padding: const EdgeInsets.fromLTRB(AppSpace.gutter, AppSpace.md, AppSpace.gutter, AppSpace.xl),
                 sliver: SliverList(
                   delegate: SliverChildBuilderDelegate(
                     (context, index) {
@@ -155,7 +152,7 @@ class _VisitListScreenState extends State<VisitListScreen> {
                         delay: Duration(milliseconds: 30 * index),
                         child: Padding(
                           padding: const EdgeInsets.only(bottom: 10),
-                          child: SectionCard(
+                          child: AppCard(
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
@@ -165,10 +162,7 @@ class _VisitListScreenState extends State<VisitListScreen> {
                                       child: Text(
                                         visit.partyName ??
                                             'Party #${visit.partyId}',
-                                        style: GoogleFonts.poppins(
-                                          fontWeight: FontWeight.w600,
-                                          fontSize: 14,
-                                        ),
+                                        style: AppType.body.copyWith(fontWeight: FontWeight.w600),
                                       ),
                                     ),
                                     Container(
@@ -183,8 +177,7 @@ class _VisitListScreenState extends State<VisitListScreen> {
                                       ),
                                       child: Text(
                                         visit.status ?? '—',
-                                        style: GoogleFonts.poppins(
-                                          fontSize: 10,
+                                        style: AppType.micro.copyWith(
                                           fontWeight: FontWeight.w600,
                                           color: _statusColor(visit.status),
                                         ),
@@ -200,20 +193,14 @@ class _VisitListScreenState extends State<VisitListScreen> {
                                     if (visit.purpose != null) visit.purpose!,
                                     if (visit.outcome != null) visit.outcome!,
                                   ].join(' · '),
-                                  style: GoogleFonts.poppins(
-                                    fontSize: 12,
-                                    color: AppColors.textSecondary,
-                                  ),
+                                  style: AppType.meta.copyWith(color: AppColors.inkMuted),
                                 ),
                                 if (visit.checkInLat != null &&
                                     visit.checkInLng != null) ...[
                                   const SizedBox(height: 4),
                                   Text(
                                     'GPS ${visit.checkInLat!.toStringAsFixed(4)}, ${visit.checkInLng!.toStringAsFixed(4)}',
-                                    style: GoogleFonts.poppins(
-                                      fontSize: 11,
-                                      color: AppColors.textHint,
-                                    ),
+                                    style: AppType.micro.copyWith(color: AppColors.inkFaint),
                                   ),
                                 ],
                               ],

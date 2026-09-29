@@ -1,13 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 
-import '../../config/theme.dart';
 import '../../models/marketing_models.dart';
 import '../../services/marketing_service.dart';
-import '../../widgets/api_empty_state.dart';
-import '../../widgets/gradient_screen_header.dart';
 import '../../widgets/marketing_photo_widgets.dart';
-import '../../widgets/section_card.dart';
+import '../../widgets/ui/ui.dart';
 import 'visit_form_shared.dart';
 
 class VisitDetailScreen extends StatefulWidget {
@@ -76,16 +72,17 @@ class _VisitDetailScreenState extends State<VisitDetailScreen> {
   Widget build(BuildContext context) {
     final visit = _visit;
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: AppColors.canvas,
       body: RefreshIndicator(
         onRefresh: _load,
+        color: AppColors.primary,
         child: CustomScrollView(
           physics: const AlwaysScrollableScrollPhysics(
             parent: BouncingScrollPhysics(),
           ),
           slivers: [
             SliverToBoxAdapter(
-              child: GradientScreenHeader(
+              child: AppHeader(
                 title: 'Visit details',
                 subtitle: visit?.displayName ?? 'Loading…',
               ),
@@ -98,8 +95,8 @@ class _VisitDetailScreenState extends State<VisitDetailScreen> {
               SliverFillRemaining(
                 child: Center(
                   child: Padding(
-                    padding: const EdgeInsets.all(20),
-                    child: ApiEmptyState(
+                    padding: const EdgeInsets.all(AppSpace.lg),
+                    child: AppEmptyState(
                       icon: Icons.error_outline,
                       title: 'Could not load',
                       subtitle: _error,
@@ -110,9 +107,9 @@ class _VisitDetailScreenState extends State<VisitDetailScreen> {
               )
             else if (visit != null)
               SliverPadding(
-                padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
+                padding: const EdgeInsets.fromLTRB(AppSpace.gutter, AppSpace.md, AppSpace.gutter, AppSpace.xl),
                 sliver: SliverToBoxAdapter(
-                  child: SectionCard(
+                  child: AppCard(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -139,11 +136,7 @@ class _VisitDetailScreenState extends State<VisitDetailScreen> {
                           const SizedBox(height: 8),
                           Text(
                             'Product observations',
-                            style: GoogleFonts.poppins(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w500,
-                              color: AppColors.textSecondary,
-                            ),
+                            style: AppType.meta.copyWith(fontWeight: FontWeight.w500, color: AppColors.inkMuted),
                           ),
                           const SizedBox(height: 6),
                           ...visit.products.map(
@@ -163,7 +156,7 @@ class _VisitDetailScreenState extends State<VisitDetailScreen> {
                                   if (p.orderQty != null)
                                     'order ${p.orderQty}',
                                 ].join(' · '),
-                                style: GoogleFonts.poppins(fontSize: 13),
+                                style: AppType.bodySm,
                               ),
                             ),
                           ),
@@ -195,19 +188,13 @@ class _VisitDetailScreenState extends State<VisitDetailScreen> {
             width: 140,
             child: Text(
               label,
-              style: GoogleFonts.poppins(
-                fontSize: 12,
-                color: AppColors.textSecondary,
-              ),
+              style: AppType.meta.copyWith(color: AppColors.inkMuted),
             ),
           ),
           Expanded(
             child: Text(
               value,
-              style: GoogleFonts.poppins(
-                fontSize: 13,
-                fontWeight: FontWeight.w500,
-              ),
+              style: AppType.bodySm.copyWith(fontWeight: FontWeight.w500),
             ),
           ),
         ],

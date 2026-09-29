@@ -2,20 +2,17 @@ import 'dart:io';
 
 import 'package:animate_do/animate_do.dart';
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 
-import '../../config/theme.dart';
 import '../../data/marketing_demo_masters.dart';
 import '../../models/marketing_models.dart';
 import '../../services/auth_service.dart';
 import '../../services/marketing_service.dart';
 import '../../widgets/api_empty_state.dart';
 import '../../widgets/filter_chip_row.dart';
-import '../../widgets/gradient_screen_header.dart';
 import '../../widgets/searchable_select_field.dart';
-import '../../widgets/section_card.dart';
+import '../../widgets/ui/ui.dart';
 import '../../widgets/voice_input_field.dart';
 
 /// Create follow-up for a party, or list-mode hub for open follow-ups.
@@ -147,7 +144,7 @@ class _FollowupFormScreenState extends State<FollowupFormScreen> {
       builder: (ctx) => AlertDialog(
         title: Text(
           'Mark completed',
-          style: GoogleFonts.poppins(fontWeight: FontWeight.w600),
+          style: AppType.body.copyWith(fontWeight: FontWeight.w600),
         ),
         content: VoiceTextField(
           controller: noteCtrl,
@@ -256,7 +253,7 @@ class _FollowupFormScreenState extends State<FollowupFormScreen> {
     return InputDecoration(
       hintText: hint,
       filled: true,
-      fillColor: AppColors.background,
+      fillColor: AppColors.surfaceSunk,
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
         borderSide: BorderSide.none,
@@ -269,11 +266,7 @@ class _FollowupFormScreenState extends State<FollowupFormScreen> {
       padding: const EdgeInsets.only(bottom: 8),
       child: Text(
         text,
-        style: GoogleFonts.poppins(
-          fontSize: 12,
-          fontWeight: FontWeight.w500,
-          color: AppColors.textSecondary,
-        ),
+        style: AppType.meta.copyWith(fontWeight: FontWeight.w500, color: AppColors.inkMuted),
       ),
     );
   }
@@ -308,7 +301,7 @@ class _FollowupFormScreenState extends State<FollowupFormScreen> {
   Widget build(BuildContext context) {
     if (_listMode && widget.party == null) {
       return Scaffold(
-        backgroundColor: AppColors.background,
+        backgroundColor: AppColors.canvas,
         body: RefreshIndicator(
           onRefresh: _loadList,
           child: CustomScrollView(
@@ -317,7 +310,7 @@ class _FollowupFormScreenState extends State<FollowupFormScreen> {
             ),
             slivers: [
               const SliverToBoxAdapter(
-                child: GradientScreenHeader(
+                child: AppHeader(
                   title: 'Follow-ups',
                   subtitle: 'Open actions & reminders',
                 ),
@@ -369,7 +362,7 @@ class _FollowupFormScreenState extends State<FollowupFormScreen> {
                 )
               else
                 SliverPadding(
-                  padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
+                  padding: const EdgeInsets.fromLTRB(AppSpace.gutter, AppSpace.md, AppSpace.gutter, AppSpace.xl),
                   sliver: SliverList(
                     delegate: SliverChildBuilderDelegate(
                       (context, index) {
@@ -382,7 +375,7 @@ class _FollowupFormScreenState extends State<FollowupFormScreen> {
                           delay: Duration(milliseconds: 30 * index),
                           child: Padding(
                             padding: const EdgeInsets.only(bottom: 10),
-                            child: SectionCard(
+                            child: AppCard(
                               child: InkWell(
                                 onTap: canComplete
                                     ? () => _markCompleted(item)
@@ -396,10 +389,7 @@ class _FollowupFormScreenState extends State<FollowupFormScreen> {
                                         Expanded(
                                           child: Text(
                                             item.displayTitle,
-                                            style: GoogleFonts.poppins(
-                                              fontWeight: FontWeight.w600,
-                                              fontSize: 14,
-                                            ),
+                                            style: AppType.body.copyWith(fontWeight: FontWeight.w600),
                                           ),
                                         ),
                                         Container(
@@ -415,11 +405,11 @@ class _FollowupFormScreenState extends State<FollowupFormScreen> {
                                           ),
                                           child: Text(
                                             item.status ?? 'open',
-                                            style: GoogleFonts.poppins(
-                                              fontSize: 10,
+                                            style: AppType.micro.copyWith(
                                               fontWeight: FontWeight.w600,
-                                              color:
-                                                  _statusColor(item.status),
+                                              color: _statusColor(
+                                                item.status,
+                                              ),
                                             ),
                                           ),
                                         ),
@@ -437,8 +427,7 @@ class _FollowupFormScreenState extends State<FollowupFormScreen> {
                                           ),
                                           child: Text(
                                             item.priority ?? 'medium',
-                                            style: GoogleFonts.poppins(
-                                              fontSize: 10,
+                                            style: AppType.micro.copyWith(
                                               fontWeight: FontWeight.w600,
                                               color: _priorityColor(
                                                 item.priority,
@@ -458,10 +447,7 @@ class _FollowupFormScreenState extends State<FollowupFormScreen> {
                                         if (item.actionType != null)
                                           item.actionType!,
                                       ].where((e) => e.isNotEmpty).join(' · '),
-                                      style: GoogleFonts.poppins(
-                                        fontSize: 12,
-                                        color: AppColors.textSecondary,
-                                      ),
+                                      style: AppType.meta.copyWith(color: AppColors.inkMuted),
                                     ),
                                     if (item.description != null ||
                                         item.notes != null) ...[
@@ -469,18 +455,14 @@ class _FollowupFormScreenState extends State<FollowupFormScreen> {
                                       Text(
                                         item.description ?? item.notes!,
                                         style:
-                                            GoogleFonts.poppins(fontSize: 12),
+                                            AppType.meta,
                                       ),
                                     ],
                                     if (canComplete) ...[
                                       const SizedBox(height: 8),
                                       Text(
                                         'Tap to mark completed',
-                                        style: GoogleFonts.poppins(
-                                          fontSize: 11,
-                                          color: AppColors.primary,
-                                          fontWeight: FontWeight.w500,
-                                        ),
+                                        style: AppType.micro.copyWith(fontWeight: FontWeight.w500, color: AppColors.primary),
                                       ),
                                     ],
                                   ],
@@ -501,17 +483,17 @@ class _FollowupFormScreenState extends State<FollowupFormScreen> {
     }
 
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: AppColors.canvas,
       body: Column(
         children: [
-          GradientScreenHeader(
+          AppHeader(
             title: 'New Follow-up',
             subtitle: widget.party?.displayName ?? 'Follow-up',
           ),
           Expanded(
             child: SingleChildScrollView(
-              padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
-              child: SectionCard(
+              padding: const EdgeInsets.fromLTRB(AppSpace.gutter, AppSpace.md, AppSpace.gutter, AppSpace.xl),
+              child: AppCard(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
@@ -584,7 +566,7 @@ class _FollowupFormScreenState extends State<FollowupFormScreen> {
                           vertical: 14,
                         ),
                         decoration: BoxDecoration(
-                          color: AppColors.background,
+                          color: AppColors.surfaceSunk,
                           borderRadius: BorderRadius.circular(12),
                         ),
                         child: Row(
@@ -595,7 +577,7 @@ class _FollowupFormScreenState extends State<FollowupFormScreen> {
                                     ? 'Select date'
                                     : DateFormat('dd MMM yyyy')
                                         .format(_dueDate!),
-                                style: GoogleFonts.poppins(fontSize: 13),
+                                style: AppType.bodySm,
                               ),
                             ),
                             const Icon(Icons.calendar_today_outlined, size: 18),
@@ -676,10 +658,7 @@ class _FollowupFormScreenState extends State<FollowupFormScreen> {
                               )
                             : Text(
                                 'Save follow-up',
-                                style: GoogleFonts.poppins(
-                                  fontWeight: FontWeight.w600,
-                                  color: Colors.white,
-                                ),
+                                style: AppType.body.copyWith(fontWeight: FontWeight.w600, color: Colors.white),
                               ),
                       ),
                     ),

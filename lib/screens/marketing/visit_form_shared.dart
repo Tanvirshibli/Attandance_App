@@ -1,22 +1,19 @@
-﻿import 'dart:io';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 
-import '../../config/theme.dart';
 import '../../data/marketing_demo_masters.dart';
 import '../../models/marketing_models.dart';
 import '../../services/auth_service.dart';
 import '../../services/marketing_service.dart';
 import '../../services/sales_service.dart';
 import '../../utils/marketing_location_helper.dart';
-import '../../widgets/gradient_screen_header.dart';
 import '../../widgets/marketing_photo_widgets.dart';
 import '../../widgets/searchable_select_field.dart';
 import '../../widgets/searchable_text_field.dart';
-import '../../widgets/section_card.dart';
+import '../../widgets/ui/ui.dart';
 import '../../widgets/voice_input_field.dart';
 import 'visit_detail_screen.dart';
 
@@ -150,7 +147,7 @@ class VisitObsRow {
   }
 }
 
-/// Dealer visit form — market/company/sector/zone autofill from the party,
+/// Dealer visit form � market/company/sector/zone autofill from the party,
 /// required photo, and split feed/chicks findings.
 class SharedVisitFormScreen extends StatefulWidget {
   const SharedVisitFormScreen.dealer({super.key, required this.party});
@@ -296,7 +293,7 @@ class _SharedVisitFormScreenState extends State<SharedVisitFormScreen> {
   Future<void> _autoFillLocation() async {
     setState(() {
       _resolvingLocation = true;
-      _locationStatus = 'Detecting check-in locationâ€¦';
+      _locationStatus = 'Detecting check-in location…';
     });
     try {
       final snap = await MarketingLocationHelper.capture();
@@ -305,7 +302,7 @@ class _SharedVisitFormScreenState extends State<SharedVisitFormScreen> {
         setState(() {
           _resolvingLocation = false;
           _locationStatus =
-              'Location unavailable â€” will retry on start visit.';
+              'Location unavailable — will retry on start visit.';
         });
         return;
       }
@@ -321,7 +318,7 @@ class _SharedVisitFormScreenState extends State<SharedVisitFormScreen> {
       if (!mounted) return;
       setState(() {
         _resolvingLocation = false;
-        _locationStatus = 'Location failed â€” will retry on start visit.';
+        _locationStatus = 'Location failed — will retry on start visit.';
       });
       _snack('Could not get location: $e');
     }
@@ -490,7 +487,7 @@ class _SharedVisitFormScreenState extends State<SharedVisitFormScreen> {
       _savedVisit = visit;
     });
     if (uploadError != null) {
-      _snack('Visit started, but photos failed to upload — '
+      _snack('Visit started, but photos failed to upload � '
           'retry from the visit detail. ($uploadError)');
     } else {
       _snack('Visit started (in progress).');
@@ -568,8 +565,8 @@ class _SharedVisitFormScreenState extends State<SharedVisitFormScreen> {
       hintText: hint,
       filled: true,
       fillColor: readOnly
-          ? AppColors.background.withValues(alpha: 0.65)
-          : AppColors.background,
+          ? AppColors.surfaceSunk.withValues(alpha: 0.65)
+          : AppColors.surfaceSunk,
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
         borderSide: BorderSide.none,
@@ -582,11 +579,7 @@ class _SharedVisitFormScreenState extends State<SharedVisitFormScreen> {
       padding: const EdgeInsets.only(bottom: 8),
       child: Text(
         text,
-        style: GoogleFonts.poppins(
-          fontSize: 12,
-          fontWeight: FontWeight.w500,
-          color: AppColors.textSecondary,
-        ),
+        style: AppType.meta.copyWith(fontWeight: FontWeight.w500, color: AppColors.inkMuted),
       ),
     );
   }
@@ -599,8 +592,8 @@ class _SharedVisitFormScreenState extends State<SharedVisitFormScreen> {
         children: [
           _label(label),
           Text(
-            (value == null || value.trim().isEmpty) ? 'â€”' : value,
-            style: GoogleFonts.poppins(fontSize: 14),
+            (value == null || value.trim().isEmpty) ? '—' : value,
+            style: AppType.body,
           ),
         ],
       ),
@@ -612,11 +605,7 @@ class _SharedVisitFormScreenState extends State<SharedVisitFormScreen> {
       padding: const EdgeInsets.only(bottom: 12),
       child: Text(
         text,
-        style: GoogleFonts.poppins(
-          fontSize: 14,
-          fontWeight: FontWeight.w600,
-          color: AppColors.textPrimary,
-        ),
+        style: AppType.body.copyWith(fontWeight: FontWeight.w600, color: AppColors.ink),
       ),
     );
   }
@@ -624,20 +613,20 @@ class _SharedVisitFormScreenState extends State<SharedVisitFormScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: AppColors.canvas,
       body: marketingFormDismissible(
         child: Column(
           children: [
-            GradientScreenHeader(
+            AppHeader(
               title: _headerTitle,
               subtitle: _headerSubtitle,
             ),
             Expanded(
               child: SingleChildScrollView(
-                padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
+                padding: const EdgeInsets.fromLTRB(AppSpace.gutter, AppSpace.md, AppSpace.gutter, AppSpace.xl),
                 child: Column(
                   children: [
-                    SectionCard(
+                    AppCard(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
@@ -653,11 +642,10 @@ class _SharedVisitFormScreenState extends State<SharedVisitFormScreen> {
                             const SizedBox(height: 8),
                             Text(
                               _locationStatus!,
-                              style: GoogleFonts.poppins(
-                                fontSize: 12,
+                              style: AppType.meta.copyWith(
                                 color: _resolvingLocation
-                                    ? AppColors.textHint
-                                    : AppColors.textSecondary,
+                                    ? AppColors.inkFaint
+                                    : AppColors.inkMuted,
                               ),
                             ),
                             if (_resolvingLocation) ...[
@@ -669,7 +657,7 @@ class _SharedVisitFormScreenState extends State<SharedVisitFormScreen> {
                       ),
                     ),
                     const SizedBox(height: 12),
-                    SectionCard(
+                    AppCard(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
@@ -736,7 +724,7 @@ class _SharedVisitFormScreenState extends State<SharedVisitFormScreen> {
                       ),
                     ),
                     const SizedBox(height: 12),
-                    SectionCard(
+                    AppCard(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
@@ -778,7 +766,7 @@ class _SharedVisitFormScreenState extends State<SharedVisitFormScreen> {
                       ),
                     ),
                     const SizedBox(height: 12),
-                    SectionCard(
+                    AppCard(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
@@ -804,7 +792,7 @@ class _SharedVisitFormScreenState extends State<SharedVisitFormScreen> {
                             controller: _feedFindings,
                             maxLines: 2,
                             decoration: _decoration(
-                              hint: 'Feed stock, brands, movement…',
+                              hint: 'Feed stock, brands, movement�',
                             ),
                           ),
                           const SizedBox(height: 14),
@@ -813,7 +801,7 @@ class _SharedVisitFormScreenState extends State<SharedVisitFormScreen> {
                             controller: _chicksFindings,
                             maxLines: 2,
                             decoration: _decoration(
-                              hint: 'Chicks demand, hatchery sources…',
+                              hint: 'Chicks demand, hatchery sources�',
                             ),
                           ),
                           const SizedBox(height: 14),
@@ -840,7 +828,7 @@ class _SharedVisitFormScreenState extends State<SharedVisitFormScreen> {
                                 vertical: 14,
                               ),
                               decoration: BoxDecoration(
-                                color: AppColors.background,
+                                color: AppColors.surfaceSunk,
                                 borderRadius: BorderRadius.circular(12),
                               ),
                               child: Row(
@@ -851,7 +839,7 @@ class _SharedVisitFormScreenState extends State<SharedVisitFormScreen> {
                                           ? 'Select date'
                                           : DateFormat('dd MMM yyyy')
                                               .format(_nextVisitDate!),
-                                      style: GoogleFonts.poppins(fontSize: 13),
+                                      style: AppType.bodySm,
                                     ),
                                   ),
                                   const Icon(
@@ -874,7 +862,7 @@ class _SharedVisitFormScreenState extends State<SharedVisitFormScreen> {
                             contentPadding: EdgeInsets.zero,
                             title: Text(
                               'GPS verified',
-                              style: GoogleFonts.poppins(fontSize: 13),
+                              style: AppType.bodySm,
                             ),
                             value: _geoVerified,
                             onChanged: _locked
@@ -885,7 +873,7 @@ class _SharedVisitFormScreenState extends State<SharedVisitFormScreen> {
                       ),
                     ),
                     const SizedBox(height: 12),
-                    SectionCard(
+                    AppCard(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
@@ -915,10 +903,7 @@ class _SharedVisitFormScreenState extends State<SharedVisitFormScreen> {
                                 )
                                 ? 'Products: demo catalog (Sales list empty)'
                                 : 'Products: Sales form-data',
-                            style: GoogleFonts.poppins(
-                              fontSize: 11,
-                              color: AppColors.textHint,
-                            ),
+                            style: AppType.micro.copyWith(color: AppColors.inkFaint),
                           ),
                           const SizedBox(height: 8),
                           ...List.generate(_products.length, (i) {
@@ -932,7 +917,7 @@ class _SharedVisitFormScreenState extends State<SharedVisitFormScreen> {
                               child: Container(
                                 padding: const EdgeInsets.all(12),
                                 decoration: BoxDecoration(
-                                  color: AppColors.background,
+                                  color: AppColors.surfaceSunk,
                                   borderRadius: BorderRadius.circular(12),
                                 ),
                                 child: Column(
@@ -1093,7 +1078,7 @@ class _SharedVisitFormScreenState extends State<SharedVisitFormScreen> {
                       ),
                     ),
                     const SizedBox(height: 12),
-                    SectionCard(
+                    AppCard(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
@@ -1103,10 +1088,7 @@ class _SharedVisitFormScreenState extends State<SharedVisitFormScreen> {
                               padding: const EdgeInsets.only(bottom: 8),
                               child: Text(
                                 'At least one photo is required to start the visit.',
-                                style: GoogleFonts.poppins(
-                                  fontSize: 11,
-                                  color: AppColors.textHint,
-                                ),
+                                style: AppType.micro.copyWith(color: AppColors.inkFaint),
                               ),
                             ),
                           if (!_locked)
@@ -1119,7 +1101,7 @@ class _SharedVisitFormScreenState extends State<SharedVisitFormScreen> {
                           else if (_photos.isNotEmpty)
                             Text(
                               '${_photos.length} photo(s) uploaded',
-                              style: GoogleFonts.poppins(fontSize: 13),
+                              style: AppType.bodySm,
                             ),
                           const SizedBox(height: 24),
                           if (!_locked)
@@ -1144,10 +1126,7 @@ class _SharedVisitFormScreenState extends State<SharedVisitFormScreen> {
                                       )
                                     : Text(
                                         'Start visit',
-                                        style: GoogleFonts.poppins(
-                                          fontWeight: FontWeight.w600,
-                                          color: Colors.white,
-                                        ),
+                                        style: AppType.body.copyWith(fontWeight: FontWeight.w600, color: Colors.white),
                                       ),
                               ),
                             )
@@ -1174,10 +1153,7 @@ class _SharedVisitFormScreenState extends State<SharedVisitFormScreen> {
                                       )
                                     : Text(
                                         'Complete / check-out',
-                                        style: GoogleFonts.poppins(
-                                          fontWeight: FontWeight.w600,
-                                          color: Colors.white,
-                                        ),
+                                        style: AppType.body.copyWith(fontWeight: FontWeight.w600, color: Colors.white),
                                       ),
                               ),
                             ),
