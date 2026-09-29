@@ -4,11 +4,11 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../../data/marketing_demo_masters.dart';
-import '../../models/dealer_list_models.dart';
 import '../../models/marketing_models.dart';
 import '../../services/auth_service.dart';
 import '../../services/marketing_service.dart';
 import '../../services/sales_service.dart';
+import '../../services/zone_scope_service.dart';
 import '../../utils/marketing_location_helper.dart';
 import '../../widgets/searchable_select_field.dart';
 import '../../widgets/ui/ui.dart';
@@ -74,6 +74,10 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
   String _paymentMode = 'cash';
   String _leadStatus = 'new';
   List<Market> _markets = const [];
+
+  /// District names per zone, keyed by lowercase zone name, so the market
+  /// picker can be narrowed to the selected zone by name.
+  Map<String, Set<String>> _zoneDistricts = const {};
   List<Party> _dealers = const [];
   List<BookingFormCompany> _companies = MarketingDemoMasters.companies;
   List<BookingFormSector> _sectors = MarketingDemoMasters.sectors;
@@ -159,60 +163,77 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
   }
 
   Future<void> _loadMarkets() async {
-    final profile = await _authService.getCurrentUserProfile();
-    final result = await _service.listMarkets(zoneId: profile?.zoneId);
+    final scope = await ZoneScopeService.instance.load();
+    _zoneDistricts = await ZoneScopeService.instance.loadZoneDistricts();
+    final result = await _service.listMarkets();
     if (!mounted) return;
     setState(() {
-      _markets = result.data ?? const [];
+      final markets = result.data ?? const [];
+      // Only offer markets inside the employee's zones. An untagged market
+      // still qualifies through its district.
+      _markets = scope == null || scope.isEmpty
+          ? markets
+          : markets
+              .where((m) => scope.matches(
+                    zoneId: m.zoneId,
+                    zoneName: m.zoneName,
+                    district: m.district,
+                  ))
+              .toList();
       _loadingMarkets = false;
     });
   }
 
+  /// Whether a market belongs to the zone currently picked in the form. Falls
+  /// back to the market's own zone name when the zone master is unavailable, so
+  /// the picker is never left empty for lack of a lookup table.
+  bool _marketInSelectedZone(Market market) {
+    final zone = _selectedZone;
+    if (zone == null) return true;
+    final zoneName = zone.name.toLowerCase();
+    if ((market.zoneName ?? '').toLowerCase() == zoneName) return true;
+
+    final districts = _zoneDistricts[zoneName];
+    if (districts == null || districts.isEmpty) return true;
+
+    final place = market.district?.trim().toLowerCase() ?? '';
+    if (place.isEmpty) return false;
+    for (final known in districts) {
+      if (place.contains(known) || known.contains(place)) return true;
+    }
+    return false;
+  }
+
   Future<void> _loadFormMasters() async {
-    List<DealerZone> salesZones = const [];
-    try {
-      final dealers = await _salesService.fetchAllDealerLists();
-      if (dealers.success && dealers.data != null) {
-        salesZones = dealers.data!.zones;
-      }
-    } catch (_) {}
     final result = await _salesService.fetchBookingFormData();
+    // Zone options come from the Sales zone master, which also carries the
+    // districts the employee's scope is built from. The demo zones remain as
+    // a fallback when that master is unreachable.
+    final zones = await ZoneScopeService.instance.loadZoneOptions();
     if (!mounted) return;
     setState(() {
       _loadingMasters = false;
       if (result.success && result.data != null) {
         _companies = MarketingDemoMasters.companiesOr(result.data!.companies);
         _sectors = MarketingDemoMasters.sectorsOr(result.data!.sectors);
-        _zones = MarketingDemoMasters.zonesFrom(
-          salesZones: salesZones,
-          formZones: result.data!.chicksZones,
-        );
-      } else {
-        _zones = MarketingDemoMasters.zonesFrom(salesZones: salesZones);
       }
-      // Default to the logged-in employee's own zone when the profile has one.
-      _prefillZoneFromProfile();
+      _zones = zones;
     });
+    // Default to the logged-in employee's own zone when the profile has one.
+    _prefillZoneFromProfile();
   }
 
   Future<void> _prefillZoneFromProfile() async {
-    final profile = await _authService.getCurrentUserProfile();
-    if (!mounted || _selectedZone != null) return;
-    final zoneId = profile?.zoneId;
-    final zoneName = profile?.zoneName;
-    MarketingDemoNamed? match;
-    if (zoneId != null) {
-      match = MarketingDemoMasters.byId(_zones, zoneId, (z) => z.id);
-    }
-    if (match == null && zoneName != null && zoneName.isNotEmpty) {
-      for (final z in _zones) {
-        if (z.name.toLowerCase() == zoneName.toLowerCase()) {
-          match = z;
-          break;
-        }
+    if (_selectedZone != null) return;
+    final scope = await ZoneScopeService.instance.load();
+    if (!mounted || scope == null || scope.isEmpty) return;
+    // Names only — an id from one source is not an id in another.
+    for (final z in _zones) {
+      if (scope.zoneNames.contains(z.name.toLowerCase())) {
+        setState(() => _selectedZone = z);
+        return;
       }
     }
-    if (match != null) setState(() => _selectedZone = match);
   }
 
   Future<void> _loadDealers() async {
@@ -756,16 +777,14 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
                           SearchableSelectField<Market>(
                             label: 'Market',
                             icon: Icons.store_mall_directory_outlined,
-                            // Zone-scoped markets first — markets without zone
-                            // data stay visible for backward compatibility.
+                            // Markets inside the chosen zone first. Matched by
+                            // name, never by id: a market may have been tagged
+                            // from a different source than the zone picker, so
+                            // the zone's own district list decides membership.
                             options: _selectedZone == null
                                 ? _markets
                                 : _markets
-                                    .where(
-                                      (m) =>
-                                          m.zoneId == null ||
-                                          m.zoneId == _selectedZone!.id,
-                                    )
+                                    .where((m) => _marketInSelectedZone(m))
                                     .toList(),
                             selected: _selectedMarket,
                             displayString: (m) => m.displayName,

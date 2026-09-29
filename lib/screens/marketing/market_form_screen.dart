@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 
 import '../../data/marketing_demo_masters.dart';
-import '../../models/dealer_list_models.dart';
 import '../../models/marketing_models.dart';
 import '../../services/auth_service.dart';
 import '../../services/marketing_service.dart';
 import '../../services/sales_service.dart';
+import '../../services/zone_scope_service.dart';
 import '../../utils/marketing_location_helper.dart';
 import '../../widgets/searchable_select_field.dart';
 import '../../widgets/ui/ui.dart';
@@ -171,44 +171,50 @@ class _MarketFormScreenState extends State<MarketFormScreen> {
   }
 
   Future<void> _loadMasters() async {
-    List<DealerZone> salesZones = const [];
-    try {
-      final dealers = await _salesService.fetchAllDealerLists();
-      if (dealers.success && dealers.data != null) {
-        salesZones = dealers.data!.zones;
-      }
-    } catch (_) {}
     final result = await _salesService.fetchBookingFormData();
+    // Zone options come from the Sales zone master, which also carries the
+    // districts the employee's scope is built from. The demo zones remain as
+    // a fallback when that master is unreachable.
+    final zones = await ZoneScopeService.instance.loadZoneOptions();
     if (!mounted) return;
     setState(() {
       _loadingMasters = false;
       if (result.success && result.data != null) {
         _companies = MarketingDemoMasters.companiesOr(result.data!.companies);
         _sectors = MarketingDemoMasters.sectorsOr(result.data!.sectors);
-        _zones = MarketingDemoMasters.zonesFrom(
-          salesZones: salesZones,
-          formZones: result.data!.chicksZones,
-        );
-      } else {
-        _zones = MarketingDemoMasters.zonesFrom(salesZones: salesZones);
       }
+      _zones = zones;
       _bindZoneSelection();
       _bindCompanySectorSelection();
     });
+    _prefillZoneFromProfile();
   }
 
   void _bindZoneSelection() {
     final m = widget.market;
     if (m == null || _zone != null) return;
-    if (m.zoneId != null) {
-      _zone = MarketingDemoMasters.byId(_zones, m.zoneId, (z) => z.id);
+    // Names only: a market may have been tagged with a zone id from a
+    // different source, and ids are never compared across systems.
+    final name = m.zoneName?.trim() ?? '';
+    if (name.isEmpty) return;
+    for (final z in _zones) {
+      if (z.name.toLowerCase() == name.toLowerCase()) {
+        _zone = z;
+        return;
+      }
     }
-    if (_zone == null && (m.zoneName ?? '').isNotEmpty) {
-      for (final z in _zones) {
-        if (z.name.toLowerCase() == m.zoneName!.toLowerCase()) {
-          _zone = z;
-          break;
-        }
+  }
+
+  /// Seeds the zone picker with the employee's first assigned zone, matching by
+  /// name. Skipped while editing so a saved market keeps its own zone.
+  Future<void> _prefillZoneFromProfile() async {
+    if (widget.market != null || _zone != null) return;
+    final scope = await ZoneScopeService.instance.load();
+    if (!mounted || scope == null || scope.isEmpty) return;
+    for (final z in _zones) {
+      if (scope.zoneNames.contains(z.name.toLowerCase())) {
+        setState(() => _zone = z);
+        return;
       }
     }
   }

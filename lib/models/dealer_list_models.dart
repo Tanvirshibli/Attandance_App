@@ -81,6 +81,32 @@ class AllDealerLists {
     }
   }
 
+  /// Narrows every dealer bucket to the employee's zones, matching on the zone
+  /// **name** carried by each dealer. The nested `zone.id` in the payload is
+  /// deliberately ignored — zone ids are assigned independently by each system,
+  /// so only the name is a reliable join key.
+  ///
+  /// A dealer with no zone is kept, since the payload cannot say which zone it
+  /// belongs to. An empty [zoneNames] returns the lists untouched.
+  AllDealerLists scopedTo(Set<String> zoneNames) {
+    if (zoneNames.isEmpty) return this;
+    List<DealerListItem> narrow(List<DealerListItem> dealers) {
+      return dealers.where((d) {
+        final zone = d.zoneName?.trim().toLowerCase() ?? '';
+        return zone.isEmpty || zoneNames.contains(zone);
+      }).toList();
+    }
+
+    return AllDealerLists(
+      egg: narrow(egg),
+      feed: narrow(feed),
+      fertilizer: narrow(fertilizer),
+      liveBird: narrow(liveBird),
+      wastage: narrow(wastage),
+      zones: zones,
+    );
+  }
+
   static List<DealerListItem> _parse(Object? value) {
     if (value is! List) return const [];
     return value
