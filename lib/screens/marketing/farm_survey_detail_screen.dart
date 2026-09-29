@@ -1,13 +1,10 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 
-import '../../config/theme.dart';
 import '../../models/marketing_models.dart';
 import '../../services/marketing_service.dart';
 import '../../widgets/api_empty_state.dart';
-import '../../widgets/gradient_screen_header.dart';
 import '../../widgets/marketing_photo_widgets.dart';
-import '../../widgets/section_card.dart';
+import '../../widgets/ui/ui.dart';
 
 class FarmSurveyDetailScreen extends StatefulWidget {
   const FarmSurveyDetailScreen({
@@ -75,7 +72,7 @@ class _FarmSurveyDetailScreenState extends State<FarmSurveyDetailScreen> {
   Widget build(BuildContext context) {
     final survey = _survey;
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: AppColors.canvas,
       body: RefreshIndicator(
         onRefresh: _load,
         child: CustomScrollView(
@@ -84,7 +81,7 @@ class _FarmSurveyDetailScreenState extends State<FarmSurveyDetailScreen> {
           ),
           slivers: [
             SliverToBoxAdapter(
-              child: GradientScreenHeader(
+              child: AppHeader(
                 title: 'Farm visit report',
                 subtitle: survey?.displayTitle ?? 'Loading…',
               ),
@@ -109,9 +106,9 @@ class _FarmSurveyDetailScreenState extends State<FarmSurveyDetailScreen> {
               )
             else if (survey != null)
               SliverPadding(
-                padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
+                padding: const EdgeInsets.fromLTRB(AppSpace.gutter, AppSpace.md, AppSpace.gutter, AppSpace.xl),
                 sliver: SliverToBoxAdapter(
-                  child: SectionCard(
+                  child: AppCard(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -208,19 +205,13 @@ class _FarmSurveyDetailScreenState extends State<FarmSurveyDetailScreen> {
             width: 140,
             child: Text(
               label,
-              style: GoogleFonts.poppins(
-                fontSize: 12,
-                color: AppColors.textSecondary,
-              ),
+              style: AppType.meta.copyWith(color: AppColors.inkMuted),
             ),
           ),
           Expanded(
             child: Text(
               value,
-              style: GoogleFonts.poppins(
-                fontSize: 13,
-                fontWeight: FontWeight.w500,
-              ),
+              style: AppType.bodySm.copyWith(fontWeight: FontWeight.w500),
             ),
           ),
         ],

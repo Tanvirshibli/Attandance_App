@@ -1,20 +1,17 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 
-import '../../config/theme.dart';
 import '../../data/marketing_demo_masters.dart';
 import '../../models/marketing_models.dart';
 import '../../services/auth_service.dart';
 import '../../services/marketing_service.dart';
 import '../../utils/marketing_location_helper.dart';
-import '../../widgets/gradient_screen_header.dart';
 import '../../widgets/marketing_photo_widgets.dart';
 import '../../widgets/searchable_text_field.dart';
-import '../../widgets/section_card.dart';
+import '../../widgets/ui/ui.dart';
 import '../../widgets/voice_input_field.dart';
 import 'farm_survey_detail_screen.dart';
 
@@ -359,8 +356,8 @@ class _FarmSurveyFormScreenState extends State<FarmSurveyFormScreen> {
       hintText: hint,
       filled: true,
       fillColor: readOnly
-          ? AppColors.background.withValues(alpha: 0.65)
-          : AppColors.background,
+          ? AppColors.surfaceSunk.withValues(alpha: 0.65)
+          : AppColors.surfaceSunk,
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
         borderSide: BorderSide.none,
@@ -373,11 +370,7 @@ class _FarmSurveyFormScreenState extends State<FarmSurveyFormScreen> {
       padding: const EdgeInsets.only(bottom: 8),
       child: Text(
         text,
-        style: GoogleFonts.poppins(
-          fontSize: 12,
-          fontWeight: FontWeight.w500,
-          color: AppColors.textSecondary,
-        ),
+        style: AppType.meta.copyWith(fontWeight: FontWeight.w500, color: AppColors.inkMuted),
       ),
     );
   }
@@ -391,7 +384,7 @@ class _FarmSurveyFormScreenState extends State<FarmSurveyFormScreen> {
           _label(label),
           Text(
             (value == null || value.trim().isEmpty) ? '—' : value,
-            style: GoogleFonts.poppins(fontSize: 14),
+            style: AppType.body,
           ),
         ],
       ),
@@ -406,12 +399,12 @@ class _FarmSurveyFormScreenState extends State<FarmSurveyFormScreen> {
         width: double.infinity,
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
         decoration: BoxDecoration(
-          color: AppColors.background,
+          color: AppColors.surfaceSunk,
           borderRadius: BorderRadius.circular(12),
         ),
         child: Text(
           value == null ? label : DateFormat('dd MMM yyyy').format(value),
-          style: GoogleFonts.poppins(fontSize: 13),
+          style: AppType.bodySm,
         ),
       ),
     );
@@ -442,7 +435,7 @@ class _FarmSurveyFormScreenState extends State<FarmSurveyFormScreen> {
       child: Row(
         children: [
           Expanded(
-            child: Text(label, style: GoogleFonts.poppins(fontSize: 13)),
+            child: Text(label, style: AppType.bodySm),
           ),
           for (var i = 1; i <= 5; i++)
             IconButton(
@@ -463,20 +456,20 @@ class _FarmSurveyFormScreenState extends State<FarmSurveyFormScreen> {
   Widget build(BuildContext context) {
     final farm = widget.party;
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: AppColors.canvas,
       body: marketingFormDismissible(
         child: Column(
           children: [
-            GradientScreenHeader(
+            AppHeader(
               title: 'Farm visit report',
               subtitle: farm.displayName,
             ),
             Expanded(
               child: SingleChildScrollView(
-                padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
+                padding: const EdgeInsets.fromLTRB(AppSpace.gutter, AppSpace.md, AppSpace.gutter, AppSpace.xl),
                 child: Column(
                 children: [
-                  SectionCard(
+                  AppCard(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
@@ -513,7 +506,7 @@ class _FarmSurveyFormScreenState extends State<FarmSurveyFormScreen> {
                     ),
                   ),
                   const SizedBox(height: 12),
-                  SectionCard(
+                  AppCard(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
@@ -548,14 +541,14 @@ class _FarmSurveyFormScreenState extends State<FarmSurveyFormScreen> {
                               vertical: 14,
                             ),
                             decoration: BoxDecoration(
-                              color: AppColors.background,
+                              color: AppColors.surfaceSunk,
                               borderRadius: BorderRadius.circular(12),
                             ),
                             child: Text(
                               _receivingTime == null
                                   ? 'Select time'
                                   : _receivingTime!.format(context),
-                              style: GoogleFonts.poppins(fontSize: 13),
+                              style: AppType.bodySm,
                             ),
                           ),
                         ),
@@ -585,7 +578,7 @@ class _FarmSurveyFormScreenState extends State<FarmSurveyFormScreen> {
                     ),
                   ),
                   const SizedBox(height: 12),
-                  SectionCard(
+                  AppCard(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
@@ -678,7 +671,7 @@ class _FarmSurveyFormScreenState extends State<FarmSurveyFormScreen> {
                     ),
                   ),
                   const SizedBox(height: 12),
-                  SectionCard(
+                  AppCard(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
@@ -732,7 +725,7 @@ class _FarmSurveyFormScreenState extends State<FarmSurveyFormScreen> {
                     ),
                   ),
                   const SizedBox(height: 12),
-                  SectionCard(
+                  AppCard(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
@@ -756,7 +749,7 @@ class _FarmSurveyFormScreenState extends State<FarmSurveyFormScreen> {
                           contentPadding: EdgeInsets.zero,
                           title: Text(
                             'Diseases',
-                            style: GoogleFonts.poppins(fontSize: 13),
+                            style: AppType.bodySm,
                           ),
                           value: _diseasePresent,
                           onChanged: (v) =>
@@ -804,7 +797,7 @@ class _FarmSurveyFormScreenState extends State<FarmSurveyFormScreen> {
                     ),
                   ),
                   const SizedBox(height: 12),
-                  SectionCard(
+                  AppCard(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
@@ -851,10 +844,7 @@ class _FarmSurveyFormScreenState extends State<FarmSurveyFormScreen> {
                                   )
                                 : Text(
                                     'Submit report',
-                                    style: GoogleFonts.poppins(
-                                      fontWeight: FontWeight.w600,
-                                      color: Colors.white,
-                                    ),
+                                    style: AppType.body.copyWith(fontWeight: FontWeight.w600, color: Colors.white),
                                   ),
                           ),
                         ),
