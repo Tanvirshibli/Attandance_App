@@ -1,4 +1,3 @@
-import 'package:animate_do/animate_do.dart';
 import 'package:flutter/material.dart';
 
 import '../../models/marketing_models.dart';
@@ -21,10 +20,17 @@ class MarketingHubScreen extends StatefulWidget {
   State<MarketingHubScreen> createState() => _MarketingHubScreenState();
 }
 
-class _MarketingHubScreenState extends State<MarketingHubScreen> {
+class _MarketingHubScreenState extends State<MarketingHubScreen>
+    with SingleTickerProviderStateMixin {
   static const _previewLimit = 5;
 
   final MarketingService _service = MarketingService();
+
+  // Built in initState rather than as a `late final` field initializer. A lazy
+  // controller would be constructed for the first time inside dispose() when a
+  // screen is torn down before its first build, and the mixin would then look
+  // up a TickerMode on an already deactivated element.
+  late final TabController _tabController;
 
   bool _loadingFeature = true;
   bool _enabled = true;
@@ -45,7 +51,14 @@ class _MarketingHubScreenState extends State<MarketingHubScreen> {
   @override
   void initState() {
     super.initState();
+    _tabController = TabController(length: 3, vsync: this);
     _init();
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
   }
 
   Future<void> _init() async {
@@ -195,103 +208,140 @@ class _MarketingHubScreenState extends State<MarketingHubScreen> {
                 ),
               )
             else
-              SliverPadding(
-                padding: const EdgeInsets.fromLTRB(AppSpace.gutter, AppSpace.md, AppSpace.gutter, AppSpace.xl),
-                sliver: SliverList(
-                  delegate: SliverChildListDelegate([
-                    if (_scope != null && !_scope!.isEmpty)
-                      Padding(
-                        padding: const EdgeInsets.only(bottom: 12),
+              // A group, not one big SliverList: the tab bar and the tab body
+              // are box widgets that each need their own sliver.
+              SliverMainAxisGroup(
+                slivers: [
+                  if (_scope != null && !_scope!.isEmpty)
+                    SliverPadding(
+                      padding: const EdgeInsets.fromLTRB(
+                          AppSpace.gutter, 0, AppSpace.gutter, AppSpace.md),
+                      sliver: SliverToBoxAdapter(
                         child: _ZoneScopeNote(scope: _scope!),
                       ),
-                    FadeInUp(
-                      delay: const Duration(milliseconds: 40),
-                      child: _HubGroupCard(
-                        icon: AppIcons.farms,
-                        label: 'Farms',
-                        color: AppColors.accent,
-                        createTooltip: 'Create farm',
-                        viewTooltip: 'View all farms',
-                        loading: _loadingPreviews,
-                        error: _farmsError,
-                        onRetry: _loadPreviews,
-                        onCreate: () => _open(
-                          const PartyFormScreen(initialPartyType: 'farm'),
-                        ),
-                        onView: () => _open(
-                          const PartyListScreen(initialPartyType: 'farm'),
-                        ),
-                        child: _PartyPreviewList(
-                          parties: _farms,
-                          color: AppColors.accent,
-                          statusColor: _statusColor,
-                          onTap: (party) => _open(
-                            PartyDetailScreen(
-                              partyId: party.id,
-                              initialParty: party,
+                    ),
+                  SliverToBoxAdapter(
+                    child: Container(
+                      color: AppColors.canvas,
+                      child: TabBar(
+                        controller: _tabController,
+                        indicatorSize: TabBarIndicatorSize.tab,
+                        indicatorWeight: 3,
+                        dividerColor: AppColors.line,
+                        labelStyle:
+                            AppType.bodySm.copyWith(fontWeight: FontWeight.w700),
+                        unselectedLabelStyle:
+                            AppType.bodySm.copyWith(color: AppColors.inkMuted),
+                        labelColor: AppColors.ink,
+                        unselectedLabelColor: AppColors.inkMuted,
+                        tabs: [
+                          Tab(icon: Icon(AppIcons.farms), text: 'Farms'),
+                          Tab(icon: Icon(AppIcons.store), text: 'Dealers'),
+                          Tab(icon: Icon(AppIcons.store), text: 'Markets'),
+                        ],
+                      ),
+                    ),
+                  ),
+                  SliverPadding(
+                    padding: const EdgeInsets.fromLTRB(
+                        AppSpace.gutter, AppSpace.md, AppSpace.gutter, 0),
+                    sliver: SliverToBoxAdapter(
+                      child: SizedBox(
+                        // Fixed height: each tab holds a header row plus up to
+                        // five preview rows behind identical card chrome, so
+                        // one height fits all three and the page never
+                        // reflows as the user swipes between tabs.
+                        height: 268,
+                        child: TabBarView(
+                          controller: _tabController,
+                          children: [
+                            _HubGroupCard(
+                              icon: AppIcons.farms,
+                              label: 'Farms',
+                              color: AppColors.accent,
+                              createLabel: 'Add farm',
+                              viewLabel: 'All farms',
+                              loading: _loadingPreviews,
+                              error: _farmsError,
+                              onRetry: _loadPreviews,
+                              onCreate: () => _open(
+                                const PartyFormScreen(initialPartyType: 'farm'),
+                              ),
+                              onView: () => _open(
+                                const PartyListScreen(initialPartyType: 'farm'),
+                              ),
+                              child: _PartyPreviewList(
+                                parties: _farms,
+                                color: AppColors.accent,
+                                statusColor: _statusColor,
+                                onTap: (party) => _open(
+                                  PartyDetailScreen(
+                                    partyId: party.id,
+                                    initialParty: party,
+                                  ),
+                                ),
+                              ),
                             ),
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    FadeInUp(
-                      delay: const Duration(milliseconds: 80),
-                      child: _HubGroupCard(
-                        icon: AppIcons.store,
-                        label: 'Dealers',
-                        color: AppColors.primary,
-                        createTooltip: 'Create dealer',
-                        viewTooltip: 'View all dealers',
-                        loading: _loadingPreviews,
-                        error: _dealersError,
-                        onRetry: _loadPreviews,
-                        onCreate: () => _open(
-                          const PartyFormScreen(initialPartyType: 'dealer'),
-                        ),
-                        onView: () => _open(
-                          const PartyListScreen(initialPartyType: 'dealer'),
-                        ),
-                        child: _PartyPreviewList(
-                          parties: _dealers,
-                          color: AppColors.primary,
-                          statusColor: _statusColor,
-                          onTap: (party) => _open(
-                            PartyDetailScreen(
-                              partyId: party.id,
-                              initialParty: party,
+                            _HubGroupCard(
+                              icon: AppIcons.store,
+                              label: 'Dealers',
+                              color: AppColors.primary,
+                              createLabel: 'Add dealer',
+                              viewLabel: 'All dealers',
+                              loading: _loadingPreviews,
+                              error: _dealersError,
+                              onRetry: _loadPreviews,
+                              onCreate: () => _open(
+                                const PartyFormScreen(initialPartyType: 'dealer'),
+                              ),
+                              onView: () => _open(
+                                const PartyListScreen(initialPartyType: 'dealer'),
+                              ),
+                              child: _PartyPreviewList(
+                                parties: _dealers,
+                                color: AppColors.primary,
+                                statusColor: _statusColor,
+                                onTap: (party) => _open(
+                                  PartyDetailScreen(
+                                    partyId: party.id,
+                                    initialParty: party,
+                                  ),
+                                ),
+                              ),
                             ),
-                          ),
+                            _HubGroupCard(
+                              icon: AppIcons.store,
+                              label: 'Markets',
+                              color: AppColors.secondary,
+                              createLabel: 'Add market',
+                              viewLabel: 'All markets',
+                              loading: _loadingPreviews,
+                              error: _marketsError,
+                              onRetry: _loadPreviews,
+                              onCreate: () => _open(const MarketFormScreen()),
+                              onView: () => _open(const MarketListScreen()),
+                              child: _MarketPreviewList(
+                                markets: _markets,
+                                onTap: (market) => _open(
+                                  MarketDetailScreen(market: market),
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                     ),
-                    const SizedBox(height: 16),
-                    FadeInUp(
-                      delay: const Duration(milliseconds: 120),
-                      child: _HubGroupCard(
-                        icon: AppIcons.store,
-                        label: 'Markets',
-                        color: AppColors.secondary,
-                        createTooltip: 'Create market',
-                        viewTooltip: 'View all markets',
-                        loading: _loadingPreviews,
-                        error: _marketsError,
-                        onRetry: _loadPreviews,
-                        onCreate: () => _open(const MarketFormScreen()),
-                        onView: () => _open(const MarketListScreen()),
-                        child: _MarketPreviewList(
-                          markets: _markets,
-                          onTap: (market) => _open(
-                            MarketDetailScreen(market: market),
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    FadeInUp(
-                      delay: const Duration(milliseconds: 160),
+                  ),
+                  SliverPadding(
+                    padding: const EdgeInsets.fromLTRB(
+                        AppSpace.gutter,
+                        AppSpace.md,
+                        AppSpace.gutter,
+                        AppSpace.xl),
+                    sliver: SliverToBoxAdapter(
                       // The untyped `push` is deliberate: the screen is
-                      // pre-built and the result is discarded.
+                      // pre-built and the result is discarded. Sits below the
+                      // tabs so it stays reachable from all three.
                       child: AppCard(
                         onTap: () => _open(
                           const FollowupFormScreen(showListMode: true),
@@ -332,8 +382,8 @@ class _MarketingHubScreenState extends State<MarketingHubScreen> {
                         ),
                       ),
                     ),
-                  ]),
-                ),
+                  ),
+                ],
               ),
           ],
         ),
@@ -401,8 +451,8 @@ class _HubGroupCard extends StatelessWidget {
     required this.icon,
     required this.label,
     required this.color,
-    required this.createTooltip,
-    required this.viewTooltip,
+    required this.createLabel,
+    required this.viewLabel,
     required this.loading,
     required this.error,
     required this.onRetry,
@@ -414,8 +464,8 @@ class _HubGroupCard extends StatelessWidget {
   final IconData icon;
   final String label;
   final Color color;
-  final String createTooltip;
-  final String viewTooltip;
+  final String createLabel;
+  final String viewLabel;
   final bool loading;
   final String? error;
   final VoidCallback onRetry;
@@ -458,22 +508,35 @@ class _HubGroupCard extends StatelessWidget {
                   style: AppType.h3.copyWith(fontWeight: FontWeight.w600, color: color),
                 ),
               ),
-              _HubIconAction(
-                tooltip: createTooltip,
+            ],
+          ),
+          const SizedBox(height: 10),
+          // The actions sit on their own row: "Add dealer" and "All dealers"
+          // together are wider than the title row can spare on a phone. Wrap
+          // rather than a bare Row, so the longest pair of labels falls to a
+          // second line instead of overflowing on a narrow handset.
+          Wrap(
+            spacing: AppSpace.xs,
+            runSpacing: AppSpace.xs,
+            children: [
+              AppPillButton(
                 icon: Icons.add_rounded,
-                color: color,
+                label: createLabel,
                 onTap: onCreate,
-              ),
-              const SizedBox(width: 4),
-              _HubIconAction(
-                tooltip: viewTooltip,
-                icon: Icons.list_alt_outlined,
                 color: color,
+                dense: true,
+              ),
+              AppPillButton(
+                icon: Icons.list_alt_outlined,
+                label: viewLabel,
                 onTap: onView,
+                color: color,
+                filled: false,
+                dense: true,
               ),
             ],
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 10),
           if (loading)
             const Padding(
               padding: EdgeInsets.symmetric(vertical: 16),
@@ -503,40 +566,6 @@ class _HubGroupCard extends StatelessWidget {
           else
             child,
         ],
-      ),
-    );
-  }
-}
-
-class _HubIconAction extends StatelessWidget {
-  const _HubIconAction({
-    required this.tooltip,
-    required this.icon,
-    required this.color,
-    required this.onTap,
-  });
-
-  final String tooltip;
-  final IconData icon;
-  final Color color;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return Tooltip(
-      message: tooltip,
-      child: Material(
-        color: color.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(10),
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(10),
-          child: SizedBox(
-            width: 36,
-            height: 36,
-            child: Icon(icon, color: color, size: 20),
-          ),
-        ),
       ),
     );
   }
