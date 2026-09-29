@@ -1,17 +1,13 @@
 import 'package:animate_do/animate_do.dart';
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 
-import '../config/theme.dart';
 import '../models/leave_balance.dart';
 import '../models/leave_record.dart';
 import '../services/auth_service.dart';
 import '../services/leave_service.dart';
-import '../widgets/api_empty_state.dart';
 import '../widgets/filter_chip_row.dart';
-import '../widgets/gradient_screen_header.dart';
 import '../widgets/leave_balance_card.dart';
-import '../widgets/section_card.dart';
+import '../widgets/ui/ui.dart';
 import 'apply_leave_screen.dart';
 
 class LeaveHubScreen extends StatefulWidget {
@@ -116,7 +112,10 @@ class _LeaveHubScreenState extends State<LeaveHubScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: AppColors.canvas,
+      // Kept as an extended FAB on purpose: the report section's 100px bottom
+      // padding is tuned to clear it. The reload fires on return regardless of
+      // whether anything was actually submitted.
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () async {
           await Navigator.of(context).push(
@@ -124,25 +123,26 @@ class _LeaveHubScreenState extends State<LeaveHubScreen> {
           );
           _load();
         },
-        backgroundColor: AppColors.primary,
+        backgroundColor: AppColors.mLeave,
         icon: const Icon(Icons.add_rounded, color: Colors.white),
         label: Text(
           'Apply Leave',
-          style: GoogleFonts.poppins(
-            fontWeight: FontWeight.w600,
+          style: AppType.h3.copyWith(
             color: Colors.white,
+            fontWeight: FontWeight.w600,
           ),
         ),
       ),
       body: RefreshIndicator(
         onRefresh: _load,
+        color: AppColors.primary,
         child: CustomScrollView(
           physics: const AlwaysScrollableScrollPhysics(
             parent: BouncingScrollPhysics(),
           ),
           slivers: [
             const SliverToBoxAdapter(
-              child: GradientScreenHeader(
+              child: AppHeader(
                 title: 'Leave',
                 subtitle: 'Balance & leave history',
               ),
@@ -160,14 +160,10 @@ class _LeaveHubScreenState extends State<LeaveHubScreen> {
     return [
       SliverToBoxAdapter(
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 12, 20, 6),
+          padding: const EdgeInsets.fromLTRB(AppSpace.gutter, AppSpace.md, AppSpace.gutter, AppSpace.xs),
           child: Text(
             'Leave Balance',
-            style: GoogleFonts.poppins(
-              fontSize: 14,
-              fontWeight: FontWeight.w600,
-              color: AppColors.textPrimary,
-            ),
+            style: AppType.h3.copyWith(color: AppColors.ink),
           ),
         ),
       ),
@@ -181,9 +177,9 @@ class _LeaveHubScreenState extends State<LeaveHubScreen> {
       else if (_balances.isEmpty)
         SliverToBoxAdapter(
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
-            child: ApiEmptyState(
-              icon: Icons.beach_access_outlined,
+            padding: const EdgeInsets.fromLTRB(AppSpace.gutter, 0, AppSpace.gutter, AppSpace.xs),
+            child: AppEmptyState(
+              icon: AppIcons.leave,
               title: 'No leave balance data',
               subtitle:
                   'Leave stock will appear once HR configures your account.',
@@ -193,7 +189,7 @@ class _LeaveHubScreenState extends State<LeaveHubScreen> {
         )
       else
         SliverPadding(
-          padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+          padding: const EdgeInsets.fromLTRB(AppSpace.gutter, 0, AppSpace.gutter, AppSpace.xs),
           sliver: SliverList.separated(
             itemCount: _balances.length,
             separatorBuilder: (_, _) => const SizedBox(height: 8),
@@ -209,51 +205,56 @@ class _LeaveHubScreenState extends State<LeaveHubScreen> {
   }
 
   List<Widget> _buildHolidaysSection() {
+    // Returning an empty list hides the whole section, heading included, which
+    // shifts the vertical rhythm of everything below. Existing behaviour.
     if (_holidays.isEmpty) return const [];
 
     return [
       SliverToBoxAdapter(
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 10, 20, 6),
+          padding: const EdgeInsets.fromLTRB(AppSpace.gutter, AppSpace.sm, AppSpace.gutter, AppSpace.xs),
           child: Text(
             'Upcoming Holidays',
-            style: GoogleFonts.poppins(
-              fontSize: 14,
-              fontWeight: FontWeight.w600,
-            ),
+            style: AppType.h3.copyWith(color: AppColors.ink),
           ),
         ),
       ),
       SliverPadding(
-        padding: const EdgeInsets.fromLTRB(20, 0, 20, 6),
+        padding: const EdgeInsets.fromLTRB(AppSpace.gutter, 0, AppSpace.gutter, AppSpace.xs),
         sliver: SliverList.separated(
+          // Hard-capped at 5; existing behaviour.
           itemCount: _holidays.length.clamp(0, 5),
-          separatorBuilder: (_, _) => const SizedBox(height: 6),
+          separatorBuilder: (_, _) => const SizedBox(height: AppSpace.xs),
           itemBuilder: (context, index) {
             final h = _holidays[index];
-            return SectionCard(
-              padding: const EdgeInsets.all(12),
+            return AppCard(
+              padding: const EdgeInsets.all(AppSpace.sm + 2),
               child: Row(
                 children: [
-                  Icon(Icons.event_outlined, color: AppColors.warning, size: 20),
-                  const SizedBox(width: 10),
+                  AppIcon(
+                    AppIcons.calendar,
+                    size: 18,
+                    color: AppColors.mLeave,
+                  ),
+                  const SizedBox(width: AppSpace.sm),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
                       children: [
                         Text(
                           h['holidayName']?.toString() ?? 'Holiday',
-                          style: GoogleFonts.poppins(
+                          style: AppType.bodySm.copyWith(
+                            color: AppColors.ink,
                             fontWeight: FontWeight.w600,
-                            fontSize: 12,
                           ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                         ),
                         Text(
                           '${h['startDate']} → ${h['endDate']}',
-                          style: GoogleFonts.poppins(
-                            fontSize: 11,
-                            color: AppColors.textSecondary,
-                          ),
+                          style: AppType.micro
+                              .copyWith(color: AppColors.inkFaint),
                         ),
                       ],
                     ),
@@ -271,20 +272,16 @@ class _LeaveHubScreenState extends State<LeaveHubScreen> {
     return [
       SliverToBoxAdapter(
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 10, 20, 6),
+          padding: const EdgeInsets.fromLTRB(AppSpace.gutter, AppSpace.sm, AppSpace.gutter, AppSpace.xs),
           child: Text(
             'Leave Report',
-            style: GoogleFonts.poppins(
-              fontSize: 14,
-              fontWeight: FontWeight.w600,
-              color: AppColors.textPrimary,
-            ),
+            style: AppType.h3.copyWith(color: AppColors.ink),
           ),
         ),
       ),
       SliverToBoxAdapter(
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 0, 20, 6),
+          padding: const EdgeInsets.fromLTRB(AppSpace.gutter, 0, AppSpace.gutter, AppSpace.xs),
           child: FilterChipRow(
             options: _filters,
             selected: _selectedFilter,
@@ -305,9 +302,9 @@ class _LeaveHubScreenState extends State<LeaveHubScreen> {
       else if (_records.isEmpty)
         SliverToBoxAdapter(
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(20, 0, 20, 100),
-            child: ApiEmptyState(
-              icon: Icons.history_rounded,
+            padding: const EdgeInsets.fromLTRB(AppSpace.gutter, 0, AppSpace.gutter, 100),
+            child: AppEmptyState(
+              icon: AppIcons.clock,
               title: 'No leave records',
               onRetry: _loadHistoryOnly,
             ),
@@ -315,7 +312,7 @@ class _LeaveHubScreenState extends State<LeaveHubScreen> {
         )
       else
         SliverPadding(
-          padding: const EdgeInsets.fromLTRB(20, 0, 20, 100),
+          padding: const EdgeInsets.fromLTRB(AppSpace.gutter, 0, AppSpace.gutter, 100),
           sliver: SliverList.separated(
             itemCount: _records.length,
             separatorBuilder: (_, _) => const SizedBox(height: 8),
@@ -323,8 +320,8 @@ class _LeaveHubScreenState extends State<LeaveHubScreen> {
               final item = _records[index];
               return FadeInUp(
                 delay: Duration(milliseconds: 40 * index),
-                child: SectionCard(
-                  padding: const EdgeInsets.all(14),
+                child: AppCard(
+                  padding: const EdgeInsets.all(AppSpace.sm + 2),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -333,59 +330,39 @@ class _LeaveHubScreenState extends State<LeaveHubScreen> {
                           Expanded(
                             child: Text(
                               item.leaveTypeName,
-                              style: GoogleFonts.poppins(
-                                fontWeight: FontWeight.w600,
-                                fontSize: 13,
-                              ),
+                              style: AppType.h3.copyWith(color: AppColors.ink),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
                             ),
                           ),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 8,
-                              vertical: 3,
-                            ),
-                            decoration: BoxDecoration(
-                              color: _statusColor(item.status)
-                                  .withValues(alpha: 0.12),
-                              borderRadius: BorderRadius.circular(20),
-                            ),
-                            child: Text(
-                              item.status,
-                              style: GoogleFonts.poppins(
-                                fontSize: 10,
-                                fontWeight: FontWeight.w600,
-                                color: _statusColor(item.status),
-                              ),
-                            ),
+                          const SizedBox(width: AppSpace.xs),
+                          AppStatusChip(
+                            status: item.status,
+                            color: _statusColor(item.status),
+                            compact: true,
                           ),
                         ],
                       ),
-                      const SizedBox(height: 6),
+                      const SizedBox(height: AppSpace.xs),
                       Text(
                         item.dateRangeLabel,
-                        style: GoogleFonts.poppins(
-                          fontSize: 11,
-                          color: AppColors.textSecondary,
-                        ),
+                        style:
+                            AppType.micro.copyWith(color: AppColors.inkFaint),
                       ),
                       if (item.duration != null) ...[
                         const SizedBox(height: 2),
                         Text(
                           '${item.duration} day${item.duration == 1 ? '' : 's'}',
-                          style: GoogleFonts.poppins(
-                            fontSize: 11,
-                            color: AppColors.textSecondary,
-                          ),
+                          style: AppType.micro
+                              .copyWith(color: AppColors.inkFaint),
                         ),
                       ],
                       if (item.reason != null && item.reason!.isNotEmpty) ...[
-                        const SizedBox(height: 4),
+                        const SizedBox(height: AppSpace.xxs),
                         Text(
                           item.reason!,
-                          style: GoogleFonts.poppins(
-                            fontSize: 12,
-                            color: AppColors.textPrimary,
-                          ),
+                          style:
+                              AppType.bodySm.copyWith(color: AppColors.ink),
                         ),
                       ],
                     ],

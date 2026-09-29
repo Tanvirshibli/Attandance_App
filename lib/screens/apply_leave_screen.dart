@@ -1,14 +1,11 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 
-import '../config/theme.dart';
 import '../models/leave_type.dart';
 import '../services/auth_service.dart';
 import '../services/leave_service.dart';
-import '../widgets/gradient_screen_header.dart';
-import '../widgets/section_card.dart';
+import '../widgets/ui/ui.dart';
 import '../widgets/voice_input_field.dart';
 
 class ApplyLeaveScreen extends StatefulWidget {
@@ -127,16 +124,16 @@ class _ApplyLeaveScreenState extends State<ApplyLeaveScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: AppColors.canvas,
       body: Column(
         children: [
-          const GradientScreenHeader(title: 'Apply for Leave'),
+          const AppHeader(title: 'Apply for Leave'),
           Expanded(
             child: _isLoading
                 ? const Center(child: CircularProgressIndicator())
                 : SingleChildScrollView(
-                    padding: const EdgeInsets.all(20),
-                    child: SectionCard(
+                    padding: const EdgeInsets.all(AppSpace.lg),
+                    child: AppCard(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
@@ -154,8 +151,9 @@ class _ApplyLeaveScreenState extends State<ApplyLeaveScreen> {
                                 .toList(),
                             onChanged: (v) => setState(() => _selectedType = v),
                           ),
-                          const SizedBox(height: 16),
+                          const SizedBox(height: AppSpace.md),
                           Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Expanded(
                                 child: _dateField(
@@ -164,7 +162,7 @@ class _ApplyLeaveScreenState extends State<ApplyLeaveScreen> {
                                   onTap: () => _pickDate(isStart: true),
                                 ),
                               ),
-                              const SizedBox(width: 12),
+                              const SizedBox(width: AppSpace.sm),
                               Expanded(
                                 child: _dateField(
                                   label: 'End Date',
@@ -174,14 +172,14 @@ class _ApplyLeaveScreenState extends State<ApplyLeaveScreen> {
                               ),
                             ],
                           ),
-                          const SizedBox(height: 16),
+                          const SizedBox(height: AppSpace.md),
                           _label('Reason'),
                           VoiceTextField(
                             controller: _reasonController,
                             maxLines: 3,
                             decoration: _inputDecoration(hint: 'Enter reason'),
                           ),
-                          const SizedBox(height: 16),
+                          const SizedBox(height: AppSpace.md),
                           OutlinedButton.icon(
                             onPressed: _pickDocument,
                             icon: const Icon(Icons.attach_file_rounded),
@@ -191,15 +189,16 @@ class _ApplyLeaveScreenState extends State<ApplyLeaveScreen> {
                                   : 'Document attached',
                             ),
                           ),
-                          const SizedBox(height: 24),
+                          const SizedBox(height: AppSpace.lg),
                           SizedBox(
                             height: 50,
                             child: ElevatedButton(
                               onPressed: _isSubmitting ? null : _submit,
                               style: ElevatedButton.styleFrom(
-                                backgroundColor: AppColors.primary,
+                                backgroundColor: AppColors.mLeave,
                                 shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(14),
+                                  borderRadius:
+                                      BorderRadius.circular(AppRadius.md),
                                 ),
                               ),
                               child: _isSubmitting
@@ -213,9 +212,9 @@ class _ApplyLeaveScreenState extends State<ApplyLeaveScreen> {
                                     )
                                   : Text(
                                       'Submit Leave Request',
-                                      style: GoogleFonts.poppins(
-                                        fontWeight: FontWeight.w600,
+                                      style: AppType.h3.copyWith(
                                         color: Colors.white,
+                                        fontWeight: FontWeight.w600,
                                       ),
                                     ),
                             ),
@@ -232,13 +231,12 @@ class _ApplyLeaveScreenState extends State<ApplyLeaveScreen> {
 
   Widget _label(String text) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.only(bottom: AppSpace.xs),
       child: Text(
         text,
-        style: GoogleFonts.poppins(
-          fontSize: 12,
+        style: AppType.meta.copyWith(
+          color: AppColors.inkMuted,
           fontWeight: FontWeight.w500,
-          color: AppColors.textSecondary,
         ),
       ),
     );
@@ -248,9 +246,9 @@ class _ApplyLeaveScreenState extends State<ApplyLeaveScreen> {
     return InputDecoration(
       hintText: hint,
       filled: true,
-      fillColor: AppColors.background,
+      fillColor: AppColors.surfaceSunk,
       border: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(AppRadius.md),
         borderSide: BorderSide.none,
       ),
     );
@@ -263,16 +261,20 @@ class _ApplyLeaveScreenState extends State<ApplyLeaveScreen> {
   }) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
       children: [
         _label(label),
         InkWell(
           onTap: onTap,
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(AppRadius.md),
           child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+            padding: const EdgeInsets.symmetric(
+              horizontal: AppSpace.sm + 2,
+              vertical: AppSpace.sm + 2,
+            ),
             decoration: BoxDecoration(
-              color: AppColors.background,
-              borderRadius: BorderRadius.circular(12),
+              color: AppColors.surfaceSunk,
+              borderRadius: BorderRadius.circular(AppRadius.md),
             ),
             child: Row(
               children: [
@@ -281,10 +283,14 @@ class _ApplyLeaveScreenState extends State<ApplyLeaveScreen> {
                     value == null
                         ? 'Select date'
                         : DateFormat('dd MMM yyyy').format(value),
-                    style: GoogleFonts.poppins(fontSize: 13),
+                    style: AppType.bodySm.copyWith(
+                      color: value == null ? AppColors.inkFaint : AppColors.ink,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
                 ),
-                const Icon(Icons.calendar_today_outlined, size: 18),
+                AppIcon(AppIcons.calendar, size: 18),
               ],
             ),
           ),

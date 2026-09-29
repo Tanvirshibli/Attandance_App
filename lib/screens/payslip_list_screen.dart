@@ -1,14 +1,10 @@
 import 'package:animate_do/animate_do.dart';
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 
-import '../config/theme.dart';
 import '../models/payment_models.dart';
 import '../services/auth_service.dart';
 import '../services/payment_service.dart';
-import '../widgets/api_empty_state.dart';
-import '../widgets/gradient_screen_header.dart';
-import '../widgets/section_card.dart';
+import '../widgets/ui/ui.dart';
 import 'payslip_detail_screen.dart';
 
 class PayslipListScreen extends StatefulWidget {
@@ -48,16 +44,17 @@ class _PayslipListScreenState extends State<PayslipListScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: AppColors.canvas,
       body: RefreshIndicator(
         onRefresh: _load,
+        color: AppColors.primary,
         child: CustomScrollView(
           physics: const AlwaysScrollableScrollPhysics(
             parent: BouncingScrollPhysics(),
           ),
           slivers: [
             const SliverToBoxAdapter(
-              child: GradientScreenHeader(
+              child: AppHeader(
                 title: 'Payslips',
                 subtitle: 'Monthly payroll records',
               ),
@@ -70,11 +67,11 @@ class _PayslipListScreenState extends State<PayslipListScreen> {
                 ),
               )
             else if (_items.isEmpty)
-              const SliverToBoxAdapter(
+              SliverToBoxAdapter(
                 child: Padding(
-                  padding: EdgeInsets.all(20),
-                  child: ApiEmptyState(
-                    icon: Icons.receipt_long_outlined,
+                  padding: const EdgeInsets.all(AppSpace.lg),
+                  child: AppEmptyState(
+                    icon: AppIcons.invoice,
                     title: 'No payslips',
                     subtitle: 'Approved payroll records will appear here.',
                   ),
@@ -82,7 +79,12 @@ class _PayslipListScreenState extends State<PayslipListScreen> {
               )
             else
               SliverPadding(
-                padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
+                padding: const EdgeInsets.fromLTRB(
+                  AppSpace.gutter,
+                  AppSpace.md,
+                  AppSpace.gutter,
+                  AppSpace.xl,
+                ),
                 sliver: SliverList(
                   delegate: SliverChildBuilderDelegate(
                     (context, index) {
@@ -90,59 +92,9 @@ class _PayslipListScreenState extends State<PayslipListScreen> {
                       return FadeInUp(
                         delay: Duration(milliseconds: 50 * index),
                         child: Padding(
-                          padding: const EdgeInsets.only(bottom: 12),
-                          child: SectionCard(
-                            padding: EdgeInsets.zero,
-                            child: ListTile(
-                              contentPadding: const EdgeInsets.symmetric(
-                                horizontal: 16,
-                                vertical: 8,
-                              ),
-                              leading: Container(
-                                width: 48,
-                                height: 48,
-                                decoration: BoxDecoration(
-                                  color: AppColors.primary
-                                      .withValues(alpha: 0.1),
-                                  borderRadius: BorderRadius.circular(14),
-                                ),
-                                child: const Icon(
-                                  Icons.calendar_month_rounded,
-                                  color: AppColors.primary,
-                                ),
-                              ),
-                              title: Text(
-                                item.month,
-                                style: GoogleFonts.poppins(
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                              subtitle: Text(
-                                [
-                                  item.status,
-                                  if (item.paymentMethod != null)
-                                    item.paymentMethod!,
-                                ].join(' · '),
-                                style: GoogleFonts.poppins(
-                                  fontSize: 12,
-                                  color: AppColors.textSecondary,
-                                ),
-                              ),
-                              trailing: Text(
-                                item.formattedNet,
-                                style: GoogleFonts.poppins(
-                                  fontWeight: FontWeight.w700,
-                                  color: AppColors.success,
-                                ),
-                              ),
-                              onTap: () => Navigator.of(context).push(
-                                MaterialPageRoute(
-                                  builder: (_) =>
-                                      PayslipDetailScreen(payrollId: item.id),
-                                ),
-                              ),
-                            ),
-                          ),
+                          padding:
+                              const EdgeInsets.only(bottom: AppSpace.sm),
+                          child: _PayslipTile(item: item),
                         ),
                       );
                     },
@@ -152,6 +104,68 @@ class _PayslipListScreenState extends State<PayslipListScreen> {
               ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _PayslipTile extends StatelessWidget {
+  const _PayslipTile({required this.item});
+
+  final PayrollRecord item;
+
+  @override
+  Widget build(BuildContext context) {
+    return AppCard(
+      onTap: () => Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => PayslipDetailScreen(payrollId: item.id),
+        ),
+      ),
+      padding: const EdgeInsets.all(AppSpace.sm + 2),
+      child: Row(
+        children: [
+          AppIconTile(
+            icon: AppIcons.calendar,
+            color: AppColors.mHr,
+            semanticLabel: item.month,
+          ),
+          const SizedBox(width: AppSpace.sm + 2),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  item.month,
+                  style: AppType.h3.copyWith(color: AppColors.ink),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 2),
+                // A null payment method collapses the subtitle to the status
+                // alone rather than showing a dash. Preserved from the original.
+                Text(
+                  [
+                    item.status,
+                    if (item.paymentMethod != null) item.paymentMethod!,
+                  ].join(' · '),
+                  style: AppType.meta.copyWith(color: AppColors.inkMuted),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: AppSpace.xs),
+          Text(
+            item.formattedNet,
+            style: AppType.h3.copyWith(
+              color: AppColors.success,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
       ),
     );
   }
