@@ -211,6 +211,26 @@ After publishing build **N**:
 
 ---
 
+## September 29, 2026 Update (v2.3.0+92)
+
+**Zone scoping:**
+- Marketing lists, form pickers and dealer dropdowns are now narrowed to the zones the employee is assigned. An employee in several zones sees the **union** of their data — there is no zone switcher
+- **Root-cause fix:** HRM returns `user.zoneId` as a jsonb **array**, but the app parsed it as a scalar, so `int.tryParse("[1,2,3]")` produced `null` and **no zone filter was ever sent**. Zone scoping was inert. The profile now reads `zoneIds` as a list
+- Zone names and districts come from the new Sales `GET /api/get-zone` (public). HRM carries ids only, so the app joins the two and caches the result for 24 h
+- Rows are matched on zone id, zone **name**, or the districts of an assigned zone — so markets, parties and dealers created before zone tagging (`zone_id` NULL) are still visible
+- **Zones are joined by name across systems, never by id.** HRM, Sales and ZKTeco assign zone ids independently
+- Marketing hub shows a strip naming the employee's zones and their districts; empty lists name the zones instead of looking broken
+- Market and party create forms take their zone options from `get-zone` and pre-seed the employee's first assigned zone, matched by name
+- Post sale, Post booking and Receive payment dealer dropdowns are scoped by zone name
+- The market form previously had no profile prefill while the party form did; both now do
+- New files: `lib/models/zone_models.dart`, `lib/models/zone_scope.dart`, `lib/services/zone_scope_service.dart`
+
+**Behaviour when zones are not configured:** an employee with no zones, or an unreachable zone master, sees unfiltered lists exactly as before — no blank screens, no crash.
+
+Backend: HRM `pphl_erp` supplies `user.zoneId` (jsonb array, no names); Sales supplies the zone master and districts. See `docs/FARM_DEALER_MOBILE.md#zone-scoping` and `docs/SALES_AND_PAYMENTS_API_CONTRACT.md` §C.4.
+
+---
+
 ## September 25, 2026 Update (v2.3.0+86)
 
 - **Payment receive** — the receipt photo is now **optional**; payments can be posted with no image. Photos that are attached upload as WebP `image[i]` fields index-aligned with `payments[i]`.
