@@ -1,13 +1,9 @@
 import 'package:animate_do/animate_do.dart';
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 
-import '../../config/theme.dart';
 import '../../models/marketing_models.dart';
 import '../../services/marketing_service.dart';
-import '../../widgets/api_empty_state.dart';
-import '../../widgets/gradient_screen_header.dart';
-import '../../widgets/section_card.dart';
+import '../../widgets/ui/ui.dart';
 import 'farm_survey_detail_screen.dart';
 import 'farm_survey_form_screen.dart';
 import 'followup_form_screen.dart';
@@ -100,16 +96,17 @@ class _PartyDetailScreenState extends State<PartyDetailScreen> {
   Widget build(BuildContext context) {
     final party = _party;
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: AppColors.canvas,
       body: RefreshIndicator(
         onRefresh: _load,
+        color: AppColors.primary,
         child: CustomScrollView(
           physics: const AlwaysScrollableScrollPhysics(
             parent: BouncingScrollPhysics(),
           ),
           slivers: [
             SliverToBoxAdapter(
-              child: GradientScreenHeader(
+              child: AppHeader(
                 title: party?.displayName ?? 'Party',
                 subtitle: party != null
                     ? '${party.partyType} · ${party.status ?? '—'}'
@@ -124,8 +121,8 @@ class _PartyDetailScreenState extends State<PartyDetailScreen> {
               SliverFillRemaining(
                 child: Center(
                   child: Padding(
-                    padding: const EdgeInsets.all(20),
-                    child: ApiEmptyState(
+                    padding: const EdgeInsets.all(AppSpace.lg),
+                    child: AppEmptyState(
                       icon: Icons.error_outline,
                       title: 'Could not load party',
                       subtitle: _error,
@@ -136,10 +133,10 @@ class _PartyDetailScreenState extends State<PartyDetailScreen> {
               )
             else if (party != null)
               SliverPadding(
-                padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
+                padding: const EdgeInsets.fromLTRB(AppSpace.gutter, AppSpace.md, AppSpace.gutter, AppSpace.xl),
                 sliver: SliverList(
                   delegate: SliverChildListDelegate([
-                    SectionCard(
+                    AppCard(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
@@ -166,10 +163,7 @@ class _PartyDetailScreenState extends State<PartyDetailScreen> {
                             icon: const Icon(Icons.add, color: Colors.white),
                             label: Text(
                               'Post a visit',
-                              style: GoogleFonts.poppins(
-                                fontWeight: FontWeight.w600,
-                                color: Colors.white,
-                              ),
+                              style: AppType.body.copyWith(fontWeight: FontWeight.w600, color: Colors.white),
                             ),
                             style: ElevatedButton.styleFrom(
                               backgroundColor: party.isFarm
@@ -205,10 +199,7 @@ class _PartyDetailScreenState extends State<PartyDetailScreen> {
                     const SizedBox(height: 16),
                     Text(
                       party.isFarm ? 'Visit reports' : 'Visits',
-                      style: GoogleFonts.poppins(
-                        fontWeight: FontWeight.w600,
-                        fontSize: 14,
-                      ),
+                      style: AppType.body.copyWith(fontWeight: FontWeight.w600),
                     ),
                     const SizedBox(height: 10),
                     if (_loadingRecords)
@@ -217,14 +208,14 @@ class _PartyDetailScreenState extends State<PartyDetailScreen> {
                         child: Center(child: CircularProgressIndicator()),
                       )
                     else if (party.isFarm && _surveys.isEmpty)
-                      const ApiEmptyState(
-                        icon: Icons.assignment_outlined,
+                      AppEmptyState(
+                        icon: AppIcons.note,
                         title: 'No visit reports yet',
                         subtitle: 'Post a visit to record this farm report.',
                       )
                     else if (!party.isFarm && _visits.isEmpty)
-                      const ApiEmptyState(
-                        icon: Icons.route_outlined,
+                      AppEmptyState(
+                        icon: AppIcons.route,
                         title: 'No visits yet',
                         subtitle: 'Post a visit for this dealer.',
                       )
@@ -235,7 +226,7 @@ class _PartyDetailScreenState extends State<PartyDetailScreen> {
                           delay: Duration(milliseconds: 30 * index),
                           child: Padding(
                             padding: const EdgeInsets.only(bottom: 10),
-                            child: SectionCard(
+                            child: AppCard(
                               padding: EdgeInsets.zero,
                               child: ListTile(
                                 onTap: () async {
@@ -250,10 +241,7 @@ class _PartyDetailScreenState extends State<PartyDetailScreen> {
                                 },
                                 title: Text(
                                   survey.displayTitle,
-                                  style: GoogleFonts.poppins(
-                                    fontWeight: FontWeight.w600,
-                                    fontSize: 14,
-                                  ),
+                                  style: AppType.body.copyWith(fontWeight: FontWeight.w600),
                                 ),
                                 subtitle: Text(
                                   [
@@ -263,7 +251,7 @@ class _PartyDetailScreenState extends State<PartyDetailScreen> {
                                       'Age ${survey.ageDays}d',
                                     if (survey.status != null) survey.status!,
                                   ].join(' · '),
-                                  style: GoogleFonts.poppins(fontSize: 12),
+                                  style: AppType.meta,
                                 ),
                                 trailing: const Icon(Icons.chevron_right),
                               ),
@@ -278,7 +266,7 @@ class _PartyDetailScreenState extends State<PartyDetailScreen> {
                           delay: Duration(milliseconds: 30 * index),
                           child: Padding(
                             padding: const EdgeInsets.only(bottom: 10),
-                            child: SectionCard(
+                            child: AppCard(
                               padding: EdgeInsets.zero,
                               child: ListTile(
                                 onTap: () async {
@@ -294,17 +282,11 @@ class _PartyDetailScreenState extends State<PartyDetailScreen> {
                                 },
                                 title: Text(
                                   visit.displayName,
-                                  style: GoogleFonts.poppins(
-                                    fontWeight: FontWeight.w600,
-                                    fontSize: 14,
-                                  ),
+                                  style: AppType.body.copyWith(fontWeight: FontWeight.w600),
                                 ),
                                 subtitle: Text(
                                   visit.status ?? '—',
-                                  style: GoogleFonts.poppins(
-                                    fontSize: 12,
-                                    color: AppColors.textSecondary,
-                                  ),
+                                  style: AppType.meta.copyWith(color: AppColors.inkMuted),
                                 ),
                                 trailing: const Icon(Icons.chevron_right),
                               ),
@@ -331,19 +313,13 @@ class _PartyDetailScreenState extends State<PartyDetailScreen> {
             width: 110,
             child: Text(
               label,
-              style: GoogleFonts.poppins(
-                fontSize: 12,
-                color: AppColors.textSecondary,
-              ),
+              style: AppType.meta.copyWith(color: AppColors.inkMuted),
             ),
           ),
           Expanded(
             child: Text(
               value,
-              style: GoogleFonts.poppins(
-                fontSize: 13,
-                fontWeight: FontWeight.w500,
-              ),
+              style: AppType.bodySm.copyWith(fontWeight: FontWeight.w500),
             ),
           ),
         ],

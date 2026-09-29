@@ -1,16 +1,13 @@
 import 'package:animate_do/animate_do.dart';
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 
-import '../config/theme.dart';
 import '../models/dealer_list_models.dart';
 import '../models/sales_post_models.dart';
 import '../services/auth_service.dart';
 import '../services/sales_service.dart';
-import '../widgets/gradient_screen_header.dart';
 import '../widgets/searchable_select_field.dart';
-import '../widgets/section_card.dart';
+import '../widgets/ui/ui.dart';
 import '../widgets/voice_input_field.dart';
 
 class PostSaleScreen extends StatefulWidget {
@@ -259,7 +256,7 @@ class _PostSaleScreenState extends State<PostSaleScreen> {
 
   void _snack(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message, style: GoogleFonts.poppins())),
+      SnackBar(content: Text(message, style: AppType.body)),
     );
   }
 
@@ -268,12 +265,12 @@ class _PostSaleScreenState extends State<PostSaleScreen> {
     final demo = _salesService.useCreateDemo;
 
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: AppColors.canvas,
       body: CustomScrollView(
         physics: const BouncingScrollPhysics(),
         slivers: [
           SliverToBoxAdapter(
-            child: GradientScreenHeader(
+            child: AppHeader(
               title: 'Post sale',
               subtitle: demo
                   ? 'Demo mode — enable live sales to post to server'
@@ -284,7 +281,7 @@ class _PostSaleScreenState extends State<PostSaleScreen> {
             padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
             sliver: SliverToBoxAdapter(
               child: FadeInUp(
-                child: SectionCard(
+                child: AppCard(
                   child: Form(
                     key: _formKey,
                     child: Column(
@@ -293,10 +290,7 @@ class _PostSaleScreenState extends State<PostSaleScreen> {
                         if (_salesPersonId != null)
                           Text(
                             'Sales person ID: $_salesPersonId',
-                            style: GoogleFonts.poppins(
-                              fontSize: 12,
-                              color: AppColors.textSecondary,
-                            ),
+                            style: AppType.meta.copyWith(color: AppColors.inkMuted),
                           ),
                         const SizedBox(height: 12),
                         _dropdown(
@@ -360,10 +354,7 @@ class _PostSaleScreenState extends State<PostSaleScreen> {
                         const SizedBox(height: 20),
                         Text(
                           'Line item',
-                          style: GoogleFonts.poppins(
-                            fontWeight: FontWeight.w600,
-                            fontSize: 14,
-                          ),
+                          style: AppType.body.copyWith(fontWeight: FontWeight.w600),
                         ),
                         const SizedBox(height: 10),
                         _idField(
@@ -433,10 +424,7 @@ class _PostSaleScreenState extends State<PostSaleScreen> {
                                   )
                                 : Text(
                                     'Submit order',
-                                    style: GoogleFonts.poppins(
-                                      fontWeight: FontWeight.w600,
-                                      fontSize: 15,
-                                    ),
+                                    style: AppType.h3.copyWith(fontWeight: FontWeight.w600),
                                   ),
                           ),
                         ),
@@ -473,10 +461,7 @@ class _PostSaleScreenState extends State<PostSaleScreen> {
             children: [
               Text(
                 _dealerLoadError!,
-                style: GoogleFonts.poppins(
-                  fontSize: 12,
-                  color: AppColors.error,
-                ),
+                style: AppType.meta.copyWith(color: AppColors.error),
               ),
               TextButton(
                 onPressed: _loadDealers,
@@ -524,7 +509,7 @@ class _PostSaleScreenState extends State<PostSaleScreen> {
         decoration: _decoration(label, Icons.calendar_today_outlined),
         child: Text(
           DateFormat('dd MMM yyyy').format(date),
-          style: GoogleFonts.poppins(fontSize: 14),
+          style: AppType.body,
         ),
       ),
     );
@@ -533,10 +518,10 @@ class _PostSaleScreenState extends State<PostSaleScreen> {
   InputDecoration _decoration(String label, IconData icon) {
     return InputDecoration(
       labelText: label,
-      labelStyle: GoogleFonts.poppins(fontSize: 13),
+      labelStyle: AppType.bodySm,
       prefixIcon: Icon(icon, size: 20),
       filled: true,
-      fillColor: AppColors.background,
+      fillColor: AppColors.surfaceSunk,
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
         borderSide: BorderSide.none,
@@ -556,7 +541,7 @@ class _PostSaleScreenState extends State<PostSaleScreen> {
       validator: required
           ? (v) => (v == null || v.trim().isEmpty) ? 'Required' : null
           : null,
-      style: GoogleFonts.poppins(fontSize: 14),
+      style: AppType.body,
       decoration: _decoration(label, icon),
     );
   }
@@ -574,7 +559,7 @@ class _PostSaleScreenState extends State<PostSaleScreen> {
         if (n == null || n <= 0) return 'Required';
         return null;
       },
-      style: GoogleFonts.poppins(fontSize: 14),
+      style: AppType.body,
       decoration: _decoration(label, icon),
     );
   }
@@ -593,7 +578,7 @@ class _PostSaleScreenState extends State<PostSaleScreen> {
             if (n == null || n <= 0) return 'Required';
             return null;
           },
-      style: GoogleFonts.poppins(fontSize: 14),
+      style: AppType.body,
       decoration: _decoration(label, Icons.payments_outlined),
     );
   }

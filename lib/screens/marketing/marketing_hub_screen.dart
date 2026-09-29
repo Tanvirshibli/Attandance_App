@@ -1,14 +1,10 @@
 import 'package:animate_do/animate_do.dart';
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 
-import '../../config/theme.dart';
 import '../../models/marketing_models.dart';
 import '../../services/auth_service.dart';
 import '../../services/marketing_service.dart';
-import '../../widgets/api_empty_state.dart';
-import '../../widgets/gradient_screen_header.dart';
-import '../../widgets/section_card.dart';
+import '../../widgets/ui/ui.dart';
 import 'followup_form_screen.dart';
 import 'market_detail_screen.dart';
 import 'market_form_screen.dart';
@@ -139,16 +135,17 @@ class _MarketingHubScreenState extends State<MarketingHubScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: AppColors.canvas,
       body: RefreshIndicator(
         onRefresh: _enabled ? _loadPreviews : _init,
+        color: AppColors.primary,
         child: CustomScrollView(
           physics: const AlwaysScrollableScrollPhysics(
             parent: BouncingScrollPhysics(),
           ),
           slivers: [
             const SliverToBoxAdapter(
-              child: GradientScreenHeader(
+              child: AppHeader(
                 title: 'Farms, Dealers and Markets',
                 subtitle: 'Recent records, create, or view all',
               ),
@@ -162,8 +159,8 @@ class _MarketingHubScreenState extends State<MarketingHubScreen> {
                 child: Center(
                   child: Padding(
                     padding: const EdgeInsets.all(20),
-                    child: ApiEmptyState(
-                      icon: Icons.agriculture_outlined,
+                    child: AppEmptyState(
+                      icon: AppIcons.farms,
                       title: 'Farms, Dealers and Markets disabled',
                       subtitle:
                           'Ask an admin to enable marketing.enabled in mobile app settings.',
@@ -174,13 +171,13 @@ class _MarketingHubScreenState extends State<MarketingHubScreen> {
               )
             else
               SliverPadding(
-                padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
+                padding: const EdgeInsets.fromLTRB(AppSpace.gutter, AppSpace.md, AppSpace.gutter, AppSpace.xl),
                 sliver: SliverList(
                   delegate: SliverChildListDelegate([
                     FadeInUp(
                       delay: const Duration(milliseconds: 40),
                       child: _HubGroupCard(
-                        icon: Icons.agriculture_outlined,
+                        icon: AppIcons.farms,
                         label: 'Farms',
                         color: AppColors.accent,
                         createTooltip: 'Create farm',
@@ -211,7 +208,7 @@ class _MarketingHubScreenState extends State<MarketingHubScreen> {
                     FadeInUp(
                       delay: const Duration(milliseconds: 80),
                       child: _HubGroupCard(
-                        icon: Icons.storefront_outlined,
+                        icon: AppIcons.store,
                         label: 'Dealers',
                         color: AppColors.primary,
                         createTooltip: 'Create dealer',
@@ -242,7 +239,7 @@ class _MarketingHubScreenState extends State<MarketingHubScreen> {
                     FadeInUp(
                       delay: const Duration(milliseconds: 120),
                       child: _HubGroupCard(
-                        icon: Icons.store_mall_directory_outlined,
+                        icon: AppIcons.store,
                         label: 'Markets',
                         color: AppColors.secondary,
                         createTooltip: 'Create market',
@@ -263,61 +260,45 @@ class _MarketingHubScreenState extends State<MarketingHubScreen> {
                     const SizedBox(height: 12),
                     FadeInUp(
                       delay: const Duration(milliseconds: 160),
-                      child: SectionCard(
-                        padding: EdgeInsets.zero,
-                        child: InkWell(
-                          onTap: () => _open(
-                            const FollowupFormScreen(showListMode: true),
-                          ),
-                          borderRadius: BorderRadius.circular(20),
-                          child: Padding(
-                            padding: const EdgeInsets.all(16),
-                            child: Row(
-                              children: [
-                                Container(
-                                  width: 48,
-                                  height: 48,
-                                  decoration: BoxDecoration(
-                                    color: AppColors.warning.withValues(
-                                      alpha: 0.12,
-                                    ),
-                                    borderRadius: BorderRadius.circular(14),
-                                  ),
-                                  child: const Icon(
-                                    Icons.event_note_outlined,
-                                    color: AppColors.warning,
-                                  ),
-                                ),
-                                const SizedBox(width: 12),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        'Follow-ups',
-                                        style: GoogleFonts.poppins(
-                                          fontSize: 15,
-                                          fontWeight: FontWeight.w600,
-                                        ),
-                                      ),
-                                      Text(
-                                        'Tasks and reminders',
-                                        style: GoogleFonts.poppins(
-                                          fontSize: 12,
-                                          color: AppColors.textSecondary,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                                const Icon(
-                                  Icons.chevron_right,
-                                  color: AppColors.textHint,
-                                ),
-                              ],
+                      // The untyped `push` is deliberate: the screen is
+                      // pre-built and the result is discarded.
+                      child: AppCard(
+                        onTap: () => _open(
+                          const FollowupFormScreen(showListMode: true),
+                        ),
+                        padding: const EdgeInsets.all(AppSpace.sm + 2),
+                        child: Row(
+                          children: [
+                            AppIconTile(
+                              icon: AppIcons.note,
+                              color: AppColors.warning,
+                              semanticLabel: 'Follow-ups',
                             ),
-                          ),
+                            const SizedBox(width: AppSpace.sm + 2),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Text(
+                                    'Follow-ups',
+                                    style: AppType.h3
+                                        .copyWith(color: AppColors.ink),
+                                  ),
+                                  Text(
+                                    'Tasks and reminders',
+                                    style: AppType.meta
+                                        .copyWith(color: AppColors.inkMuted),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            AppIcon(
+                              AppIcons.chevron,
+                              size: 18,
+                              color: AppColors.inkFaint,
+                            ),
+                          ],
                         ),
                       ),
                     ),
@@ -360,22 +341,18 @@ class _HubGroupCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // A tinted panel with a coloured left rail, one per master list. Status
+    // tints this instead of dominating it, so the rail carries the module.
     return Container(
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(20),
+        color: color.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(AppRadius.lg),
         border: Border(
           left: BorderSide(color: color, width: 4),
         ),
-        boxShadow: [
-          BoxShadow(
-            color: AppColors.shadow.withValues(alpha: 0.05),
-            blurRadius: 12,
-            offset: const Offset(0, 4),
-          ),
-        ],
+        boxShadow: AppShadows.card,
       ),
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(AppSpace.sm + 2),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -394,11 +371,7 @@ class _HubGroupCard extends StatelessWidget {
               Expanded(
                 child: Text(
                   label,
-                  style: GoogleFonts.poppins(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w600,
-                    color: color,
-                  ),
+                  style: AppType.h3.copyWith(fontWeight: FontWeight.w600, color: color),
                 ),
               ),
               _HubIconAction(
@@ -436,10 +409,7 @@ class _HubGroupCard extends StatelessWidget {
                   Expanded(
                     child: Text(
                       error!,
-                      style: GoogleFonts.poppins(
-                        fontSize: 12,
-                        color: AppColors.error,
-                      ),
+                      style: AppType.meta.copyWith(color: AppColors.error),
                     ),
                   ),
                   TextButton(onPressed: onRetry, child: const Text('Retry')),
@@ -508,10 +478,7 @@ class _PartyPreviewList extends StatelessWidget {
         padding: const EdgeInsets.symmetric(vertical: 4),
         child: Text(
           'No records yet — tap + to create',
-          style: GoogleFonts.poppins(
-            fontSize: 12,
-            color: AppColors.textSecondary,
-          ),
+          style: AppType.meta.copyWith(color: AppColors.inkMuted),
         ),
       );
     }
@@ -527,24 +494,22 @@ class _PartyPreviewList extends StatelessWidget {
               padding: const EdgeInsets.symmetric(vertical: 10),
               child: Row(
                 children: [
-                  Icon(
+                  AppIcon(
                     parties[i].isFarm
-                        ? Icons.agriculture_outlined
-                        : Icons.storefront_outlined,
+                        ? AppIcons.farms
+                        : AppIcons.store,
                     size: 18,
                     color: color,
                   ),
-                  const SizedBox(width: 10),
+                  const SizedBox(width: AppSpace.sm),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
                       children: [
                         Text(
                           parties[i].displayName,
-                          style: GoogleFonts.poppins(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
-                          ),
+                          style: AppType.bodySm.copyWith(fontWeight: FontWeight.w600),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                         ),
@@ -556,10 +521,7 @@ class _PartyPreviewList extends StatelessWidget {
                               if (parties[i].marketName != null)
                                 parties[i].marketName!,
                             ].join(' · '),
-                            style: GoogleFonts.poppins(
-                              fontSize: 11,
-                              color: AppColors.textSecondary,
-                            ),
+                            style: AppType.micro.copyWith(color: AppColors.inkMuted),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                           ),
@@ -580,8 +542,7 @@ class _PartyPreviewList extends StatelessWidget {
                       ),
                       child: Text(
                         parties[i].status!,
-                        style: GoogleFonts.poppins(
-                          fontSize: 9,
+                        style: AppType.micro.copyWith(
                           fontWeight: FontWeight.w600,
                           color: statusColor(parties[i].status),
                         ),
@@ -589,10 +550,10 @@ class _PartyPreviewList extends StatelessWidget {
                     ),
                   ],
                   const SizedBox(width: 4),
-                  const Icon(
-                    Icons.chevron_right,
+                  AppIcon(
+                    AppIcons.chevron,
                     size: 18,
-                    color: AppColors.textHint,
+                    color: AppColors.inkFaint,
                   ),
                 ],
               ),
@@ -620,10 +581,7 @@ class _MarketPreviewList extends StatelessWidget {
         padding: const EdgeInsets.symmetric(vertical: 4),
         child: Text(
           'No records yet — tap + to create',
-          style: GoogleFonts.poppins(
-            fontSize: 12,
-            color: AppColors.textSecondary,
-          ),
+          style: AppType.meta.copyWith(color: AppColors.inkMuted),
         ),
       );
     }
@@ -639,8 +597,8 @@ class _MarketPreviewList extends StatelessWidget {
               padding: const EdgeInsets.symmetric(vertical: 10),
               child: Row(
                 children: [
-                  const Icon(
-                    Icons.store_mall_directory_outlined,
+                  AppIcon(
+                    AppIcons.store,
                     size: 18,
                     color: AppColors.secondary,
                   ),
@@ -651,30 +609,24 @@ class _MarketPreviewList extends StatelessWidget {
                       children: [
                         Text(
                           markets[i].displayName,
-                          style: GoogleFonts.poppins(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
-                          ),
+                          style: AppType.bodySm.copyWith(fontWeight: FontWeight.w600),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                         ),
                         if (markets[i].locationLine.isNotEmpty)
                           Text(
                             markets[i].locationLine,
-                            style: GoogleFonts.poppins(
-                              fontSize: 11,
-                              color: AppColors.textSecondary,
-                            ),
+                            style: AppType.micro.copyWith(color: AppColors.inkMuted),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                           ),
                       ],
                     ),
                   ),
-                  const Icon(
-                    Icons.chevron_right,
+                  AppIcon(
+                    AppIcons.chevron,
                     size: 18,
-                    color: AppColors.textHint,
+                    color: AppColors.inkFaint,
                   ),
                 ],
               ),
