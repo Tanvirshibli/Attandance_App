@@ -1,53 +1,54 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import 'app_design.dart' as design;
+
+/// Legacy theme surface.
+///
+/// The token *names* here are referenced by every screen in the app, so they
+/// stay exactly as they are. The *values* now delegate to the tokens in
+/// `app_design.dart`, which means a screen that has not been migrated yet
+/// still picks up the new palette — it just keeps its old layout. That is
+/// what lets the redesign land in stages with no screen breaking and no
+/// half-teal, half-blue app in the middle.
+///
+/// The import is prefixed because this class is also called `AppColors`.
 class AppColors {
+  const AppColors._();
+
   // Primary palette
-  static const Color primary = Color(0xFF1A73E8);
-  static const Color primaryDark = Color(0xFF0D47A1);
-  static const Color primaryLight = Color(0xFFBBDEFB);
-  static const Color accent = Color(0xFF00BFA5);
-  static const Color secondary = Color(0xFF6C63FF);
+  static const Color primary = design.AppColors.primary;
+  static const Color primaryDark = design.AppColors.primaryDark;
+  static const Color primaryLight = design.AppColors.primaryLight;
+  static const Color accent = design.AppColors.accent;
+  static const Color secondary = design.AppColors.secondary;
 
   // Status colors
-  static const Color success = Color(0xFF00C853);
-  static const Color warning = Color(0xFFFFAB00);
-  static const Color error = Color(0xFFFF1744);
-  static const Color info = Color(0xFF2979FF);
+  static const Color success = design.AppColors.success;
+  static const Color warning = design.AppColors.warning;
+  static const Color error = design.AppColors.error;
+  static const Color info = design.AppColors.info;
 
   // Neutral
-  static const Color background = Color(0xFFF5F7FA);
-  static const Color surface = Color(0xFFFFFFFF);
-  static const Color cardBg = Color(0xFFFFFFFF);
-  static const Color textPrimary = Color(0xFF1A1A2E);
-  static const Color textSecondary = Color(0xFF6B7280);
-  static const Color textHint = Color(0xFF9CA3AF);
-  static const Color divider = Color(0xFFE5E7EB);
-  static const Color shadow = Color(0x1A000000);
+  static const Color background = design.AppColors.canvas;
+  static const Color surface = design.AppColors.surface;
+  static const Color cardBg = design.AppColors.surface;
+  static const Color textPrimary = design.AppColors.ink;
+  static const Color textSecondary = design.AppColors.inkMuted;
+  static const Color textHint = design.AppColors.inkFaint;
+  static const Color divider = design.AppColors.line;
+  static const Color shadow = design.AppColors.shadow;
 
   // Gradients
-  static const LinearGradient primaryGradient = LinearGradient(
-    begin: Alignment.topLeft,
-    end: Alignment.bottomRight,
-    colors: [Color(0xFF1A73E8), Color(0xFF6C63FF)],
-  );
-
-  static const LinearGradient successGradient = LinearGradient(
-    begin: Alignment.topLeft,
-    end: Alignment.bottomRight,
-    colors: [Color(0xFF00C853), Color(0xFF00BFA5)],
-  );
+  static const LinearGradient primaryGradient = design.AppColors.brandGradient;
+  static const LinearGradient successGradient =
+      design.AppColors.successGradient;
+  static const LinearGradient darkGradient = design.AppColors.darkGradient;
 
   static const LinearGradient warmGradient = LinearGradient(
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
     colors: [Color(0xFFFF6B6B), Color(0xFFFFAB00)],
-  );
-
-  static const LinearGradient darkGradient = LinearGradient(
-    begin: Alignment.topLeft,
-    end: Alignment.bottomRight,
-    colors: [Color(0xFF1A1A2E), Color(0xFF16213E)],
   );
 }
 
