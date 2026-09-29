@@ -1,0 +1,34 @@
+{
+  "message": "Success!",
+  "data": [
+    {
+      "id": 3,
+      "zoneName": "Zone C",
+      "zonalInCharge": "Md.Monowar Hossen-Sr.Manager",
+      "districts": [
+        { "id": 18, "name": "Bogura" },
+        { "id": 24, "name": "Rajshahi" },
+        { "id": 32, "name": "Rangpur" }
+      ],
+      "note": "Ok"
+    },
+    {
+      "id": 7,
+      "zoneName": "Zone G",
+      "zonalInCharge": null,
+      "districts": [{ "id": 63, "name": "Narail" }],
+      "note": "ok"
+    },
+    {
+      "id": 1,
+      "zoneName": "Zone A",
+      "zonalInCharge": "Mr: Sujat Ali (Regional Sales Manager)",
+      "districts": [
+        { "id": 3, "name": "Gazipur" },
+        { "id": 10, "name": "Mymensingh" },
+        { "id": 17, "name": "Tangail" }
+      ],
+      "note": "ok"
+    }
+  ]
+}

@@ -206,6 +206,9 @@ class AppConfig {
   static String get salesEmployeeListUrl =>
       '$backendApiBaseUrl/api/get-sales-employee-list';
 
+  /// Sales zone master with its districts (public endpoint, no auth).
+  static String get salesZoneListUrl => '$salesApiBaseUrl/api/get-zone';
+
   /// ZKTeco geo upload fallback when endpoint config resolve fails.
   static String get geoLocationUploadUrl =>
       '$attendanceApiBaseUrl/api/v1/mobile/geo-location';
