@@ -2,20 +2,17 @@ import 'dart:io';
 
 import 'package:animate_do/animate_do.dart';
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 
-import '../config/theme.dart';
 import '../models/auth_wise_payment_post_models.dart';
 import '../models/dealer_list_models.dart';
 import '../models/payment_setup_models.dart';
 import '../services/auth_service.dart';
 import '../services/payment_service.dart';
 import '../services/sales_service.dart';
-import '../widgets/gradient_screen_header.dart';
 import '../widgets/searchable_select_field.dart';
-import '../widgets/section_card.dart';
+import '../widgets/ui/ui.dart';
 import '../widgets/voice_input_field.dart';
 
 class _PaymentModeOption {
@@ -257,12 +254,12 @@ class _PostAuthWisePaymentScreenState extends State<PostAuthWisePaymentScreen> {
           children: [
             ListTile(
               leading: const Icon(Icons.photo_camera_outlined),
-              title: Text('Camera', style: GoogleFonts.poppins()),
+              title: Text('Camera', style: AppType.body),
               onTap: () => Navigator.of(context).pop(ImageSource.camera),
             ),
             ListTile(
               leading: const Icon(Icons.photo_library_outlined),
-              title: Text('Gallery', style: GoogleFonts.poppins()),
+              title: Text('Gallery', style: AppType.body),
               onTap: () => Navigator.of(context).pop(ImageSource.gallery),
             ),
           ],
@@ -442,7 +439,7 @@ class _PostAuthWisePaymentScreenState extends State<PostAuthWisePaymentScreen> {
 
   void _snack(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message, style: GoogleFonts.poppins())),
+      SnackBar(content: Text(message, style: AppType.body)),
     );
   }
 
@@ -451,12 +448,12 @@ class _PostAuthWisePaymentScreenState extends State<PostAuthWisePaymentScreen> {
     final setup = _setup;
 
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: AppColors.canvas,
       body: CustomScrollView(
         physics: const BouncingScrollPhysics(),
         slivers: [
           const SliverToBoxAdapter(
-            child: GradientScreenHeader(
+            child: AppHeader(
               title: 'Receive payment',
               subtitle: 'Create payment receive (sales backend)',
             ),
@@ -465,7 +462,7 @@ class _PostAuthWisePaymentScreenState extends State<PostAuthWisePaymentScreen> {
             padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
             sliver: SliverToBoxAdapter(
               child: FadeInUp(
-                child: SectionCard(
+                child: AppCard(
                   child: Form(
                     key: _formKey,
                     child: Column(
@@ -474,10 +471,7 @@ class _PostAuthWisePaymentScreenState extends State<PostAuthWisePaymentScreen> {
                         if (_employeeId != null)
                           Text(
                             'Employee ID: $_employeeId',
-                            style: GoogleFonts.poppins(
-                              fontSize: 12,
-                              color: AppColors.textSecondary,
-                            ),
+                            style: AppType.meta.copyWith(color: AppColors.inkMuted),
                           ),
                         if (_loadingSetup) ...[
                           const SizedBox(height: 16),
@@ -486,19 +480,13 @@ class _PostAuthWisePaymentScreenState extends State<PostAuthWisePaymentScreen> {
                           Text(
                             'Loading payment setup…',
                             textAlign: TextAlign.center,
-                            style: GoogleFonts.poppins(
-                              fontSize: 12,
-                              color: AppColors.textSecondary,
-                            ),
+                            style: AppType.meta.copyWith(color: AppColors.inkMuted),
                           ),
                         ] else if (_setup == null && _setupError != null) ...[
                           const SizedBox(height: 12),
                           Text(
                             _setupError!,
-                            style: GoogleFonts.poppins(
-                              fontSize: 13,
-                              color: AppColors.error,
-                            ),
+                            style: AppType.bodySm.copyWith(color: AppColors.error),
                           ),
                           TextButton(
                             onPressed: _loadMasters,
@@ -509,10 +497,7 @@ class _PostAuthWisePaymentScreenState extends State<PostAuthWisePaymentScreen> {
                             const SizedBox(height: 8),
                             Text(
                               _setupError!,
-                              style: GoogleFonts.poppins(
-                                fontSize: 12,
-                                color: AppColors.warning,
-                              ),
+                              style: AppType.meta.copyWith(color: AppColors.warning),
                             ),
                           ],
                           const SizedBox(height: 12),
@@ -615,7 +600,7 @@ class _PostAuthWisePaymentScreenState extends State<PostAuthWisePaymentScreen> {
                                     value: m,
                                     child: Text(
                                       m.label,
-                                      style: GoogleFonts.poppins(fontSize: 14),
+                                      style: AppType.body,
                                     ),
                                   ),
                                 )
@@ -693,9 +678,7 @@ class _PostAuthWisePaymentScreenState extends State<PostAuthWisePaymentScreen> {
                               icon: const Icon(Icons.add),
                               label: Text(
                                 'ADD',
-                                style: GoogleFonts.poppins(
-                                  fontWeight: FontWeight.w600,
-                                ),
+                                style: AppType.body.copyWith(fontWeight: FontWeight.w600),
                               ),
                             ),
                           ),
@@ -703,10 +686,7 @@ class _PostAuthWisePaymentScreenState extends State<PostAuthWisePaymentScreen> {
                             const SizedBox(height: 16),
                             Text(
                               'Queued payments (${_queue.length})',
-                              style: GoogleFonts.poppins(
-                                fontWeight: FontWeight.w600,
-                                fontSize: 14,
-                              ),
+                              style: AppType.body.copyWith(fontWeight: FontWeight.w600),
                             ),
                             const SizedBox(height: 8),
                             ...List.generate(_queue.length, (index) {
@@ -727,22 +707,22 @@ class _PostAuthWisePaymentScreenState extends State<PostAuthWisePaymentScreen> {
                                         : Container(
                                             width: 40,
                                             height: 40,
-                                            color: AppColors.background,
+                                            color: AppColors.surfaceSunk,
                                             child: const Icon(
                                               Icons.receipt_long_outlined,
                                               size: 20,
-                                              color: AppColors.textHint,
+                                              color: AppColors.inkFaint,
                                             ),
                                           ),
                                   ),
                                   title: Text(
                                     '${row.receiverName} · ৳${_fmtAmount(row.input.amount)}',
-                                    style: GoogleFonts.poppins(fontSize: 13),
+                                    style: AppType.bodySm,
                                   ),
                                   subtitle: Text(
                                     '${row.recTypeName} · ${row.paymentForName}\n'
                                     '${row.paymentModeName} · ${row.bankName}',
-                                    style: GoogleFonts.poppins(fontSize: 11),
+                                    style: AppType.micro,
                                   ),
                                   trailing: IconButton(
                                     icon: const Icon(Icons.close),
@@ -777,10 +757,7 @@ class _PostAuthWisePaymentScreenState extends State<PostAuthWisePaymentScreen> {
                                     )
                                   : Text(
                                       'SAVE',
-                                      style: GoogleFonts.poppins(
-                                        fontWeight: FontWeight.w600,
-                                        fontSize: 15,
-                                      ),
+                                      style: AppType.h3.copyWith(fontWeight: FontWeight.w600),
                                     ),
                             ),
                           ),
@@ -818,7 +795,7 @@ class _PostAuthWisePaymentScreenState extends State<PostAuthWisePaymentScreen> {
           .map(
             (item) => DropdownMenuItem(
               value: item.$1,
-              child: Text(item.$2, style: GoogleFonts.poppins(fontSize: 14)),
+              child: Text(item.$2, style: AppType.body),
             ),
           )
           .toList(),
@@ -835,10 +812,7 @@ class _PostAuthWisePaymentScreenState extends State<PostAuthWisePaymentScreen> {
         decoration: _dec(label, Icons.calendar_today_outlined),
         child: Text(
           date == null ? 'Select date' : DateFormat('dd MMM yyyy').format(date),
-          style: GoogleFonts.poppins(
-            fontSize: 14,
-            color: date == null ? AppColors.textHint : AppColors.textPrimary,
-          ),
+          style: AppType.body.copyWith(color: date == null ? AppColors.inkFaint : AppColors.ink),
         ),
       ),
     );
@@ -847,10 +821,10 @@ class _PostAuthWisePaymentScreenState extends State<PostAuthWisePaymentScreen> {
   InputDecoration _dec(String label, IconData icon) {
     return InputDecoration(
       labelText: label,
-      labelStyle: GoogleFonts.poppins(fontSize: 13),
+      labelStyle: AppType.bodySm,
       prefixIcon: Icon(icon, size: 20),
       filled: true,
-      fillColor: AppColors.background,
+      fillColor: AppColors.surfaceSunk,
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
         borderSide: BorderSide.none,
@@ -864,10 +838,7 @@ class _PostAuthWisePaymentScreenState extends State<PostAuthWisePaymentScreen> {
       children: [
         Text(
           'Receipt photo (optional)',
-          style: GoogleFonts.poppins(
-            fontSize: 12,
-            color: AppColors.textSecondary,
-          ),
+          style: AppType.meta.copyWith(color: AppColors.inkMuted),
         ),
         const SizedBox(height: 8),
         Row(
@@ -889,7 +860,7 @@ class _PostAuthWisePaymentScreenState extends State<PostAuthWisePaymentScreen> {
                 icon: const Icon(Icons.add_a_photo_outlined, size: 18),
                 label: Text(
                   _photo == null ? 'Add receipt photo' : 'Replace photo',
-                  style: GoogleFonts.poppins(fontSize: 13),
+                  style: AppType.bodySm,
                 ),
               ),
             ),
@@ -908,7 +879,7 @@ class _PostAuthWisePaymentScreenState extends State<PostAuthWisePaymentScreen> {
         if (n == null || n <= 0) return 'Required';
         return null;
       },
-      style: GoogleFonts.poppins(fontSize: 14),
+      style: AppType.body,
       decoration: _dec(label, Icons.payments_outlined),
     );
   }
@@ -926,7 +897,7 @@ class _PostAuthWisePaymentScreenState extends State<PostAuthWisePaymentScreen> {
       validator: required
           ? (v) => (v == null || v.trim().isEmpty) ? 'Required' : null
           : null,
-      style: GoogleFonts.poppins(fontSize: 14),
+      style: AppType.body,
       decoration: _dec(label, icon),
     );
   }

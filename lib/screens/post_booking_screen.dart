@@ -1,17 +1,14 @@
 import 'package:animate_do/animate_do.dart';
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 
-import '../config/theme.dart';
 import '../models/dealer_list_models.dart';
 import '../models/sales_booking_post_models.dart';
 import '../services/auth_service.dart';
 import '../services/payment_service.dart';
 import '../services/sales_service.dart';
-import '../widgets/gradient_screen_header.dart';
 import '../widgets/searchable_select_field.dart';
-import '../widgets/section_card.dart';
+import '../widgets/ui/ui.dart';
 import '../widgets/voice_input_field.dart';
 
 class _LineDraft {
@@ -453,7 +450,7 @@ class _PostBookingScreenState extends State<PostBookingScreen> {
 
   void _snack(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message, style: GoogleFonts.poppins())),
+      SnackBar(content: Text(message, style: AppType.body)),
     );
   }
 
@@ -461,12 +458,12 @@ class _PostBookingScreenState extends State<PostBookingScreen> {
   Widget build(BuildContext context) {
     final data = _formData;
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: AppColors.canvas,
       body: CustomScrollView(
         physics: const BouncingScrollPhysics(),
         slivers: [
           SliverToBoxAdapter(
-            child: GradientScreenHeader(
+            child: AppHeader(
               title: 'Post booking',
               subtitle: _salesService.useCreateDemo
                   ? 'Demo mode — enable live sales to post to server'
@@ -477,7 +474,7 @@ class _PostBookingScreenState extends State<PostBookingScreen> {
             padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
             sliver: SliverToBoxAdapter(
               child: FadeInUp(
-                child: SectionCard(
+                child: AppCard(
                   child: Form(
                     key: _formKey,
                     child: Column(
@@ -486,10 +483,7 @@ class _PostBookingScreenState extends State<PostBookingScreen> {
                         if (_canonicalEmployeeId != null)
                           Text(
                             'Booking person ID: ${_isFeed ? _canonicalEmployeeId : (_chicksBookingPersonId ?? _canonicalEmployeeId)}',
-                            style: GoogleFonts.poppins(
-                              fontSize: 12,
-                              color: AppColors.textSecondary,
-                            ),
+                            style: AppType.meta.copyWith(color: AppColors.inkMuted),
                           ),
                         if (_loading) ...[
                           const SizedBox(height: 16),
@@ -498,10 +492,7 @@ class _PostBookingScreenState extends State<PostBookingScreen> {
                           const SizedBox(height: 12),
                           Text(
                             _loadError ?? 'Could not load form data.',
-                            style: GoogleFonts.poppins(
-                              fontSize: 13,
-                              color: AppColors.error,
-                            ),
+                            style: AppType.bodySm.copyWith(color: AppColors.error),
                           ),
                           TextButton(
                             onPressed: _loadAll,
@@ -511,10 +502,7 @@ class _PostBookingScreenState extends State<PostBookingScreen> {
                           if (_loadError != null)
                             Text(
                               _loadError!,
-                              style: GoogleFonts.poppins(
-                                fontSize: 12,
-                                color: AppColors.warning,
-                              ),
+                              style: AppType.meta.copyWith(color: AppColors.warning),
                             ),
                           const SizedBox(height: 12),
                           _dropdown(
@@ -547,7 +535,7 @@ class _PostBookingScreenState extends State<PostBookingScreen> {
                             contentPadding: EdgeInsets.zero,
                             title: Text(
                               'Is Booking Money',
-                              style: GoogleFonts.poppins(fontSize: 14),
+                              style: AppType.body,
                             ),
                             value: _isBookingMoney,
                             onChanged: (v) => setState(() {
@@ -559,10 +547,7 @@ class _PostBookingScreenState extends State<PostBookingScreen> {
                           const SizedBox(height: 16),
                           Text(
                             'Add Items',
-                            style: GoogleFonts.poppins(
-                              fontWeight: FontWeight.w600,
-                              fontSize: 14,
-                            ),
+                            style: AppType.body.copyWith(fontWeight: FontWeight.w600),
                           ),
                           const SizedBox(height: 8),
                           ...List.generate(_lines.length, _lineCard),
@@ -601,10 +586,7 @@ class _PostBookingScreenState extends State<PostBookingScreen> {
                             ),
                             child: Text(
                               _fmt(_computedTotal),
-                              style: GoogleFonts.poppins(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w600,
-                              ),
+                              style: AppType.h2.copyWith(fontWeight: FontWeight.w600),
                             ),
                           ),
                           const SizedBox(height: 24),
@@ -630,10 +612,7 @@ class _PostBookingScreenState extends State<PostBookingScreen> {
                                     )
                                   : Text(
                                       'Create',
-                                      style: GoogleFonts.poppins(
-                                        fontWeight: FontWeight.w600,
-                                        fontSize: 15,
-                                      ),
+                                      style: AppType.h3.copyWith(fontWeight: FontWeight.w600),
                                     ),
                             ),
                           ),
@@ -762,17 +741,14 @@ class _PostBookingScreenState extends State<PostBookingScreen> {
             padding: const EdgeInsets.only(top: 4),
             child: Text(
               'Zone list is not on the server yet.',
-              style: GoogleFonts.poppins(
-                fontSize: 12,
-                color: AppColors.textSecondary,
-              ),
+              style: AppType.meta.copyWith(color: AppColors.inkMuted),
             ),
           ),
         SwitchListTile(
           contentPadding: EdgeInsets.zero,
           title: Text(
             'Is Multiple Delivery',
-            style: GoogleFonts.poppins(fontSize: 14),
+            style: AppType.body,
           ),
           value: _isMultiDelivery,
           onChanged: (v) => setState(() => _isMultiDelivery = v),
@@ -780,7 +756,7 @@ class _PostBookingScreenState extends State<PostBookingScreen> {
         if (_isMultiDelivery) ...[
           Text(
             'Delivery details',
-            style: GoogleFonts.poppins(fontWeight: FontWeight.w600, fontSize: 13),
+            style: AppType.bodySm.copyWith(fontWeight: FontWeight.w600),
           ),
           const SizedBox(height: 8),
           ...List.generate(_deliveries.length, (index) {
@@ -891,7 +867,7 @@ class _PostBookingScreenState extends State<PostBookingScreen> {
               children: [
                 Text(
                   'Item ${index + 1}',
-                  style: GoogleFonts.poppins(fontWeight: FontWeight.w600),
+                  style: AppType.body.copyWith(fontWeight: FontWeight.w600),
                 ),
                 const Spacer(),
                 IconButton(
@@ -953,10 +929,7 @@ class _PostBookingScreenState extends State<PostBookingScreen> {
             if (_isFeed && line.feedProduct != null)
               Text(
                 'MRP / Tr Price ৳${_fmt(line.feedProduct!.tradePrice)}',
-                style: GoogleFonts.poppins(
-                  fontSize: 12,
-                  color: AppColors.textSecondary,
-                ),
+                style: AppType.meta.copyWith(color: AppColors.inkMuted),
               ),
             const SizedBox(height: 8),
             Row(
@@ -982,7 +955,7 @@ class _PostBookingScreenState extends State<PostBookingScreen> {
             const SizedBox(height: 6),
             Text(
               'Tl Price ৳${_fmt(line.lineTotal)}',
-              style: GoogleFonts.poppins(fontWeight: FontWeight.w600),
+              style: AppType.body.copyWith(fontWeight: FontWeight.w600),
             ),
           ],
         ),
@@ -1018,7 +991,7 @@ class _PostBookingScreenState extends State<PostBookingScreen> {
         decoration: _decoration(label, Icons.calendar_today_outlined),
         child: Text(
           DateFormat('dd MMM yyyy').format(date),
-          style: GoogleFonts.poppins(fontSize: 14),
+          style: AppType.body,
         ),
       ),
     );
@@ -1027,10 +1000,10 @@ class _PostBookingScreenState extends State<PostBookingScreen> {
   InputDecoration _decoration(String label, IconData icon) {
     return InputDecoration(
       labelText: label,
-      labelStyle: GoogleFonts.poppins(fontSize: 13),
+      labelStyle: AppType.bodySm,
       prefixIcon: Icon(icon, size: 20),
       filled: true,
-      fillColor: AppColors.background,
+      fillColor: AppColors.surfaceSunk,
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
         borderSide: BorderSide.none,
@@ -1049,7 +1022,7 @@ class _PostBookingScreenState extends State<PostBookingScreen> {
       validator: required
           ? (v) => (v == null || v.trim().isEmpty) ? 'Required' : null
           : null,
-      style: GoogleFonts.poppins(fontSize: 14),
+      style: AppType.body,
       decoration: _decoration(label, icon),
     );
   }
@@ -1072,7 +1045,7 @@ class _PostBookingScreenState extends State<PostBookingScreen> {
         if (n < 0) return 'Invalid';
         return null;
       },
-      style: GoogleFonts.poppins(fontSize: 14),
+      style: AppType.body,
       decoration: _decoration(label, Icons.payments_outlined),
     );
   }

@@ -1,13 +1,10 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 
-import '../config/theme.dart';
 import '../models/payment_models.dart';
 import '../services/auth_service.dart';
 import '../services/payment_service.dart';
-import '../widgets/gradient_screen_header.dart';
-import '../widgets/section_card.dart';
+import '../widgets/ui/ui.dart';
 import '../widgets/voice_input_field.dart';
 
 class PostPaymentScreen extends StatefulWidget {
@@ -92,32 +89,29 @@ class _PostPaymentScreenState extends State<PostPaymentScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: AppColors.canvas,
       body: Column(
         children: [
-          const GradientScreenHeader(title: 'Post Payment'),
+          const AppHeader(title: 'Post Payment'),
           Expanded(
             child: _isLoading
                 ? const Center(child: CircularProgressIndicator())
                 : SingleChildScrollView(
-                    padding: const EdgeInsets.all(20),
-                    child: SectionCard(
+                    padding: const EdgeInsets.all(AppSpace.lg),
+                    child: AppCard(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
                           Text(
                             'Loan',
-                            style: GoogleFonts.poppins(
-                              fontSize: 12,
-                              color: AppColors.textSecondary,
-                            ),
+                            style: AppType.meta.copyWith(color: AppColors.inkMuted),
                           ),
                           const SizedBox(height: 8),
                           DropdownButtonFormField<EmployeeLoan>(
                             value: _selectedLoan,
                             decoration: InputDecoration(
                               filled: true,
-                              fillColor: AppColors.background,
+                              fillColor: AppColors.surfaceSunk,
                               border: OutlineInputBorder(
                                 borderRadius: BorderRadius.circular(12),
                                 borderSide: BorderSide.none,
@@ -139,10 +133,7 @@ class _PostPaymentScreenState extends State<PostPaymentScreen> {
                             const SizedBox(height: 8),
                             Text(
                               'No active loans found.',
-                              style: GoogleFonts.poppins(
-                                fontSize: 12,
-                                color: AppColors.warning,
-                              ),
+                              style: AppType.meta.copyWith(color: AppColors.warning),
                             ),
                           ],
                           const SizedBox(height: 16),
@@ -154,7 +145,7 @@ class _PostPaymentScreenState extends State<PostPaymentScreen> {
                             decoration: InputDecoration(
                               labelText: 'Amount',
                               filled: true,
-                              fillColor: AppColors.background,
+                              fillColor: AppColors.surfaceSunk,
                               border: OutlineInputBorder(
                                 borderRadius: BorderRadius.circular(12),
                                 borderSide: BorderSide.none,
@@ -166,7 +157,7 @@ class _PostPaymentScreenState extends State<PostPaymentScreen> {
                             contentPadding: EdgeInsets.zero,
                             title: Text(
                               'Payment Date',
-                              style: GoogleFonts.poppins(fontSize: 12),
+                              style: AppType.meta,
                             ),
                             subtitle: Text(
                               DateFormat('dd MMM yyyy').format(_paymentDate),
@@ -203,10 +194,7 @@ class _PostPaymentScreenState extends State<PostPaymentScreen> {
                                     )
                                   : Text(
                                       'Submit Payment',
-                                      style: GoogleFonts.poppins(
-                                        color: Colors.white,
-                                        fontWeight: FontWeight.w600,
-                                      ),
+                                      style: AppType.body.copyWith(fontWeight: FontWeight.w600, color: Colors.white),
                                     ),
                             ),
                           ),

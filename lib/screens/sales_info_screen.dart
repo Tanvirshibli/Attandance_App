@@ -1,16 +1,12 @@
 import 'package:animate_do/animate_do.dart';
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 
-import '../config/theme.dart';
 import '../models/sales_models.dart';
 import '../services/auth_service.dart';
 import '../services/sales_service.dart';
-import '../widgets/api_empty_state.dart';
 import '../widgets/filter_chip_row.dart';
-import '../widgets/gradient_screen_header.dart';
-import '../widgets/section_card.dart';
+import '../widgets/ui/ui.dart';
 import 'post_booking_screen.dart';
 import 'post_sale_screen.dart';
 
@@ -216,19 +212,19 @@ class _SalesInfoScreenState extends State<SalesInfoScreen>
             children: [
               ListTile(
                 leading: const Icon(Icons.book_online_outlined),
-                title: Text('Post booking', style: GoogleFonts.poppins()),
+                title: Text('Post booking', style: AppType.body),
                 subtitle: Text(
                   'Feed / chicks',
-                  style: GoogleFonts.poppins(fontSize: 12),
+                  style: AppType.meta,
                 ),
                 onTap: () => Navigator.pop(context, 'booking'),
               ),
               ListTile(
                 leading: const Icon(Icons.point_of_sale_outlined),
-                title: Text('Post sale', style: GoogleFonts.poppins()),
+                title: Text('Post sale', style: AppType.body),
                 subtitle: Text(
                   'Egg / fertilizer / live bird / cull bird',
-                  style: GoogleFonts.poppins(fontSize: 12),
+                  style: AppType.meta,
                 ),
                 onTap: () => Navigator.pop(context, 'sale'),
               ),
@@ -255,7 +251,7 @@ class _SalesInfoScreenState extends State<SalesInfoScreen>
                 : choice == 'booking'
                     ? 'Booking submitted successfully.'
                     : 'Sale submitted successfully.',
-            style: GoogleFonts.poppins(),
+            style: AppType.body,
           ),
         ),
       );
@@ -266,7 +262,7 @@ class _SalesInfoScreenState extends State<SalesInfoScreen>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: AppColors.canvas,
       floatingActionButton: _isEligible
           ? FloatingActionButton.extended(
               onPressed: _openPostMenu,
@@ -275,7 +271,7 @@ class _SalesInfoScreenState extends State<SalesInfoScreen>
               icon: const Icon(Icons.add),
               label: Text(
                 'Post sale / booking',
-                style: GoogleFonts.poppins(fontWeight: FontWeight.w600),
+                style: AppType.body.copyWith(fontWeight: FontWeight.w600),
               ),
             )
           : null,
@@ -283,7 +279,7 @@ class _SalesInfoScreenState extends State<SalesInfoScreen>
         physics: const BouncingScrollPhysics(),
         slivers: [
           SliverToBoxAdapter(
-            child: GradientScreenHeader(
+            child: AppHeader(
               title: 'Sales Info',
               subtitle: _employeeName ?? 'Your sales performance',
             ),
@@ -297,8 +293,8 @@ class _SalesInfoScreenState extends State<SalesInfoScreen>
               child: Center(
                 child: Padding(
                   padding: const EdgeInsets.all(20),
-                  child: ApiEmptyState(
-                    icon: Icons.error_outline,
+                  child: AppEmptyState(
+                    icon: AppIcons.error,
                     title: 'Could not load sales',
                     subtitle: _error!,
                     onRetry: _load,
@@ -311,7 +307,7 @@ class _SalesInfoScreenState extends State<SalesInfoScreen>
               child: Center(
                 child: Padding(
                   padding: const EdgeInsets.all(20),
-                  child: ApiEmptyState(
+                  child: AppEmptyState(
                     icon: Icons.trending_up_outlined,
                     title: _unavailableReason == SalesProfile.featureDisabled
                         ? 'Sales module disabled'
@@ -328,8 +324,8 @@ class _SalesInfoScreenState extends State<SalesInfoScreen>
               child: Center(
                 child: Padding(
                   padding: const EdgeInsets.all(20),
-                  child: ApiEmptyState(
-                    icon: Icons.inbox_outlined,
+                  child: AppEmptyState(
+                    icon: AppIcons.inbox,
                     title: 'No sales data',
                     subtitle: 'No sales found for the selected period.',
                     onRetry: _loadSales,
@@ -339,7 +335,7 @@ class _SalesInfoScreenState extends State<SalesInfoScreen>
             )
           else
             SliverPadding(
-              padding: const EdgeInsets.fromLTRB(20, 8, 20, 100),
+              padding: const EdgeInsets.fromLTRB(AppSpace.gutter, AppSpace.xs, AppSpace.gutter, 100),
               sliver: SliverList(
                 delegate: SliverChildListDelegate([
                   FadeInUp(
@@ -356,10 +352,7 @@ class _SalesInfoScreenState extends State<SalesInfoScreen>
                     Text(
                       '${DateFormat('dd MMM yyyy').format(_customFrom!)}'
                       ' – ${DateFormat('dd MMM yyyy').format(_customTo!)}',
-                      style: GoogleFonts.poppins(
-                        fontSize: 12,
-                        color: AppColors.textSecondary,
-                      ),
+                      style: AppType.meta.copyWith(color: AppColors.inkMuted),
                     ),
                   ],
                   const SizedBox(height: 16),
@@ -398,16 +391,13 @@ class _OverallStrip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SectionCard(
+    return AppCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
             'Overall',
-            style: GoogleFonts.poppins(
-              fontSize: 15,
-              fontWeight: FontWeight.w600,
-            ),
+            style: AppType.h3.copyWith(fontWeight: FontWeight.w600),
           ),
           const SizedBox(height: 12),
           Wrap(
@@ -471,7 +461,7 @@ class _KpiChip extends StatelessWidget {
       decoration: BoxDecoration(
         color: emphasize
             ? AppColors.primary.withValues(alpha: 0.08)
-            : AppColors.background,
+            : AppColors.surfaceSunk,
         borderRadius: BorderRadius.circular(12),
       ),
       child: Column(
@@ -479,19 +469,12 @@ class _KpiChip extends StatelessWidget {
         children: [
           Text(
             label,
-            style: GoogleFonts.poppins(
-              fontSize: 11,
-              color: AppColors.textSecondary,
-            ),
+            style: AppType.micro.copyWith(color: AppColors.inkMuted),
           ),
           const SizedBox(height: 2),
           Text(
             value,
-            style: GoogleFonts.poppins(
-              fontSize: 14,
-              fontWeight: FontWeight.w600,
-              color: emphasize ? AppColors.primary : AppColors.textPrimary,
-            ),
+            style: AppType.body.copyWith(fontWeight: FontWeight.w600, color: emphasize ? AppColors.primary : AppColors.ink),
           ),
         ],
       ),
@@ -518,7 +501,7 @@ class _ModuleTabs extends StatelessWidget {
         isScrollable: true,
         tabAlignment: TabAlignment.start,
         labelColor: Colors.white,
-        unselectedLabelColor: AppColors.textSecondary,
+        unselectedLabelColor: AppColors.inkMuted,
         indicator: BoxDecoration(
           color: AppColors.primary,
           borderRadius: BorderRadius.circular(10),
@@ -527,11 +510,8 @@ class _ModuleTabs extends StatelessWidget {
         labelPadding: const EdgeInsets.symmetric(horizontal: 4),
         padding: const EdgeInsets.all(6),
         dividerColor: Colors.transparent,
-        labelStyle: GoogleFonts.poppins(
-          fontSize: 12,
-          fontWeight: FontWeight.w600,
-        ),
-        unselectedLabelStyle: GoogleFonts.poppins(fontSize: 12),
+        labelStyle: AppType.meta.copyWith(fontWeight: FontWeight.w600),
+        unselectedLabelStyle: AppType.meta,
         tabs: [
           for (final m in modules)
             Tab(
@@ -555,7 +535,7 @@ class _ModulePanel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (module.isEmpty) {
-      return SectionCard(
+      return AppCard(
         child: Padding(
           padding: const EdgeInsets.symmetric(vertical: 24),
           child: Column(
@@ -563,24 +543,18 @@ class _ModulePanel extends StatelessWidget {
               Icon(
                 Icons.inventory_2_outlined,
                 size: 36,
-                color: AppColors.textSecondary.withValues(alpha: 0.6),
+                color: AppColors.inkMuted.withValues(alpha: 0.6),
               ),
               const SizedBox(height: 10),
               Text(
                 'No ${module.label.toLowerCase()} sales',
-                style: GoogleFonts.poppins(
-                  fontWeight: FontWeight.w600,
-                  fontSize: 14,
-                ),
+                style: AppType.body.copyWith(fontWeight: FontWeight.w600),
               ),
               const SizedBox(height: 4),
               Text(
                 'Nothing recorded for this module in the selected period.',
                 textAlign: TextAlign.center,
-                style: GoogleFonts.poppins(
-                  fontSize: 12,
-                  color: AppColors.textSecondary,
-                ),
+                style: AppType.meta.copyWith(color: AppColors.inkMuted),
               ),
             ],
           ),
@@ -592,16 +566,13 @@ class _ModulePanel extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        SectionCard(
+        AppCard(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
                 '${module.label} summary',
-                style: GoogleFonts.poppins(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w600,
-                ),
+                style: AppType.h3.copyWith(fontWeight: FontWeight.w600),
               ),
               const SizedBox(height: 12),
               Wrap(
@@ -694,7 +665,7 @@ class _ExpandableListSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SectionCard(
+    return AppCard(
       padding: EdgeInsets.zero,
       child: Theme(
         data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
@@ -702,10 +673,7 @@ class _ExpandableListSection extends StatelessWidget {
           initiallyExpanded: initiallyExpanded && count > 0,
           title: Text(
             '$title ($count)',
-            style: GoogleFonts.poppins(
-              fontSize: 14,
-              fontWeight: FontWeight.w600,
-            ),
+            style: AppType.body.copyWith(fontWeight: FontWeight.w600),
           ),
           childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
           children: count == 0
@@ -714,10 +682,7 @@ class _ExpandableListSection extends StatelessWidget {
                     padding: const EdgeInsets.only(bottom: 8),
                     child: Text(
                       'No items',
-                      style: GoogleFonts.poppins(
-                        fontSize: 12,
-                        color: AppColors.textSecondary,
-                      ),
+                      style: AppType.meta.copyWith(color: AppColors.inkMuted),
                     ),
                   ),
                 ]
@@ -754,27 +719,18 @@ class _NamedAmountRow extends StatelessWidget {
               children: [
                 Text(
                   name,
-                  style: GoogleFonts.poppins(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w500,
-                  ),
+                  style: AppType.bodySm.copyWith(fontWeight: FontWeight.w500),
                 ),
                 Text(
                   'Qty ${qtyFmt(qty)}${unit != null && unit!.isNotEmpty ? ' $unit' : ''}',
-                  style: GoogleFonts.poppins(
-                    fontSize: 11,
-                    color: AppColors.textSecondary,
-                  ),
+                  style: AppType.micro.copyWith(color: AppColors.inkMuted),
                 ),
               ],
             ),
           ),
           Text(
             moneyBdt(amount),
-            style: GoogleFonts.poppins(
-              fontSize: 13,
-              fontWeight: FontWeight.w600,
-            ),
+            style: AppType.bodySm.copyWith(fontWeight: FontWeight.w600),
           ),
         ],
       ),
@@ -795,7 +751,7 @@ class _DetailTile extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: AppColors.background,
+        color: AppColors.surfaceSunk,
         borderRadius: BorderRadius.circular(12),
       ),
       child: Column(
@@ -806,10 +762,7 @@ class _DetailTile extends StatelessWidget {
               Expanded(
                 child: Text(
                   line.referenceNo.isEmpty ? '#${line.orderId}' : line.referenceNo,
-                  style: GoogleFonts.poppins(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                  ),
+                  style: AppType.bodySm.copyWith(fontWeight: FontWeight.w600),
                 ),
               ),
               Container(
@@ -821,11 +774,7 @@ class _DetailTile extends StatelessWidget {
                 ),
                 child: Text(
                   line.type,
-                  style: GoogleFonts.poppins(
-                    fontSize: 10,
-                    fontWeight: FontWeight.w600,
-                    color: isReturn ? AppColors.error : AppColors.success,
-                  ),
+                  style: AppType.micro.copyWith(fontWeight: FontWeight.w600, color: isReturn ? AppColors.error : AppColors.success),
                 ),
               ),
             ],
@@ -833,23 +782,17 @@ class _DetailTile extends StatelessWidget {
           const SizedBox(height: 4),
           Text(
             '${line.formattedDate} · ${line.status}',
-            style: GoogleFonts.poppins(
-              fontSize: 11,
-              color: AppColors.textSecondary,
-            ),
+            style: AppType.micro.copyWith(color: AppColors.inkMuted),
           ),
           if (line.dealerName != null && line.dealerName!.isNotEmpty)
             Text(
               line.dealerName!,
-              style: GoogleFonts.poppins(fontSize: 12),
+              style: AppType.meta,
             ),
           if (line.productName != null && line.productName!.isNotEmpty)
             Text(
               line.productName!,
-              style: GoogleFonts.poppins(
-                fontSize: 12,
-                color: AppColors.textSecondary,
-              ),
+              style: AppType.meta.copyWith(color: AppColors.inkMuted),
             ),
           const SizedBox(height: 6),
           Row(
@@ -857,14 +800,11 @@ class _DetailTile extends StatelessWidget {
             children: [
               Text(
                 'Qty ${qtyFmt(line.qty)}${line.unitName != null ? ' ${line.unitName}' : ''}',
-                style: GoogleFonts.poppins(fontSize: 12),
+                style: AppType.meta,
               ),
               Text(
                 moneyBdt(line.lineAmount),
-                style: GoogleFonts.poppins(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                ),
+                style: AppType.bodySm.copyWith(fontWeight: FontWeight.w600),
               ),
             ],
           ),
