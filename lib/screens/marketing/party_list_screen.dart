@@ -2,8 +2,9 @@ import 'package:animate_do/animate_do.dart';
 import 'package:flutter/material.dart';
 
 import '../../models/marketing_models.dart';
-import '../../services/auth_service.dart';
+import '../../models/zone_scope.dart';
 import '../../services/marketing_service.dart';
+import '../../services/zone_scope_service.dart';
 import '../../widgets/filter_chip_row.dart';
 import '../../widgets/ui/ui.dart';
 import '../../widgets/voice_input_field.dart';
@@ -25,7 +26,6 @@ class PartyListScreen extends StatefulWidget {
 
 class _PartyListScreenState extends State<PartyListScreen> {
   final MarketingService _service = MarketingService();
-  final AuthService _authService = AuthService();
   final TextEditingController _searchController = TextEditingController();
 
   bool _loading = true;
@@ -33,7 +33,7 @@ class _PartyListScreenState extends State<PartyListScreen> {
   List<Party> _parties = const [];
   late String _typeFilter;
   String _statusFilter = 'All';
-  int? _zoneId;
+  ZoneScope? _scope;
 
   static const _typeOptions = ['All', 'dealer', 'farm', 'farmer', 'outlet', 'prospect'];
   static const _statusOptions = ['All', 'active', 'inactive', 'prospect'];
@@ -60,15 +60,20 @@ class _PartyListScreenState extends State<PartyListScreen> {
       _error = null;
     });
 
-    // Master lists are company-wide (omit employee_id); zone narrows them
-    // when the profile provides one.
-    _zoneId ??= (await _authService.getCurrentUserProfile())?.zoneId;
+    // Master lists are company-wide (omit employee_id); the employee's zones
+    // narrow them below. Fetched unfiltered so markets, parties and visits
+    // created before zone tagging (zone_id NULL) survive via the district
+    // fallback, and so every assigned zone lands in one union.
+    _scope = await ZoneScopeService.instance.load();
+    final scope = _scope;
+    // Parties have no district of their own, so their zone comes from the
+    // market they sit in.
+    final marketDistricts = await ZoneScopeService.instance.loadMarketDistricts();
     final result = await _service.listParties(
       partyType: _typeFilter == 'All' ? null : _typeFilter,
       q: _searchController.text,
       status: _statusFilter,
       marketId: widget.marketId,
-      zoneId: _zoneId,
     );
 
     if (!mounted) return;
@@ -84,7 +89,17 @@ class _PartyListScreenState extends State<PartyListScreen> {
     }
 
     setState(() {
-      _parties = result.data ?? const [];
+      _parties = scope == null || scope.isEmpty
+          ? (result.data ?? const [])
+          : (result.data ?? const [])
+              .where((p) => scope.matches(
+                    zoneId: p.zoneId,
+                    zoneName: p.zoneName,
+                    district: p.marketId == null
+                        ? null
+                        : marketDistricts[p.marketId],
+                  ))
+              .toList();
       _loading = false;
     });
   }
@@ -217,7 +232,9 @@ class _PartyListScreenState extends State<PartyListScreen> {
                     child: AppEmptyState(
                       icon: Icons.storefront_outlined,
                       title: 'No parties found',
-                      subtitle: 'Create a dealer or farm to get started.',
+                      subtitle: _scope == null || _scope!.isEmpty
+                          ? 'Create a dealer or farm to get started.'
+                          : 'No dealers or farms in ${_scope!.label} yet.',
                       onRetry: _load,
                     ),
                   ),

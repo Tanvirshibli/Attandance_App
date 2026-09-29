@@ -2,8 +2,9 @@ import 'package:animate_do/animate_do.dart';
 import 'package:flutter/material.dart';
 
 import '../../models/marketing_models.dart';
-import '../../services/auth_service.dart';
+import '../../models/zone_scope.dart';
 import '../../services/marketing_service.dart';
+import '../../services/zone_scope_service.dart';
 import '../../widgets/ui/ui.dart';
 import 'followup_form_screen.dart';
 import 'market_detail_screen.dart';
@@ -24,16 +25,15 @@ class _MarketingHubScreenState extends State<MarketingHubScreen> {
   static const _previewLimit = 5;
 
   final MarketingService _service = MarketingService();
-  final AuthService _authService = AuthService();
 
   bool _loadingFeature = true;
   bool _enabled = true;
   bool _loadingPreviews = false;
 
-  /// Logged-in employee's zone — when the HRM profile exposes it, every
-  /// marketing list narrows to that zone. Null until the backend adds it;
-  /// lists then stay unfiltered.
-  int? _zoneId;
+  /// The employee's assigned zones, resolved from the HRM profile against the
+  /// Sales zone master. Null when they hold no zones or the master is
+  /// unreachable, in which case every list stays unfiltered.
+  ZoneScope? _scope;
 
   List<Party> _farms = const [];
   List<Party> _dealers = const [];
@@ -68,44 +68,69 @@ class _MarketingHubScreenState extends State<MarketingHubScreen> {
       _marketsError = null;
     });
 
-    final profile = await _authService.getCurrentUserProfile();
-    _zoneId = profile?.zoneId;
+    _scope = await ZoneScopeService.instance.load();
+    final scope = _scope;
+    // Parties have no district of their own, so their zone comes from the
+    // market they sit in.
+    final marketDistricts = await ZoneScopeService.instance.loadMarketDistricts();
 
-    // Master lists are company-wide (omit employee_id); zone narrows them
-    // when the profile provides one.
-    final farmsFuture = _service.listParties(
-      partyType: 'farm',
-      zoneId: _zoneId,
-      limit: _previewLimit,
-    );
-    final dealersFuture = _service.listParties(
-      partyType: 'dealer',
-      zoneId: _zoneId,
-      limit: _previewLimit,
-    );
-    final marketsFuture =
-        _service.listMarkets(limit: _previewLimit, zoneId: _zoneId);
+    // Master lists are company-wide (omit employee_id) and fetched unfiltered,
+    // then narrowed to the employee's zones here. Filtering before the limit
+    // matters: a server-side `zone_id` would both drop every record created
+    // before zone tagging (zone_id NULL) and take the first N rows from other
+    // zones, leaving nothing to show.
+    final farmsFuture = _service.listParties(partyType: 'farm');
+    final dealersFuture = _service.listParties(partyType: 'dealer');
+    final marketsFuture = _service.listMarkets();
 
     final farmsResult = await farmsFuture;
     final dealersResult = await dealersFuture;
     final marketsResult = await marketsFuture;
 
+    if (!mounted) return;
+
+    List<Party> inScope(List<Party> parties) {
+      if (scope == null || scope.isEmpty) {
+        return parties.take(_previewLimit).toList();
+      }
+      return parties
+          .where((p) => scope.matches(
+                zoneId: p.zoneId,
+                zoneName: p.zoneName,
+                district: p.marketId == null
+                    ? null
+                    : marketDistricts[p.marketId],
+              ))
+          .take(_previewLimit)
+          .toList();
+    }
+
     setState(() {
       _loadingPreviews = false;
       if (farmsResult.success) {
-        _farms = farmsResult.data ?? const [];
+        _farms = inScope(farmsResult.data ?? const []);
       } else {
         _farms = const [];
         _farmsError = farmsResult.message ?? 'Could not load farms.';
       }
       if (dealersResult.success) {
-        _dealers = dealersResult.data ?? const [];
+        _dealers = inScope(dealersResult.data ?? const []);
       } else {
         _dealers = const [];
         _dealersError = dealersResult.message ?? 'Could not load dealers.';
       }
       if (marketsResult.success) {
-        _markets = marketsResult.data ?? const [];
+        final markets = marketsResult.data ?? const [];
+        _markets = (scope == null || scope.isEmpty)
+            ? markets.take(_previewLimit).toList()
+            : markets
+                .where((m) => scope.matches(
+                      zoneId: m.zoneId,
+                      zoneName: m.zoneName,
+                      district: m.district,
+                    ))
+                .take(_previewLimit)
+                .toList();
       } else {
         _markets = const [];
         _marketsError = marketsResult.message ?? 'Could not load markets.';
@@ -174,6 +199,11 @@ class _MarketingHubScreenState extends State<MarketingHubScreen> {
                 padding: const EdgeInsets.fromLTRB(AppSpace.gutter, AppSpace.md, AppSpace.gutter, AppSpace.xl),
                 sliver: SliverList(
                   delegate: SliverChildListDelegate([
+                    if (_scope != null && !_scope!.isEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 12),
+                        child: _ZoneScopeNote(scope: _scope!),
+                      ),
                     FadeInUp(
                       delay: const Duration(milliseconds: 40),
                       child: _HubGroupCard(
@@ -307,6 +337,60 @@ class _MarketingHubScreenState extends State<MarketingHubScreen> {
               ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// Read-only strip naming the zones every list on this screen is scoped to, so
+/// a short list reads as "Zone A has three markets" rather than a mystery.
+class _ZoneScopeNote extends StatelessWidget {
+  const _ZoneScopeNote({required this.scope});
+
+  final ZoneScope scope;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSpace.md,
+        vertical: AppSpace.sm,
+      ),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(Icons.map_outlined, size: 18, color: AppColors.primary),
+          const SizedBox(width: AppSpace.sm),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Showing ${scope.label}',
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w600,
+                    fontSize: 13,
+                  ),
+                ),
+                if (scope.districtNames.isNotEmpty) ...[
+                  const SizedBox(height: 2),
+                  Text(
+                    scope.districtSummary,
+                    style: const TextStyle(
+                      fontSize: 12,
+                      color: AppColors.inkMuted,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }

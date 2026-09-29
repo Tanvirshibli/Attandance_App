@@ -2,8 +2,9 @@ import 'package:animate_do/animate_do.dart';
 import 'package:flutter/material.dart';
 
 import '../../models/marketing_models.dart';
-import '../../services/auth_service.dart';
+import '../../models/zone_scope.dart';
 import '../../services/marketing_service.dart';
+import '../../services/zone_scope_service.dart';
 import '../../widgets/ui/ui.dart';
 import '../../widgets/voice_input_field.dart';
 import 'market_detail_screen.dart';
@@ -17,13 +18,12 @@ class MarketListScreen extends StatefulWidget {
 
 class _MarketListScreenState extends State<MarketListScreen> {
   final MarketingService _service = MarketingService();
-  final AuthService _authService = AuthService();
   final TextEditingController _search = TextEditingController();
 
   bool _loading = true;
   String? _error;
   List<Market> _markets = const [];
-  int? _zoneId;
+  ZoneScope? _scope;
 
   @override
   void initState() {
@@ -42,12 +42,12 @@ class _MarketListScreenState extends State<MarketListScreen> {
       _loading = true;
       _error = null;
     });
-    _zoneId ??=
-        (await _authService.getCurrentUserProfile())?.zoneId;
-    final result = await _service.listMarkets(
-      q: _search.text,
-      zoneId: _zoneId,
-    );
+    _scope = await ZoneScopeService.instance.load();
+    // Fetched unfiltered and narrowed here: `zone_id` in the query can only
+    // return rows explicitly tagged with a zone, and every market created
+    // before zone tagging carries NULL. Filtering in Dart keeps those in
+    // scope via the district fallback, and unions every assigned zone.
+    final result = await _service.listMarkets(q: _search.text);
     if (!mounted) return;
     if (!result.success) {
       setState(() {
@@ -59,8 +59,17 @@ class _MarketListScreenState extends State<MarketListScreen> {
       });
       return;
     }
+    final scope = _scope;
     setState(() {
-      _markets = result.data ?? const [];
+      _markets = scope == null || scope.isEmpty
+          ? (result.data ?? const [])
+          : (result.data ?? const [])
+              .where((m) => scope.matches(
+                    zoneId: m.zoneId,
+                    zoneName: m.zoneName,
+                    district: m.district,
+                  ))
+              .toList();
       _loading = false;
     });
   }
@@ -131,14 +140,16 @@ class _MarketListScreenState extends State<MarketListScreen> {
                 ),
               )
             else if (_markets.isEmpty)
-              const SliverFillRemaining(
+              SliverFillRemaining(
                 child: Center(
                   child: Padding(
-                    padding: EdgeInsets.all(AppSpace.lg),
+                    padding: const EdgeInsets.all(AppSpace.lg),
                     child: AppEmptyState(
                       icon: Icons.store_mall_directory_outlined,
                       title: 'No markets yet',
-                      subtitle: 'Create a market to assign dealers and farms.',
+                      subtitle: _scope == null || _scope!.isEmpty
+                          ? 'Create a market to assign dealers and farms.'
+                          : 'No markets in ${_scope!.label} yet.',
                     ),
                   ),
                 ),

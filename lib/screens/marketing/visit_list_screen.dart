@@ -2,8 +2,10 @@ import 'package:animate_do/animate_do.dart';
 import 'package:flutter/material.dart';
 
 import '../../models/marketing_models.dart';
+import '../../models/zone_scope.dart';
 import '../../services/auth_service.dart';
 import '../../services/marketing_service.dart';
+import '../../services/zone_scope_service.dart';
 import '../../widgets/filter_chip_row.dart';
 import '../../widgets/ui/ui.dart';
 
@@ -24,6 +26,7 @@ class _VisitListScreenState extends State<VisitListScreen> {
   String? _error;
   List<Visit> _visits = const [];
   String _statusFilter = 'All';
+  ZoneScope? _scope;
 
   static const _statusOptions = [
     'All',
@@ -45,11 +48,15 @@ class _VisitListScreenState extends State<VisitListScreen> {
       _error = null;
     });
     final profile = await _authService.getCurrentUserProfile();
+    _scope = await ZoneScopeService.instance.load();
+    // `zone_id` is deliberately not sent: the visits endpoint accepts it but
+    // never applies it, so it filtered nothing. Visits carry no district
+    // either, so zone filtering here is on the stored zone id and name only —
+    // a visit predating zone tagging (zone_id NULL) drops out.
     final result = await _service.listVisits(
       employeeId: profile?.canonicalEmployeeId,
       partyId: widget.partyId,
       status: _statusFilter,
-      zoneId: profile?.zoneId,
     );
     if (!mounted) return;
     if (!result.success) {
@@ -60,8 +67,13 @@ class _VisitListScreenState extends State<VisitListScreen> {
       });
       return;
     }
+    final scope = _scope;
     setState(() {
-      _visits = result.data ?? const [];
+      _visits = scope == null || scope.isEmpty
+          ? (result.data ?? const [])
+          : (result.data ?? const [])
+              .where((v) => scope.matches(zoneId: v.zoneId, zoneName: v.zoneName))
+              .toList();
       _loading = false;
     });
   }
