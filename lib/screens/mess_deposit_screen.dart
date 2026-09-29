@@ -1,14 +1,10 @@
 import 'package:animate_do/animate_do.dart';
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 
-import '../config/theme.dart';
 import '../models/payment_models.dart';
 import '../services/auth_service.dart';
 import '../services/payment_service.dart';
-import '../widgets/api_empty_state.dart';
-import '../widgets/gradient_screen_header.dart';
-import '../widgets/section_card.dart';
+import '../widgets/ui/ui.dart';
 
 class MessDepositScreen extends StatefulWidget {
   const MessDepositScreen({super.key});
@@ -46,16 +42,17 @@ class _MessDepositScreenState extends State<MessDepositScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: AppColors.canvas,
       body: RefreshIndicator(
         onRefresh: _load,
+        color: AppColors.primary,
         child: CustomScrollView(
           physics: const AlwaysScrollableScrollPhysics(
             parent: BouncingScrollPhysics(),
           ),
           slivers: [
             const SliverToBoxAdapter(
-              child: GradientScreenHeader(
+              child: AppHeader(
                 title: 'Mess deposit',
                 subtitle: 'Latest approved contribution',
               ),
@@ -68,11 +65,11 @@ class _MessDepositScreenState extends State<MessDepositScreen> {
                 ),
               )
             else if (_record == null)
-              const SliverToBoxAdapter(
+              SliverToBoxAdapter(
                 child: Padding(
-                  padding: EdgeInsets.all(20),
-                  child: ApiEmptyState(
-                    icon: Icons.restaurant_outlined,
+                  padding: const EdgeInsets.all(AppSpace.lg),
+                  child: AppEmptyState(
+                    icon: AppIcons.fork,
                     title: 'No mess deposit',
                     subtitle: 'Approved mess deposits will appear here.',
                   ),
@@ -80,30 +77,33 @@ class _MessDepositScreenState extends State<MessDepositScreen> {
               )
             else
               SliverPadding(
-                padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
+                padding: const EdgeInsets.fromLTRB(
+                  AppSpace.gutter,
+                  AppSpace.md,
+                  AppSpace.gutter,
+                  AppSpace.xl,
+                ),
                 sliver: SliverToBoxAdapter(
                   child: FadeInUp(
-                    child: SectionCard(
+                    child: AppCard(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
                             _record!.formattedAmount,
-                            style: GoogleFonts.poppins(
-                              fontSize: 28,
-                              fontWeight: FontWeight.w700,
-                              color: AppColors.primary,
-                            ),
+                            style: AppType.display
+                                .copyWith(color: AppColors.mPayments),
                           ),
-                          const SizedBox(height: 4),
+                          const SizedBox(height: AppSpace.xxs),
                           Text(
                             'This transaction',
-                            style: GoogleFonts.poppins(
-                              fontSize: 12,
-                              color: AppColors.textSecondary,
-                            ),
+                            style: AppType.meta
+                                .copyWith(color: AppColors.inkMuted),
                           ),
-                          const SizedBox(height: 20),
+                          const SizedBox(height: AppSpace.md),
+                          // Null values show an em-dash here, except the Note
+                          // row, which is omitted entirely. Both behaviours are
+                          // deliberate and preserved.
                           _row('Deposit ID', _record!.messDepositId ?? '—'),
                           _row('Total deposited', _record!.formattedTotal),
                           _row('Type', _record!.tType ?? '—'),
@@ -126,7 +126,7 @@ class _MessDepositScreenState extends State<MessDepositScreen> {
 
   Widget _row(String label, String value) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8),
+      padding: const EdgeInsets.symmetric(vertical: AppSpace.xs),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -134,19 +134,14 @@ class _MessDepositScreenState extends State<MessDepositScreen> {
             width: 120,
             child: Text(
               label,
-              style: GoogleFonts.poppins(
-                fontSize: 13,
-                color: AppColors.textSecondary,
-              ),
+              style: AppType.bodySm.copyWith(color: AppColors.inkMuted),
             ),
           ),
           Expanded(
             child: Text(
               value,
-              style: GoogleFonts.poppins(
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
-              ),
+              style: AppType.bodySm
+                  .copyWith(color: AppColors.ink, fontWeight: FontWeight.w600),
             ),
           ),
         ],

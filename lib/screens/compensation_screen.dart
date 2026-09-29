@@ -1,14 +1,10 @@
 import 'package:animate_do/animate_do.dart';
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 
-import '../config/theme.dart';
 import '../models/payment_models.dart';
 import '../services/auth_service.dart';
 import '../services/payment_service.dart';
-import '../widgets/api_empty_state.dart';
-import '../widgets/gradient_screen_header.dart';
-import '../widgets/section_card.dart';
+import '../widgets/ui/ui.dart';
 
 class CompensationScreen extends StatefulWidget {
   const CompensationScreen({super.key});
@@ -47,16 +43,17 @@ class _CompensationScreenState extends State<CompensationScreen> {
   Widget build(BuildContext context) {
     final f = _facility;
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: AppColors.canvas,
       body: RefreshIndicator(
         onRefresh: _load,
+        color: AppColors.primary,
         child: CustomScrollView(
           physics: const AlwaysScrollableScrollPhysics(
             parent: BouncingScrollPhysics(),
           ),
           slivers: [
             const SliverToBoxAdapter(
-              child: GradientScreenHeader(
+              child: AppHeader(
                 title: 'Compensation',
                 subtitle: 'Salary structure & allowances',
               ),
@@ -69,11 +66,11 @@ class _CompensationScreenState extends State<CompensationScreen> {
                 ),
               )
             else if (f == null)
-              const SliverToBoxAdapter(
+              SliverToBoxAdapter(
                 child: Padding(
-                  padding: EdgeInsets.all(20),
-                  child: ApiEmptyState(
-                    icon: Icons.badge_outlined,
+                  padding: EdgeInsets.all(AppSpace.lg),
+                  child: AppEmptyState(
+                    icon: AppIcons.badge,
                     title: 'No facility record',
                     subtitle: 'Employee compensation structure not found.',
                   ),
@@ -82,39 +79,33 @@ class _CompensationScreenState extends State<CompensationScreen> {
             else ...[
               SliverToBoxAdapter(
                 child: Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
+                  padding: const EdgeInsets.fromLTRB(AppSpace.gutter, AppSpace.md, AppSpace.gutter, AppSpace.xs),
                   child: FadeInUp(
-                    child: SectionCard(
+                    child: AppCard(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
                             f.designationName ?? 'Employee',
-                            style: GoogleFonts.poppins(
-                              fontSize: 18,
-                              fontWeight: FontWeight.w700,
-                            ),
+                            style: AppType.h2
+                                .copyWith(color: AppColors.ink),
                           ),
-                          const SizedBox(height: 4),
+                          const SizedBox(height: AppSpace.xxs),
                           Text(
                             [
-                              if (f.departmentName != null) f.departmentName!,
+                              if (f.departmentName != null)
+                                f.departmentName!,
                               if (f.sectorName != null) f.sectorName!,
                             ].join(' · '),
-                            style: GoogleFonts.poppins(
-                              fontSize: 12,
-                              color: AppColors.textSecondary,
-                            ),
+                            style:
+                                AppType.meta.copyWith(color: AppColors.inkMuted),
                           ),
                           if (f.sGross != null) ...[
-                            const SizedBox(height: 16),
+                            const SizedBox(height: AppSpace.md),
                             Text(
                               'Gross ${f.money(f.sGross)}',
-                              style: GoogleFonts.poppins(
-                                fontSize: 22,
-                                fontWeight: FontWeight.w700,
-                                color: AppColors.primary,
-                              ),
+                              style: AppType.display
+                                  .copyWith(color: AppColors.mPayments),
                             ),
                           ],
                         ],
@@ -124,11 +115,11 @@ class _CompensationScreenState extends State<CompensationScreen> {
                 ),
               ),
               SliverPadding(
-                padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
+                padding: const EdgeInsets.fromLTRB(AppSpace.gutter, AppSpace.xs, AppSpace.gutter, AppSpace.xl),
                 sliver: SliverToBoxAdapter(
                   child: FadeInUp(
                     delay: const Duration(milliseconds: 80),
-                    child: SectionCard(
+                    child: AppCard(
                       child: Column(
                         children: [
                           _row('Basic', f.money(f.basics)),
@@ -164,18 +155,13 @@ class _CompensationScreenState extends State<CompensationScreen> {
           Expanded(
             child: Text(
               label,
-              style: GoogleFonts.poppins(
-                fontSize: 13,
-                color: AppColors.textSecondary,
-              ),
+              style: AppType.bodySm.copyWith(color: AppColors.inkMuted),
             ),
           ),
           Text(
             value,
-            style: GoogleFonts.poppins(
-              fontSize: 13,
-              fontWeight: FontWeight.w600,
-            ),
+            style: AppType.bodySm
+                .copyWith(color: AppColors.ink, fontWeight: FontWeight.w600),
           ),
         ],
       ),

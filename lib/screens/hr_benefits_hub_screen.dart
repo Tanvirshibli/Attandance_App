@@ -1,11 +1,8 @@
 import 'package:animate_do/animate_do.dart';
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 
-import '../config/theme.dart';
 import '../services/payment_service.dart';
-import '../widgets/gradient_screen_header.dart';
-import '../widgets/section_card.dart';
+import '../widgets/ui/ui.dart';
 import 'compensation_screen.dart';
 import 'loan_list_screen.dart';
 import 'mess_deposit_screen.dart';
@@ -22,18 +19,18 @@ class HrBenefitsHubScreen extends StatelessWidget {
     final useDemoData = PaymentService().useDemoData;
 
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: AppColors.canvas,
       body: CustomScrollView(
         physics: const BouncingScrollPhysics(),
         slivers: [
           const SliverToBoxAdapter(
-            child: GradientScreenHeader(
+            child: AppHeader(
               title: 'HR Benefits',
               subtitle: 'Payslips, loans, PF and related HR records',
             ),
           ),
           SliverPadding(
-            padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
+            padding: const EdgeInsets.fromLTRB(AppSpace.gutter, AppSpace.xs, AppSpace.gutter, AppSpace.xl),
             sliver: SliverList(
               delegate: SliverChildListDelegate([
                 if (useDemoData) ...[
@@ -43,43 +40,43 @@ class HrBenefitsHubScreen extends StatelessWidget {
                 _hubCard(
                   context,
                   delay: 0,
-                  icon: Icons.receipt_long_rounded,
+                  icon: AppIcons.invoice,
                   title: 'Payslips',
                   subtitle: 'Monthly salary breakdown',
-                  color: AppColors.primary,
+                  color: AppColors.mHr,
                   screen: const PayslipListScreen(),
                 ),
                 _hubCard(
                   context,
                   delay: 40,
-                  icon: Icons.account_balance_wallet_outlined,
+                  icon: AppIcons.loan,
                   title: 'My loans',
                   subtitle: 'Active loans & balances',
-                  color: AppColors.warning,
+                  color: AppColors.mPayments,
                   screen: const LoanListScreen(),
                 ),
                 _hubCard(
                   context,
                   delay: 80,
-                  icon: Icons.history_rounded,
+                  icon: AppIcons.clock,
                   title: 'Loan payments',
                   subtitle: 'Repayment history & payroll slips',
-                  color: AppColors.info,
+                  color: AppColors.mVehicles,
                   screen: const PaymentReportScreen(),
                 ),
                 _hubCard(
                   context,
                   delay: 120,
-                  icon: Icons.add_card_outlined,
+                  icon: AppIcons.plus,
                   title: 'Post payment',
                   subtitle: 'Submit a loan repayment',
-                  color: AppColors.success,
+                  color: AppColors.mSales,
                   screen: const PostPaymentScreen(),
                 ),
                 _hubCard(
                   context,
                   delay: 160,
-                  icon: Icons.savings_outlined,
+                  icon: AppIcons.piggy,
                   title: 'Provident fund',
                   subtitle: 'PF balance & history',
                   color: const Color(0xFF7C4DFF),
@@ -88,19 +85,19 @@ class HrBenefitsHubScreen extends StatelessWidget {
                 _hubCard(
                   context,
                   delay: 200,
-                  icon: Icons.restaurant_outlined,
+                  icon: AppIcons.fork,
                   title: 'Mess deposit',
                   subtitle: 'Latest mess contribution',
-                  color: AppColors.error,
+                  color: AppColors.mLeave,
                   screen: const MessDepositScreen(),
                 ),
                 _hubCard(
                   context,
                   delay: 240,
-                  icon: Icons.badge_outlined,
+                  icon: AppIcons.badge,
                   title: 'Compensation',
                   subtitle: 'Salary structure allowances',
-                  color: AppColors.accent,
+                  color: AppColors.mFarms,
                   screen: const CompensationScreen(),
                 ),
               ]),
@@ -113,21 +110,25 @@ class HrBenefitsHubScreen extends StatelessWidget {
 
   Widget _demoBanner() {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      padding: const EdgeInsets.all(AppSpace.sm),
       decoration: BoxDecoration(
         color: AppColors.warning.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(AppRadius.lg),
         border: Border.all(color: AppColors.warning.withValues(alpha: 0.35)),
       ),
       child: Row(
         children: [
-          Icon(Icons.science_outlined, size: 18, color: AppColors.warning),
-          const SizedBox(width: 10),
+          AppIcon(
+            AppIcons.warning,
+            size: 18,
+            color: AppColors.warning,
+          ),
+          const SizedBox(width: AppSpace.sm),
           Expanded(
             child: Text(
               'HR benefits use demo payroll/loan data',
-              style: GoogleFonts.poppins(
-                fontSize: 12,
+              style: AppType.meta.copyWith(
+                color: AppColors.ink,
                 fontWeight: FontWeight.w500,
               ),
             ),
@@ -149,53 +150,49 @@ class HrBenefitsHubScreen extends StatelessWidget {
     return FadeInUp(
       delay: Duration(milliseconds: delay),
       child: Padding(
-        padding: const EdgeInsets.only(bottom: 12),
-        child: SectionCard(
-          padding: EdgeInsets.zero,
-          child: InkWell(
-            onTap: () => Navigator.of(context).push(
-              MaterialPageRoute(builder: (_) => screen),
-            ),
-            borderRadius: BorderRadius.circular(20),
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Row(
-                children: [
-                  Container(
-                    width: 52,
-                    height: 52,
-                    decoration: BoxDecoration(
-                      color: color.withValues(alpha: 0.12),
-                      borderRadius: BorderRadius.circular(14),
-                    ),
-                    child: Icon(icon, color: color),
-                  ),
-                  const SizedBox(width: 14),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          title,
-                          style: GoogleFonts.poppins(
-                            fontSize: 15,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                        Text(
-                          subtitle,
-                          style: GoogleFonts.poppins(
-                            fontSize: 12,
-                            color: AppColors.textSecondary,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  Icon(Icons.chevron_right_rounded, color: AppColors.textHint),
-                ],
+        padding: const EdgeInsets.only(bottom: AppSpace.sm),
+        // The untyped `push(MaterialPageRoute(builder: (_) => screen))` is
+        // deliberate and unchanged: the screen is pre-built and the result is
+        // discarded.
+        child: AppCard(
+          onTap: () => Navigator.of(context).push(
+            MaterialPageRoute(builder: (_) => screen),
+          ),
+          padding: const EdgeInsets.all(AppSpace.sm + 2),
+          child: Row(
+            children: [
+              AppIconTile(
+                icon: icon,
+                color: color,
+                semanticLabel: title,
               ),
-            ),
+              const SizedBox(width: AppSpace.sm + 2),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      title,
+                      style: AppType.h3.copyWith(color: AppColors.ink),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    Text(
+                      subtitle,
+                      style: AppType.meta.copyWith(color: AppColors.inkMuted),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                ),
+              ),
+              AppIcon(
+                AppIcons.chevron,
+                size: 18,
+                color: AppColors.inkFaint,
+              ),
+            ],
           ),
         ),
       ),
