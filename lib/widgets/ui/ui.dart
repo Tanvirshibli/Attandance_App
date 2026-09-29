@@ -13,6 +13,7 @@ export 'app_empty_state.dart';
 export 'app_header.dart';
 export 'app_icon_tile.dart';
 export 'app_list_tile.dart';
+export 'app_pill_button.dart';
 export 'app_scaffold.dart';
 export 'app_skeleton.dart';
 export 'app_status_chip.dart';
