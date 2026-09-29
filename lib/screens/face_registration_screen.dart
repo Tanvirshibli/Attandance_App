@@ -8,8 +8,10 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:google_mlkit_face_detection/google_mlkit_face_detection.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
+import '../widgets/ui/ui.dart' as ui;
 import '../config/theme.dart';
 import '../services/face_recognition_service.dart';
 import '../services/face_registration_api_service.dart';
@@ -567,7 +569,7 @@ class _FaceRegistrationScreenState extends State<FaceRegistrationScreen>
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF1A1F36),
+        backgroundColor: ui.AppColors.darkSurface,
         shape:
             RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         title: Row(
@@ -611,7 +613,9 @@ class _FaceRegistrationScreenState extends State<FaceRegistrationScreen>
     _previewStageHeight = previewHeight;
 
     return Scaffold(
-      backgroundColor: const Color(0xFF0A0E21),
+      // Dark by design — the camera fills the screen. These replace the two
+      // hardcoded hexes with the shared dark-surface tokens.
+      backgroundColor: ui.AppColors.darkCanvas,
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
@@ -663,7 +667,10 @@ class _FaceRegistrationScreenState extends State<FaceRegistrationScreen>
   // ----------------------------------------------------------------
   Widget _buildStepIndicator() {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+      padding: const EdgeInsets.symmetric(
+        horizontal: ui.AppSpace.gutter,
+        vertical: ui.AppSpace.xs,
+      ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.center,
         children: List.generate(
@@ -677,16 +684,20 @@ class _FaceRegistrationScreenState extends State<FaceRegistrationScreen>
               height: 12,
               decoration: BoxDecoration(
                 color: isDone
-                    ? AppColors.success
+                    ? ui.AppColors.success
                     : isCurrent
-                        ? AppColors.primary
+                        ? ui.AppColors.primaryLight
                         : Colors.white.withValues(alpha: 0.15),
                 borderRadius: BorderRadius.circular(6),
               ),
               child: isDone
                   ? const Center(
-                      child:
-                          Icon(Icons.check, size: 9, color: Colors.white))
+                      child: PhosphorIcon(
+                        PhosphorIconsFill.checkCircle,
+                        size: 9,
+                        color: Colors.white,
+                      ),
+                    )
                   : null,
             );
           },

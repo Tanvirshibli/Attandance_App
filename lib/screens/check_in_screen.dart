@@ -10,8 +10,10 @@ import 'package:geocoding/geocoding.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:google_mlkit_face_detection/google_mlkit_face_detection.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
+import '../widgets/ui/ui.dart' as ui;
 import '../config/theme.dart';
 import '../models/attendance_request_record.dart';
 import '../services/face_recognition_service.dart';
@@ -999,7 +1001,9 @@ class _CheckInScreenState extends State<CheckInScreen>
         await _handleBack();
       },
       child: Scaffold(
-      backgroundColor: const Color(0xFF0A0E21),
+      // The camera screen stays dark by design; this replaces the last
+      // hardcoded hex with the shared dark-surface token.
+      backgroundColor: ui.AppColors.darkCanvas,
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
@@ -1081,22 +1085,33 @@ class _CheckInScreenState extends State<CheckInScreen>
   // ----------------------------------------------------------------
   Widget _buildChallengeList() {
     return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(16),
+      margin: const EdgeInsets.only(bottom: ui.AppSpace.sm),
+      padding: const EdgeInsets.all(ui.AppSpace.md),
       decoration: BoxDecoration(
         color: Colors.white.withValues(alpha: 0.06),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
+        borderRadius: BorderRadius.circular(ui.AppRadius.lg),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.10)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('Liveness Challenges',
-              style: GoogleFonts.poppins(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: Colors.white)),
-          const SizedBox(height: 12),
+          Row(
+            children: [
+              const PhosphorIcon(
+                PhosphorIconsDuotone.scan,
+                size: 16,
+                color: ui.AppColors.primaryLight,
+                duotoneSecondaryOpacity: 0.45,
+                duotoneSecondaryColor: ui.AppColors.primaryLight,
+              ),
+              const SizedBox(width: ui.AppSpace.xs),
+              Text(
+                'Liveness challenges',
+                style: ui.AppType.h3.copyWith(color: Colors.white),
+              ),
+            ],
+          ),
+          const SizedBox(height: ui.AppSpace.sm),
           ...List.generate(_challenges.length, (i) {
             final challenge = _challenges[i];
             final passed = _challengeResults[i];
@@ -1104,8 +1119,14 @@ class _CheckInScreenState extends State<CheckInScreen>
                 i == _currentChallengeIndex &&
                 _phase == CheckInPhase.scanning;
 
+            final stateColor = passed
+                ? ui.AppColors.success
+                : isCurrent
+                    ? ui.AppColors.primaryLight
+                    : Colors.white24;
+
             return Padding(
-              padding: const EdgeInsets.only(bottom: 8),
+              padding: const EdgeInsets.only(bottom: ui.AppSpace.xs),
               child: Row(
                 children: [
                   Container(
@@ -1114,51 +1135,48 @@ class _CheckInScreenState extends State<CheckInScreen>
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
                       color: passed
-                          ? AppColors.success.withValues(alpha: 0.2)
+                          ? ui.AppColors.success.withValues(alpha: 0.2)
                           : isCurrent
-                              ? AppColors.primary
+                              ? ui.AppColors.primaryLight
                                   .withValues(alpha: 0.2)
                               : Colors.white.withValues(alpha: 0.05),
-                      border: Border.all(
-                        color: passed
-                            ? AppColors.success
-                            : isCurrent
-                                ? AppColors.primary
-                                : Colors.white24,
-                        width: 1.5,
-                      ),
+                      border: Border.all(color: stateColor, width: 1.5),
                     ),
+                    alignment: Alignment.center,
                     child: passed
-                        ? const Icon(Icons.check,
-                            size: 16, color: AppColors.success)
+                        ? const PhosphorIcon(
+                            PhosphorIconsFill.checkCircle,
+                            size: 16,
+                            color: ui.AppColors.success,
+                          )
                         : isCurrent
-                            ? const Icon(Icons.radio_button_checked,
-                                size: 14, color: AppColors.primary)
+                            ? const PhosphorIcon(
+                                PhosphorIconsFill.record,
+                                size: 12,
+                                color: ui.AppColors.primaryLight,
+                              )
                             : Center(
-                                child: Text('${i + 1}',
-                                    style: GoogleFonts.poppins(
-                                        fontSize: 11,
-                                        color: Colors.white38)),
+                                child: Text(
+                                  '${i + 1}',
+                                  style: ui.AppType.micro
+                                      .copyWith(color: Colors.white38),
+                                ),
                               ),
                   ),
-                  const SizedBox(width: 12),
+                  const SizedBox(width: ui.AppSpace.sm),
                   Expanded(
                     child: Text(
-                      FaceRecognitionService.challengeInstruction(
-                          challenge),
-                      style: GoogleFonts.poppins(
-                        fontSize: 13,
+                      FaceRecognitionService.challengeInstruction(challenge),
+                      style: ui.AppType.bodySm.copyWith(
                         color: passed
-                            ? AppColors.success
+                            ? ui.AppColors.success
                             : isCurrent
                                 ? Colors.white
                                 : Colors.white38,
-                        fontWeight: isCurrent
-                            ? FontWeight.w600
-                            : FontWeight.w400,
-                        decoration: passed
-                            ? TextDecoration.lineThrough
-                            : null,
+                        fontWeight:
+                            isCurrent ? FontWeight.w600 : FontWeight.w400,
+                        decoration:
+                            passed ? TextDecoration.lineThrough : null,
                       ),
                     ),
                   ),
@@ -1316,43 +1334,57 @@ class _CheckInScreenState extends State<CheckInScreen>
     String label;
     VoidCallback? onPressed;
     Color bgColor;
+    IconData icon;
 
     switch (_phase) {
       case CheckInPhase.initializing:
-        label = 'Initializing...';
+        label = 'Initializing…';
         onPressed = null;
-        bgColor = Colors.grey;
+        bgColor = Colors.white.withValues(alpha: 0.12);
+        icon = PhosphorIconsDuotone.hourglass;
         break;
       case CheckInPhase.scanning:
-        label = 'Scanning Face...';
+        label = 'Scanning face…';
         onPressed = null;
-        bgColor = AppColors.primary.withValues(alpha: 0.5);
+        bgColor = ui.AppColors.primaryLight.withValues(alpha: 0.35);
+        icon = PhosphorIconsDuotone.scan;
         break;
       case CheckInPhase.verifying:
-        label = 'Verifying...';
+        label = 'Verifying…';
         onPressed = null;
-        bgColor = AppColors.primary.withValues(alpha: 0.5);
+        bgColor = ui.AppColors.primaryLight.withValues(alpha: 0.35);
+        icon = PhosphorIconsDuotone.shieldCheck;
         break;
       case CheckInPhase.gps:
-        label = 'Capturing Location...';
+        label = 'Capturing location…';
         onPressed = null;
-        bgColor = AppColors.accent.withValues(alpha: 0.5);
+        bgColor = ui.AppColors.mGeo.withValues(alpha: 0.35);
+        icon = PhosphorIconsDuotone.mapPinLine;
         break;
       case CheckInPhase.success:
-        label = 'Done ✓';
+        label = 'Done';
         onPressed = _handleDone;
-        bgColor = AppColors.success;
+        bgColor = ui.AppColors.success;
+        icon = PhosphorIconsFill.checkCircle;
         break;
       case CheckInPhase.error:
         label = _needsFaceReregister ? 'Register face' : 'Retry';
         onPressed = _needsFaceReregister ? _openFaceRegistration : _retry;
-        bgColor = AppColors.warning;
+        bgColor = ui.AppColors.warning;
+        icon = _needsFaceReregister
+            ? PhosphorIconsDuotone.scan
+            : PhosphorIconsDuotone.arrowClockwise;
         break;
     }
 
     return SafeArea(
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
+        padding: const EdgeInsets.fromLTRB(
+          ui.AppSpace.gutter,
+          ui.AppSpace.xs,
+          ui.AppSpace.gutter,
+          ui.AppSpace.md,
+        ),
         child: SizedBox(
           width: double.infinity,
           height: 52,
@@ -1361,13 +1393,37 @@ class _CheckInScreenState extends State<CheckInScreen>
             style: ElevatedButton.styleFrom(
               backgroundColor: bgColor,
               foregroundColor: Colors.white,
+              disabledForegroundColor: Colors.white54,
               shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16)),
+                borderRadius: BorderRadius.circular(ui.AppRadius.lg),
+              ),
               elevation: 0,
             ),
-            child: Text(label,
-                style: GoogleFonts.poppins(
-                    fontSize: 16, fontWeight: FontWeight.w600)),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                PhosphorIcon(
+                  icon,
+                  size: 20,
+                  color:
+                      onPressed == null ? Colors.white54 : Colors.white,
+                  duotoneSecondaryColor: Colors.white54,
+                  duotoneSecondaryOpacity: 0.5,
+                ),
+                const SizedBox(width: ui.AppSpace.xs),
+                Flexible(
+                  child: Text(
+                    label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: ui.AppType.h3.copyWith(
+                      color:
+                          onPressed == null ? Colors.white54 : Colors.white,
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),
