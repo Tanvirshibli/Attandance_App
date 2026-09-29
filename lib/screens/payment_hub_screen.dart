@@ -1,16 +1,13 @@
 import 'package:animate_do/animate_do.dart';
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 
-import '../config/theme.dart';
 import '../models/auth_wise_payment_models.dart';
 import '../models/sales_models.dart' show moneyBdt;
 import '../services/auth_service.dart';
 import '../services/payment_service.dart';
 import '../widgets/filter_chip_row.dart';
-import '../widgets/gradient_screen_header.dart';
-import '../widgets/section_card.dart';
+import '../widgets/ui/ui.dart';
 import 'post_auth_wise_payment_screen.dart';
 
 class PaymentHubScreen extends StatefulWidget {
@@ -227,16 +224,17 @@ class _PaymentHubScreenState extends State<PaymentHubScreen>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: AppColors.canvas,
       body: RefreshIndicator(
         onRefresh: _load,
+        color: AppColors.primary,
         child: CustomScrollView(
           physics: const AlwaysScrollableScrollPhysics(
             parent: BouncingScrollPhysics(),
           ),
           slivers: [
             SliverToBoxAdapter(
-              child: GradientScreenHeader(
+              child: AppHeader(
                 title: 'Payments',
                 subtitle: _employeeName ?? 'Dealer payments',
               ),
@@ -247,7 +245,7 @@ class _PaymentHubScreenState extends State<PaymentHubScreen>
               )
             else
               SliverPadding(
-                padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
+                padding: const EdgeInsets.fromLTRB(AppSpace.gutter, AppSpace.xs, AppSpace.gutter, AppSpace.xl),
                 sliver: SliverList(
                   delegate: SliverChildListDelegate([
                     if (_isLoading)
@@ -257,7 +255,7 @@ class _PaymentHubScreenState extends State<PaymentHubScreen>
                       ),
                     if (_featureDisabled) ...[
                       _statusBanner(
-                        icon: Icons.payments_outlined,
+                        icon: AppIcons.payments,
                         title: 'Dealer payments disabled',
                         subtitle:
                             'Auth-wise payment report and receive are turned off in mobile app settings. Open Services → HR Benefits for payslips and loans.',
@@ -292,9 +290,7 @@ class _PaymentHubScreenState extends State<PaymentHubScreen>
                           icon: const Icon(Icons.add_card_outlined),
                           label: Text(
                             'Receive dealer payment',
-                            style: GoogleFonts.poppins(
-                              fontWeight: FontWeight.w600,
-                            ),
+                            style: AppType.body.copyWith(fontWeight: FontWeight.w600),
                           ),
                           style: OutlinedButton.styleFrom(
                             padding: const EdgeInsets.symmetric(vertical: 14),
@@ -325,10 +321,7 @@ class _PaymentHubScreenState extends State<PaymentHubScreen>
                         Text(
                           '${DateFormat('dd MMM yyyy').format(_customFrom!)}'
                           ' – ${DateFormat('dd MMM yyyy').format(_customTo!)}',
-                          style: GoogleFonts.poppins(
-                            fontSize: 12,
-                            color: AppColors.textSecondary,
-                          ),
+                          style: AppType.meta.copyWith(color: AppColors.inkMuted),
                         ),
                       ],
                       const SizedBox(height: 16),
@@ -390,11 +383,7 @@ class _PaymentHubScreenState extends State<PaymentHubScreen>
               Expanded(
                 child: Text(
                   headline,
-                  style: GoogleFonts.poppins(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                    height: 1.35,
-                  ),
+                  style: AppType.body.copyWith(fontWeight: FontWeight.w600, height: 1.35),
                 ),
               ),
             ],
@@ -403,11 +392,7 @@ class _PaymentHubScreenState extends State<PaymentHubScreen>
             const SizedBox(height: 8),
             Text(
               detail,
-              style: GoogleFonts.poppins(
-                fontSize: 12,
-                color: AppColors.textSecondary,
-                height: 1.35,
-              ),
+              style: AppType.meta.copyWith(color: AppColors.inkMuted, height: 1.35),
             ),
           ],
           if (onRetry != null) ...[
@@ -418,7 +403,7 @@ class _PaymentHubScreenState extends State<PaymentHubScreen>
                 onPressed: onRetry,
                 child: Text(
                   'Retry',
-                  style: GoogleFonts.poppins(fontWeight: FontWeight.w600),
+                  style: AppType.body.copyWith(fontWeight: FontWeight.w600),
                 ),
               ),
             ),
@@ -452,10 +437,7 @@ class _PaymentHubScreenState extends State<PaymentHubScreen>
               Expanded(
                 child: Text(
                   title,
-                  style: GoogleFonts.poppins(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                  ),
+                  style: AppType.body.copyWith(fontWeight: FontWeight.w600),
                 ),
               ),
             ],
@@ -463,10 +445,7 @@ class _PaymentHubScreenState extends State<PaymentHubScreen>
           const SizedBox(height: 6),
           Text(
             subtitle,
-            style: GoogleFonts.poppins(
-              fontSize: 12,
-              color: AppColors.textSecondary,
-            ),
+            style: AppType.meta.copyWith(color: AppColors.inkMuted),
           ),
           if (onRetry != null) ...[
             const SizedBox(height: 10),
@@ -485,16 +464,13 @@ class _OverallStrip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SectionCard(
+    return AppCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
             'Overall',
-            style: GoogleFonts.poppins(
-              fontSize: 15,
-              fontWeight: FontWeight.w600,
-            ),
+            style: AppType.h3.copyWith(fontWeight: FontWeight.w600),
           ),
           const SizedBox(height: 12),
           Wrap(
@@ -540,7 +516,7 @@ class _KpiChip extends StatelessWidget {
       decoration: BoxDecoration(
         color: emphasize
             ? AppColors.primary.withValues(alpha: 0.08)
-            : AppColors.background,
+            : AppColors.surfaceSunk,
         borderRadius: BorderRadius.circular(12),
       ),
       child: Column(
@@ -548,19 +524,12 @@ class _KpiChip extends StatelessWidget {
         children: [
           Text(
             label,
-            style: GoogleFonts.poppins(
-              fontSize: 11,
-              color: AppColors.textSecondary,
-            ),
+            style: AppType.micro.copyWith(color: AppColors.inkMuted),
           ),
           const SizedBox(height: 2),
           Text(
             value,
-            style: GoogleFonts.poppins(
-              fontSize: 14,
-              fontWeight: FontWeight.w600,
-              color: emphasize ? AppColors.primary : AppColors.textPrimary,
-            ),
+            style: AppType.body.copyWith(fontWeight: FontWeight.w600, color: emphasize ? AppColors.primary : AppColors.ink),
           ),
         ],
       ),
@@ -587,7 +556,7 @@ class _ModuleTabs extends StatelessWidget {
         isScrollable: true,
         tabAlignment: TabAlignment.start,
         labelColor: Colors.white,
-        unselectedLabelColor: AppColors.textSecondary,
+        unselectedLabelColor: AppColors.inkMuted,
         indicator: BoxDecoration(
           color: AppColors.primary,
           borderRadius: BorderRadius.circular(10),
@@ -596,11 +565,8 @@ class _ModuleTabs extends StatelessWidget {
         labelPadding: const EdgeInsets.symmetric(horizontal: 4),
         padding: const EdgeInsets.all(6),
         dividerColor: Colors.transparent,
-        labelStyle: GoogleFonts.poppins(
-          fontSize: 12,
-          fontWeight: FontWeight.w600,
-        ),
-        unselectedLabelStyle: GoogleFonts.poppins(fontSize: 12),
+        labelStyle: AppType.meta.copyWith(fontWeight: FontWeight.w600),
+        unselectedLabelStyle: AppType.meta,
         tabs: [
           for (final m in modules)
             Tab(
@@ -624,7 +590,7 @@ class _ModulePanel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (module.isEmpty) {
-      return SectionCard(
+      return AppCard(
         child: Padding(
           padding: const EdgeInsets.symmetric(vertical: 24),
           child: Column(
@@ -632,24 +598,18 @@ class _ModulePanel extends StatelessWidget {
               Icon(
                 Icons.payments_outlined,
                 size: 36,
-                color: AppColors.textSecondary.withValues(alpha: 0.6),
+                color: AppColors.inkMuted.withValues(alpha: 0.6),
               ),
               const SizedBox(height: 10),
               Text(
                 'No ${module.label.toLowerCase()} payments',
-                style: GoogleFonts.poppins(
-                  fontWeight: FontWeight.w600,
-                  fontSize: 14,
-                ),
+                style: AppType.body.copyWith(fontWeight: FontWeight.w600),
               ),
               const SizedBox(height: 4),
               Text(
                 'Nothing recorded for this module in the selected period.',
                 textAlign: TextAlign.center,
-                style: GoogleFonts.poppins(
-                  fontSize: 12,
-                  color: AppColors.textSecondary,
-                ),
+                style: AppType.meta.copyWith(color: AppColors.inkMuted),
               ),
             ],
           ),
@@ -658,7 +618,7 @@ class _ModulePanel extends StatelessWidget {
     }
 
     final s = module.summary;
-    return SectionCard(
+    return AppCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -713,10 +673,7 @@ class _ExpandableNamedList extends StatelessWidget {
         childrenPadding: EdgeInsets.zero,
         title: Text(
           '$title (${rows.length})',
-          style: GoogleFonts.poppins(
-            fontSize: 13,
-            fontWeight: FontWeight.w600,
-          ),
+          style: AppType.bodySm.copyWith(fontWeight: FontWeight.w600),
         ),
         children: [
           for (final row in rows)
@@ -725,21 +682,15 @@ class _ExpandableNamedList extends StatelessWidget {
               dense: true,
               title: Text(
                 row.name,
-                style: GoogleFonts.poppins(fontSize: 13),
+                style: AppType.bodySm,
               ),
               subtitle: Text(
                 '${row.totalPayments} payment(s)',
-                style: GoogleFonts.poppins(
-                  fontSize: 11,
-                  color: AppColors.textSecondary,
-                ),
+                style: AppType.micro.copyWith(color: AppColors.inkMuted),
               ),
               trailing: Text(
                 moneyBdt(row.totalAmount),
-                style: GoogleFonts.poppins(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                ),
+                style: AppType.bodySm.copyWith(fontWeight: FontWeight.w600),
               ),
             ),
         ],
@@ -762,10 +713,7 @@ class _ExpandableMethods extends StatelessWidget {
         childrenPadding: EdgeInsets.zero,
         title: Text(
           'Payment methods (${methods.length})',
-          style: GoogleFonts.poppins(
-            fontSize: 13,
-            fontWeight: FontWeight.w600,
-          ),
+          style: AppType.bodySm.copyWith(fontWeight: FontWeight.w600),
         ),
         children: [
           for (final m in methods)
@@ -774,7 +722,7 @@ class _ExpandableMethods extends StatelessWidget {
               dense: true,
               title: Text(
                 m.label,
-                style: GoogleFonts.poppins(fontSize: 13),
+                style: AppType.bodySm,
               ),
               subtitle: Text(
                 [
@@ -782,17 +730,11 @@ class _ExpandableMethods extends StatelessWidget {
                     m.bankAccountNo,
                   '${m.totalPayments} payment(s)',
                 ].whereType<String>().join(' · '),
-                style: GoogleFonts.poppins(
-                  fontSize: 11,
-                  color: AppColors.textSecondary,
-                ),
+                style: AppType.micro.copyWith(color: AppColors.inkMuted),
               ),
               trailing: Text(
                 moneyBdt(m.totalAmount),
-                style: GoogleFonts.poppins(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                ),
+                style: AppType.bodySm.copyWith(fontWeight: FontWeight.w600),
               ),
             ),
         ],
@@ -816,10 +758,7 @@ class _ExpandableLines extends StatelessWidget {
         childrenPadding: EdgeInsets.zero,
         title: Text(
           'Payment details (${lines.length})',
-          style: GoogleFonts.poppins(
-            fontSize: 13,
-            fontWeight: FontWeight.w600,
-          ),
+          style: AppType.bodySm.copyWith(fontWeight: FontWeight.w600),
         ),
         children: [
           for (final line in lines)
@@ -829,7 +768,7 @@ class _ExpandableLines extends StatelessWidget {
                 width: double.infinity,
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: AppColors.background,
+                  color: AppColors.surfaceSunk,
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Column(
@@ -842,19 +781,12 @@ class _ExpandableLines extends StatelessWidget {
                             line.voucherNo?.isNotEmpty == true
                                 ? line.voucherNo!
                                 : 'Payment #${line.id}',
-                            style: GoogleFonts.poppins(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w600,
-                            ),
+                            style: AppType.bodySm.copyWith(fontWeight: FontWeight.w600),
                           ),
                         ),
                         Text(
                           line.formattedAmount,
-                          style: GoogleFonts.poppins(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w700,
-                            color: AppColors.primary,
-                          ),
+                          style: AppType.bodySm.copyWith(fontWeight: FontWeight.w700, color: AppColors.primary),
                         ),
                       ],
                     ),
@@ -869,10 +801,7 @@ class _ExpandableLines extends StatelessWidget {
                             line.companyName!.isNotEmpty)
                           line.companyName,
                       ].join(' · '),
-                      style: GoogleFonts.poppins(
-                        fontSize: 11,
-                        color: AppColors.textSecondary,
-                      ),
+                      style: AppType.micro.copyWith(color: AppColors.inkMuted),
                     ),
                     if (line.bankName != null || line.checkNo != null) ...[
                       const SizedBox(height: 2),
@@ -885,10 +814,7 @@ class _ExpandableLines extends StatelessWidget {
                           if (line.checkNo?.isNotEmpty == true)
                             'Cheque ${line.checkNo}',
                         ].whereType<String>().join(' · '),
-                        style: GoogleFonts.poppins(
-                          fontSize: 11,
-                          color: AppColors.textHint,
-                        ),
+                        style: AppType.micro.copyWith(color: AppColors.inkFaint),
                       ),
                     ],
                     if (line.image?.imageUrl != null &&
@@ -948,7 +874,7 @@ class _ReceiptThumb extends StatelessWidget {
                 child: Icon(
                   Icons.broken_image_outlined,
                   size: 20,
-                  color: AppColors.textSecondary,
+                  color: AppColors.inkMuted,
                 ),
               ),
             ),
@@ -958,11 +884,7 @@ class _ReceiptThumb extends StatelessWidget {
             image.status?.isNotEmpty == true
                 ? 'Receipt · ${image.status}'
                 : 'Receipt photo',
-            style: GoogleFonts.poppins(
-              fontSize: 11,
-              fontWeight: FontWeight.w500,
-              color: AppColors.textSecondary,
-            ),
+            style: AppType.micro.copyWith(fontWeight: FontWeight.w500, color: AppColors.inkMuted),
           ),
         ],
       ),
@@ -996,7 +918,7 @@ class _ReceiptThumb extends StatelessWidget {
                     padding: const EdgeInsets.all(48),
                     child: Text(
                       'Could not load receipt image.',
-                      style: GoogleFonts.poppins(color: Colors.white70),
+                      style: AppType.body.copyWith(color: Colors.white70),
                     ),
                   ),
                 ),

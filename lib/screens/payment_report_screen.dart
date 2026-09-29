@@ -1,13 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 
-import '../config/theme.dart';
 import '../models/payment_models.dart';
 import '../services/auth_service.dart';
 import '../services/payment_service.dart';
-import '../widgets/api_empty_state.dart';
-import '../widgets/gradient_screen_header.dart';
-import '../widgets/section_card.dart';
+import '../widgets/ui/ui.dart';
 
 class PaymentReportScreen extends StatefulWidget {
   const PaymentReportScreen({super.key});
@@ -60,10 +56,10 @@ class _PaymentReportScreenState extends State<PaymentReportScreen>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: AppColors.canvas,
       body: Column(
         children: [
-          GradientScreenHeader(
+          AppHeader(
             title: 'Payment Report',
             trailing: IconButton(
               onPressed: _load,
@@ -75,9 +71,9 @@ class _PaymentReportScreenState extends State<PaymentReportScreen>
             child: TabBar(
               controller: _tabController,
               labelColor: AppColors.primary,
-              unselectedLabelColor: AppColors.textSecondary,
+              unselectedLabelColor: AppColors.inkMuted,
               indicatorColor: AppColors.primary,
-              labelStyle: GoogleFonts.poppins(fontWeight: FontWeight.w600),
+              labelStyle: AppType.h3.copyWith(fontWeight: FontWeight.w600),
               tabs: const [
                 Tab(text: 'Loan Payments'),
                 Tab(text: 'Payroll'),
@@ -103,9 +99,9 @@ class _PaymentReportScreenState extends State<PaymentReportScreen>
   Widget _loanPaymentsTab() {
     if (_loanPayments.isEmpty) {
       return Padding(
-        padding: const EdgeInsets.all(20),
-        child: ApiEmptyState(
-          icon: Icons.payments_outlined,
+        padding: const EdgeInsets.all(AppSpace.lg),
+        child: AppEmptyState(
+          icon: AppIcons.payments,
           title: 'No loan payments',
           onRetry: _load,
         ),
@@ -113,42 +109,38 @@ class _PaymentReportScreenState extends State<PaymentReportScreen>
     }
 
     return ListView.separated(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(AppSpace.lg),
       itemCount: _loanPayments.length,
-      separatorBuilder: (_, __) => const SizedBox(height: 10),
+      separatorBuilder: (_, _) => const SizedBox(height: AppSpace.sm),
       itemBuilder: (context, index) {
         final item = _loanPayments[index];
-        return SectionCard(
+        return AppCard(
           child: Row(
             children: [
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
                   children: [
                     Text(
                       '৳${item.amount.toStringAsFixed(2)}',
-                      style: GoogleFonts.poppins(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w700,
-                      ),
+                      style: AppType.h2.copyWith(color: AppColors.ink),
                     ),
                     Text(
                       item.formattedDate,
-                      style: GoogleFonts.poppins(
-                        fontSize: 12,
-                        color: AppColors.textSecondary,
-                      ),
+                      style:
+                          AppType.meta.copyWith(color: AppColors.inkMuted),
                     ),
                   ],
                 ),
               ),
-              Text(
-                item.status,
-                style: GoogleFonts.poppins(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w600,
-                  color: AppColors.primary,
-                ),
+              // Colour is pinned to the module accent, not derived from the
+              // status string — the original showed every loan-payment status
+              // in the same colour.
+              AppStatusChip(
+                status: item.status,
+                color: AppColors.mVehicles,
+                compact: true,
               ),
             ],
           ),
@@ -160,9 +152,9 @@ class _PaymentReportScreenState extends State<PaymentReportScreen>
   Widget _payrollTab() {
     if (_payrolls.isEmpty) {
       return Padding(
-        padding: const EdgeInsets.all(20),
-        child: ApiEmptyState(
-          icon: Icons.receipt_long_outlined,
+        padding: const EdgeInsets.all(AppSpace.lg),
+        child: AppEmptyState(
+          icon: AppIcons.invoice,
           title: 'No payroll records',
           subtitle: 'Payroll for this month is not available yet.',
           onRetry: _load,
@@ -171,12 +163,12 @@ class _PaymentReportScreenState extends State<PaymentReportScreen>
     }
 
     return ListView.separated(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(AppSpace.lg),
       itemCount: _payrolls.length,
-      separatorBuilder: (_, __) => const SizedBox(height: 10),
+      separatorBuilder: (_, _) => const SizedBox(height: AppSpace.sm),
       itemBuilder: (context, index) {
         final item = _payrolls[index];
-        return SectionCard(
+        return AppCard(
           child: Row(
             children: [
               Expanded(
@@ -185,27 +177,21 @@ class _PaymentReportScreenState extends State<PaymentReportScreen>
                   children: [
                     Text(
                       item.month,
-                      style: GoogleFonts.poppins(
-                        fontWeight: FontWeight.w600,
-                      ),
+                      style: AppType.h3.copyWith(color: AppColors.ink),
                     ),
                     Text(
                       'Net: ৳${item.netPay.toStringAsFixed(2)}',
-                      style: GoogleFonts.poppins(
-                        fontSize: 12,
-                        color: AppColors.textSecondary,
-                      ),
+                      style: AppType.meta.copyWith(color: AppColors.inkMuted),
                     ),
                   ],
                 ),
               ),
-              Text(
-                item.status,
-                style: GoogleFonts.poppins(
-                  fontSize: 11,
-                  color: AppColors.success,
-                  fontWeight: FontWeight.w600,
-                ),
+              // Pinned to success, matching the original — payroll status was
+              // always green regardless of its value.
+              AppStatusChip(
+                status: item.status,
+                color: AppColors.success,
+                compact: true,
               ),
             ],
           ),

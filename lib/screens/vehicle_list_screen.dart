@@ -1,13 +1,9 @@
 import 'package:animate_do/animate_do.dart';
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 
-import '../config/theme.dart';
 import '../models/vehicle_models.dart';
 import '../services/vehicle_service.dart';
-import '../widgets/api_empty_state.dart';
-import '../widgets/gradient_screen_header.dart';
-import '../widgets/section_card.dart';
+import '../widgets/ui/ui.dart';
 import 'vehicle_hub_screen.dart';
 
 class VehicleListScreen extends StatefulWidget {
@@ -64,16 +60,17 @@ class _VehicleListScreenState extends State<VehicleListScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: AppColors.canvas,
       body: RefreshIndicator(
         onRefresh: _load,
+        color: AppColors.primary,
         child: CustomScrollView(
           physics: const AlwaysScrollableScrollPhysics(
             parent: BouncingScrollPhysics(),
           ),
           slivers: [
             const SliverToBoxAdapter(
-              child: GradientScreenHeader(
+              child: AppHeader(
                 title: 'Vehicles',
                 subtitle: 'Active fleet',
               ),
@@ -87,8 +84,8 @@ class _VehicleListScreenState extends State<VehicleListScreen> {
                 child: Center(
                   child: Padding(
                     padding: const EdgeInsets.all(20),
-                    child: ApiEmptyState(
-                      icon: Icons.directions_car_outlined,
+                    child: AppEmptyState(
+                      icon: AppIcons.vehicles,
                       title: 'Vehicles module disabled',
                       subtitle:
                           'Vehicles are turned off in mobile app settings. Ask an admin to enable the Vehicles module.',
@@ -102,8 +99,8 @@ class _VehicleListScreenState extends State<VehicleListScreen> {
                 child: Center(
                   child: Padding(
                     padding: const EdgeInsets.all(20),
-                    child: ApiEmptyState(
-                      icon: Icons.error_outline,
+                    child: AppEmptyState(
+                      icon: AppIcons.error,
                       title: 'Could not load vehicles',
                       subtitle: _error!,
                       onRetry: _load,
@@ -112,12 +109,12 @@ class _VehicleListScreenState extends State<VehicleListScreen> {
                 ),
               )
             else if (_vehicles.isEmpty)
-              const SliverFillRemaining(
+              SliverFillRemaining(
                 child: Center(
                   child: Padding(
-                    padding: EdgeInsets.all(20),
-                    child: ApiEmptyState(
-                      icon: Icons.directions_car_outlined,
+                    padding: const EdgeInsets.all(AppSpace.lg),
+                    child: AppEmptyState(
+                      icon: AppIcons.vehicles,
                       title: 'No active vehicles',
                       subtitle:
                           'Active vehicles will appear here when available.',
@@ -127,7 +124,7 @@ class _VehicleListScreenState extends State<VehicleListScreen> {
               )
             else
               SliverPadding(
-                padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
+                padding: const EdgeInsets.fromLTRB(AppSpace.gutter, AppSpace.md, AppSpace.gutter, AppSpace.xl),
                 sliver: SliverList(
                   delegate: SliverChildBuilderDelegate(
                     (context, index) {
@@ -135,77 +132,70 @@ class _VehicleListScreenState extends State<VehicleListScreen> {
                       return FadeInUp(
                         delay: Duration(milliseconds: 40 * index),
                         child: Padding(
-                          padding: const EdgeInsets.only(bottom: 12),
-                          child: SectionCard(
-                            padding: EdgeInsets.zero,
-                            child: InkWell(
-                              onTap: () => Navigator.of(context).push(
-                                MaterialPageRoute(
-                                  builder: (_) =>
-                                      VehicleHubScreen(vehicle: vehicle),
-                                ),
+                          padding:
+                              const EdgeInsets.only(bottom: AppSpace.sm),
+                          // Fire-and-forget push; no result is used and the
+                          // list is not reloaded on return. Unchanged.
+                          child: AppCard(
+                            onTap: () => Navigator.of(context).push(
+                              MaterialPageRoute(
+                                builder: (_) =>
+                                    VehicleHubScreen(vehicle: vehicle),
                               ),
-                              borderRadius: BorderRadius.circular(20),
-                              child: Padding(
-                                padding: const EdgeInsets.all(16),
-                                child: Row(
-                                  children: [
-                                    Container(
-                                      width: 52,
-                                      height: 52,
-                                      decoration: BoxDecoration(
-                                        color: AppColors.info
-                                            .withValues(alpha: 0.12),
-                                        borderRadius: BorderRadius.circular(14),
-                                      ),
-                                      child: const Icon(
-                                        Icons.directions_car_outlined,
-                                        color: AppColors.info,
-                                      ),
-                                    ),
-                                    const SizedBox(width: 14),
-                                    Expanded(
-                                      child: Column(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.start,
-                                        children: [
-                                          Text(
-                                            vehicle.displayPlate,
-                                            style: GoogleFonts.poppins(
-                                              fontSize: 15,
-                                              fontWeight: FontWeight.w600,
-                                            ),
-                                          ),
-                                          const SizedBox(height: 2),
-                                          Text(
-                                            'Purchased ${vehicle.formattedPurchaseDate}',
-                                            style: GoogleFonts.poppins(
-                                              fontSize: 12,
-                                              color: AppColors.textSecondary,
-                                            ),
-                                          ),
-                                          if (vehicle.tVehicleNo
-                                                  .trim()
-                                                  .isNotEmpty &&
-                                              vehicle.tVehicleNo.trim() !=
-                                                  vehicle.displayPlate)
-                                            Text(
-                                              vehicle.tVehicleNo,
-                                              style: GoogleFonts.poppins(
-                                                fontSize: 11,
-                                                color: AppColors.textHint,
-                                              ),
-                                            ),
-                                        ],
-                                      ),
-                                    ),
-                                    const Icon(
-                                      Icons.chevron_right_rounded,
-                                      color: AppColors.textHint,
-                                    ),
-                                  ],
+                            ),
+                            padding: const EdgeInsets.all(AppSpace.sm + 2),
+                            child: Row(
+                              children: [
+                                AppIconTile(
+                                  icon: AppIcons.vehicles,
+                                  color: AppColors.mVehicles,
+                                  semanticLabel: vehicle.displayPlate,
                                 ),
-                              ),
+                                const SizedBox(width: AppSpace.sm + 2),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Text(
+                                        vehicle.displayPlate,
+                                        style: AppType.h3
+                                            .copyWith(color: AppColors.ink),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                      const SizedBox(height: 2),
+                                      Text(
+                                        'Purchased ${vehicle.formattedPurchaseDate}',
+                                        style: AppType.meta.copyWith(
+                                          color: AppColors.inkMuted,
+                                        ),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                      if (vehicle.tVehicleNo
+                                              .trim()
+                                              .isNotEmpty &&
+                                          vehicle.tVehicleNo.trim() !=
+                                              vehicle.displayPlate)
+                                        Text(
+                                          vehicle.tVehicleNo,
+                                          style: AppType.micro.copyWith(
+                                            color: AppColors.inkFaint,
+                                          ),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                    ],
+                                  ),
+                                ),
+                                AppIcon(
+                                  AppIcons.chevron,
+                                  size: 18,
+                                  color: AppColors.inkFaint,
+                                ),
+                              ],
                             ),
                           ),
                         ),

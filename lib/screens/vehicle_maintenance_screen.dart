@@ -1,14 +1,10 @@
 import 'package:animate_do/animate_do.dart';
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 
-import '../config/theme.dart';
 import '../models/sales_models.dart' show moneyBdt;
 import '../models/vehicle_models.dart';
 import '../services/vehicle_service.dart';
-import '../widgets/api_empty_state.dart';
-import '../widgets/gradient_screen_header.dart';
-import '../widgets/section_card.dart';
+import '../widgets/ui/ui.dart';
 
 class VehicleMaintenanceScreen extends StatefulWidget {
   const VehicleMaintenanceScreen({super.key, required this.vehicle});
@@ -81,56 +77,48 @@ class _VehicleMaintenanceScreenState extends State<VehicleMaintenanceScreen> {
   Widget build(BuildContext context) {
     final vehicle = widget.vehicle;
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: AppColors.canvas,
       body: RefreshIndicator(
         onRefresh: _load,
+        color: AppColors.primary,
         child: CustomScrollView(
           physics: const AlwaysScrollableScrollPhysics(
             parent: BouncingScrollPhysics(),
           ),
           slivers: [
             SliverToBoxAdapter(
-              child: GradientScreenHeader(
+              child: AppHeader(
                 title: vehicle.displayPlate,
                 subtitle: 'Maintenance history',
               ),
             ),
             SliverToBoxAdapter(
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
-                child: SectionCard(
+                padding: const EdgeInsets.fromLTRB(AppSpace.gutter, AppSpace.md, AppSpace.gutter, 0),
+                child: AppCard(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
                         vehicle.displayPlate,
-                        style: GoogleFonts.poppins(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w700,
-                        ),
+                        style: AppType.h2.copyWith(color: AppColors.ink),
                       ),
-                      const SizedBox(height: 6),
+                      const SizedBox(height: AppSpace.xxs),
                       Text(
                         'Vehicle no: ${vehicle.tVehicleNo.isEmpty ? '—' : vehicle.tVehicleNo}',
-                        style: GoogleFonts.poppins(
-                          fontSize: 12,
-                          color: AppColors.textSecondary,
-                        ),
+                        style: AppType.meta
+                            .copyWith(color: AppColors.inkMuted),
                       ),
                       Text(
                         'Purchased: ${vehicle.formattedPurchaseDate}',
-                        style: GoogleFonts.poppins(
-                          fontSize: 12,
-                          color: AppColors.textSecondary,
-                        ),
+                        style: AppType.meta
+                            .copyWith(color: AppColors.inkMuted),
                       ),
                       if (_history != null)
                         Text(
                           'Jobs shown: ${_history!.total}',
-                          style: GoogleFonts.poppins(
-                            fontSize: 12,
-                            color: AppColors.textHint,
-                          ),
+                          style:
+                              AppType.meta.copyWith(color: AppColors.inkFaint),
                         ),
                     ],
                   ),
@@ -146,8 +134,8 @@ class _VehicleMaintenanceScreenState extends State<VehicleMaintenanceScreen> {
                 child: Center(
                   child: Padding(
                     padding: const EdgeInsets.all(20),
-                    child: ApiEmptyState(
-                      icon: Icons.error_outline,
+                    child: AppEmptyState(
+                      icon: AppIcons.error,
                       title: 'Could not load history',
                       subtitle: _error!,
                       onRetry: _load,
@@ -156,12 +144,12 @@ class _VehicleMaintenanceScreenState extends State<VehicleMaintenanceScreen> {
                 ),
               )
             else if (_history == null || _history!.jobs.isEmpty)
-              const SliverFillRemaining(
+              SliverFillRemaining(
                 child: Center(
                   child: Padding(
-                    padding: EdgeInsets.all(20),
-                    child: ApiEmptyState(
-                      icon: Icons.build_outlined,
+                    padding: EdgeInsets.all(AppSpace.lg),
+                    child: AppEmptyState(
+                      icon: AppIcons.wrench,
                       title: 'No maintenance jobs',
                       subtitle:
                           'Recent maintenance jobs for this vehicle will appear here.',
@@ -171,7 +159,7 @@ class _VehicleMaintenanceScreenState extends State<VehicleMaintenanceScreen> {
               )
             else
               SliverPadding(
-                padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
+                padding: const EdgeInsets.fromLTRB(AppSpace.gutter, AppSpace.md, AppSpace.gutter, AppSpace.xl),
                 sliver: SliverList(
                   delegate: SliverChildBuilderDelegate(
                     (context, index) {
@@ -180,7 +168,7 @@ class _VehicleMaintenanceScreenState extends State<VehicleMaintenanceScreen> {
                         delay: Duration(milliseconds: 50 * index),
                         child: Padding(
                           padding: const EdgeInsets.only(bottom: 12),
-                          child: SectionCard(
+                          child: AppCard(
                             child: Theme(
                               data: Theme.of(context)
                                   .copyWith(dividerColor: Colors.transparent),
@@ -194,10 +182,8 @@ class _VehicleMaintenanceScreenState extends State<VehicleMaintenanceScreen> {
                                           ? 'Job #${job.id}'
                                           : job.jobNo)
                                       : job.jobTitle,
-                                  style: GoogleFonts.poppins(
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.w600,
-                                  ),
+                                  style: AppType.h3
+                                      .copyWith(color: AppColors.ink),
                                 ),
                                 subtitle: Padding(
                                   padding: const EdgeInsets.only(top: 4),
@@ -207,46 +193,30 @@ class _VehicleMaintenanceScreenState extends State<VehicleMaintenanceScreen> {
                                     children: [
                                       Text(
                                         [
-                                          if (job.jobNo.isNotEmpty) job.jobNo,
+                                          if (job.jobNo.isNotEmpty)
+                                            job.jobNo,
                                           job.formattedDate,
                                         ].join(' · '),
-                                        style: GoogleFonts.poppins(
-                                          fontSize: 12,
-                                          color: AppColors.textSecondary,
+                                        style: AppType.meta.copyWith(
+                                          color: AppColors.inkMuted,
                                         ),
                                       ),
-                                      const SizedBox(height: 6),
+                                      const SizedBox(height: AppSpace.xs),
                                       Row(
                                         children: [
-                                          Container(
-                                            padding: const EdgeInsets.symmetric(
-                                              horizontal: 8,
-                                              vertical: 3,
-                                            ),
-                                            decoration: BoxDecoration(
-                                              color: _statusColor(job.status)
-                                                  .withValues(alpha: 0.12),
-                                              borderRadius:
-                                                  BorderRadius.circular(8),
-                                            ),
-                                            child: Text(
-                                              job.status.isEmpty
-                                                  ? 'unknown'
-                                                  : job.status,
-                                              style: GoogleFonts.poppins(
-                                                fontSize: 11,
-                                                fontWeight: FontWeight.w600,
-                                                color: _statusColor(job.status),
-                                              ),
-                                            ),
+                                          AppStatusChip(
+                                            status: job.status.isEmpty
+                                                ? 'unknown'
+                                                : job.status,
+                                            color: _statusColor(job.status),
+                                            compact: true,
                                           ),
                                           const Spacer(),
                                           Text(
                                             job.formattedGrandTotal,
-                                            style: GoogleFonts.poppins(
-                                              fontSize: 13,
+                                            style: AppType.h3.copyWith(
+                                              color: AppColors.mVehicles,
                                               fontWeight: FontWeight.w700,
-                                              color: AppColors.primary,
                                             ),
                                           ),
                                         ],
@@ -255,7 +225,7 @@ class _VehicleMaintenanceScreenState extends State<VehicleMaintenanceScreen> {
                                   ),
                                 ),
                                 children: [
-                                  const SizedBox(height: 8),
+                                  const SizedBox(height: AppSpace.xs),
                                   if (job.issueType != null &&
                                       job.issueType!.isNotEmpty)
                                     _metaRow('Issue', job.issueType!),
@@ -264,14 +234,17 @@ class _VehicleMaintenanceScreenState extends State<VehicleMaintenanceScreen> {
                                     _metaRow('Workshop', job.workshop!),
                                   if (job.performedBy != null &&
                                       job.performedBy!.isNotEmpty)
-                                    _metaRow('Performed by', job.performedBy!),
+                                    _metaRow(
+                                      'Performed by',
+                                      job.performedBy!,
+                                    ),
                                   if (job.jobType != null &&
                                       job.jobType!.isNotEmpty)
                                     _metaRow('Type', job.jobType!),
-                                  const SizedBox(height: 8),
+                                  const SizedBox(height: AppSpace.xs),
                                   Wrap(
-                                    spacing: 8,
-                                    runSpacing: 8,
+                                    spacing: AppSpace.xs,
+                                    runSpacing: AppSpace.xs,
                                     children: [
                                       _costChip('Parts', job.partsCost),
                                       _costChip('Labor', job.laborCost),
@@ -283,30 +256,31 @@ class _VehicleMaintenanceScreenState extends State<VehicleMaintenanceScreen> {
                                     ],
                                   ),
                                   if (job.parts.isNotEmpty) ...[
-                                    const SizedBox(height: 12),
+                                    const SizedBox(height: AppSpace.md),
                                     Text(
                                       'Parts (${job.parts.length})',
-                                      style: GoogleFonts.poppins(
-                                        fontSize: 13,
-                                        fontWeight: FontWeight.w600,
-                                      ),
+                                      style: AppType.h3
+                                          .copyWith(color: AppColors.ink),
                                     ),
-                                    const SizedBox(height: 6),
+                                    const SizedBox(height: AppSpace.xs),
                                     for (final part in job.parts)
                                       Padding(
-                                        padding:
-                                            const EdgeInsets.only(bottom: 8),
+                                        padding: const EdgeInsets.only(
+                                          bottom: AppSpace.xs,
+                                        ),
                                         child: Row(
                                           children: [
                                             Expanded(
                                               child: Column(
                                                 crossAxisAlignment:
                                                     CrossAxisAlignment.start,
+                                                mainAxisSize: MainAxisSize.min,
                                                 children: [
                                                   Text(
                                                     part.name,
-                                                    style: GoogleFonts.poppins(
-                                                      fontSize: 13,
+                                                    style: AppType.bodySm
+                                                        .copyWith(
+                                                      color: AppColors.ink,
                                                     ),
                                                   ),
                                                   Text(
@@ -314,10 +288,10 @@ class _VehicleMaintenanceScreenState extends State<VehicleMaintenanceScreen> {
                                                       '${part.qty}${part.unit != null && part.unit!.isNotEmpty ? ' ${part.unit}' : ''}',
                                                       moneyBdt(part.price),
                                                     ].join(' × '),
-                                                    style: GoogleFonts.poppins(
-                                                      fontSize: 11,
-                                                      color: AppColors
-                                                          .textSecondary,
+                                                    style:
+                                                        AppType.micro.copyWith(
+                                                      color:
+                                                          AppColors.inkFaint,
                                                     ),
                                                   ),
                                                 ],
@@ -325,9 +299,10 @@ class _VehicleMaintenanceScreenState extends State<VehicleMaintenanceScreen> {
                                             ),
                                             Text(
                                               moneyBdt(part.totalPrice),
-                                              style: GoogleFonts.poppins(
-                                                fontSize: 13,
-                                                fontWeight: FontWeight.w600,
+                                              style: AppType.bodySm.copyWith(
+                                                color: AppColors.ink,
+                                                fontWeight:
+                                                    FontWeight.w600,
                                               ),
                                             ),
                                           ],
@@ -336,7 +311,7 @@ class _VehicleMaintenanceScreenState extends State<VehicleMaintenanceScreen> {
                                   ],
                                   if (job.remarks != null &&
                                       job.remarks!.trim().isNotEmpty) ...[
-                                    const SizedBox(height: 8),
+                                    const SizedBox(height: AppSpace.xs),
                                     _metaRow('Remarks', job.remarks!),
                                   ],
                                 ],
@@ -358,13 +333,10 @@ class _VehicleMaintenanceScreenState extends State<VehicleMaintenanceScreen> {
 
   Widget _metaRow(String label, String value) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 4),
+      padding: const EdgeInsets.only(bottom: AppSpace.xxs),
       child: RichText(
         text: TextSpan(
-          style: GoogleFonts.poppins(
-            fontSize: 12,
-            color: AppColors.textSecondary,
-          ),
+          style: AppType.meta.copyWith(color: AppColors.inkMuted),
           children: [
             TextSpan(
               text: '$label: ',
@@ -379,14 +351,17 @@ class _VehicleMaintenanceScreenState extends State<VehicleMaintenanceScreen> {
 
   Widget _costChip(String label, double value) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSpace.sm,
+        vertical: AppSpace.xxs,
+      ),
       decoration: BoxDecoration(
-        color: AppColors.background,
-        borderRadius: BorderRadius.circular(10),
+        color: AppColors.surfaceSunk,
+        borderRadius: BorderRadius.circular(AppRadius.sm),
       ),
       child: Text(
         '$label ${moneyBdt(value)}',
-        style: GoogleFonts.poppins(fontSize: 11),
+        style: AppType.micro.copyWith(color: AppColors.ink),
       ),
     );
   }
