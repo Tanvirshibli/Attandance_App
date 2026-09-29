@@ -14,6 +14,14 @@ class UserFacingError {
       'No internet connection. Please check your network and try again.';
   static const String serverDown =
       'Server is unreachable. Please try again later.';
+
+  /// A timeout is not the same as being offline. The production backend has
+  /// been measured taking ~20s to complete a TCP connect while perfectly
+  /// healthy, so this wording tells the user to retry rather than to go and
+  /// debug working Wi-Fi.
+  static const String serverSlow =
+      'The server is taking too long to respond. Please try again.';
+
   static const String tooManyAttempts =
       'Too many attempts. Please wait a moment and try again.';
   static const String generic = 'Something went wrong. Please try again.';
@@ -50,8 +58,14 @@ class UserFacingError {
   }
 
   /// Friendly message for a thrown network error.
+  ///
+  /// A timeout is deliberately not mapped to [noInternet]: the backend has
+  /// been measured taking ~20s to complete a TCP connect while perfectly
+  /// healthy, so a timeout means "slow server" and the user's network is
+  /// almost certainly fine. A `SocketException` (host unreachable, DNS
+  /// failure) is a real network problem and still says so.
   static String forException(Object error) {
-    if (error is TimeoutException) return noInternet;
+    if (error is TimeoutException) return serverSlow;
     if (error is SocketException) return noInternet;
     if (error is HandshakeException) return serverDown;
     return generic;

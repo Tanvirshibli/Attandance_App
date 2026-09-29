@@ -25,11 +25,44 @@ class AuthResult {
   final String? token;
 }
 
+/// The outcome of one sweep across the candidate login URLs, plus whether the
+/// failure was purely a slow connect — which is the only case worth retrying.
+class _LoginPass {
+  const _LoginPass({required this.result, this.onlyTimeouts = false});
+
+  final AuthResult result;
+  final bool onlyTimeouts;
+}
+
 class AuthService {
   static const String _tokenKey = 'auth_token';
   static const String _emailKey = 'auth_email';
   static const String _rememberKey = 'remember_me';
   static const Duration _profileCacheTtl = Duration(minutes: 20);
+
+  /// Login must tolerate a slow handshake. The production host has been
+  /// measured taking ~20s to complete a TCP connect while still healthy, so
+  /// the previous 15s ceiling killed requests that were about to succeed and
+  /// reported them as "no internet".
+  static const Duration _loginTimeout = Duration(seconds: 45);
+
+  /// One retry, for a single attempt that timed out on a slow connect. A
+  /// server that was merely slow will usually answer the second time.
+  static const Duration _loginRetryDelay = Duration(seconds: 2);
+
+  /// Ceiling for the whole login exchange including the retry, so the user is
+  /// never left staring at a spinner indefinitely.
+  static const Duration _loginOverallBudget = Duration(seconds: 80);
+
+  /// Ceiling for authenticated reads (profile fetch, token refresh).
+  ///
+  /// The same production host that needed a 45s login ceiling has been
+  /// measured taking 20s to complete a TCP connect on
+  /// `/api/v1/get-my-info`, so a 15s read timeout failed requests the server
+  /// was about to answer. The failure surfaced as "Could not load profile
+  /// data" because a `TimeoutException` was swallowed by the same catch as a
+  /// hard connection error.
+  static const Duration _readTimeout = Duration(seconds: 45);
 
   final EndpointConfigService _configService = EndpointConfigService.instance;
 
@@ -61,13 +94,48 @@ class AuthService {
     required String password,
     required bool rememberMe,
   }) async {
+    final stopwatch = Stopwatch()..start();
+    final loginUrls = await _loginUrls();
+
+    // One extra pass, but only when the first pass failed purely on a slow
+    // connect. The production host intermittently takes ~20s to complete a TCP
+    // handshake, and the second attempt usually lands in under a second.
+    AuthResult? outcome;
+    var attempt = 0;
+    while (true) {
+      final pass = await _loginPass(
+        loginUrls: loginUrls,
+        email: email,
+        password: password,
+        rememberMe: rememberMe,
+      );
+      outcome = pass.result;
+      final canRetry = pass.onlyTimeouts &&
+          attempt == 0 &&
+          stopwatch.elapsed < _loginOverallBudget;
+      if (!canRetry) break;
+      attempt++;
+      await Future<void>.delayed(_loginRetryDelay);
+    }
+
+    return outcome;
+  }
+
+  /// One pass over every candidate login URL.
+  Future<_LoginPass> _loginPass({
+    required List<String> loginUrls,
+    required String email,
+    required String password,
+    required bool rememberMe,
+  }) async {
     String? lastNetworkError;
     String? lastNetworkDetails;
     String? lastAttemptedLoginUrl;
     Object? lastNetworkException;
     AuthResult? credentialRejection;
+    var sawTimeout = false;
 
-    for (final loginUrl in await _loginUrls()) {
+    for (final loginUrl in loginUrls) {
       lastAttemptedLoginUrl = loginUrl;
       try {
         final response = await http
@@ -84,7 +152,7 @@ class AuthService {
                 'password': password,
               }),
             )
-            .timeout(const Duration(seconds: 15));
+            .timeout(_loginTimeout);
 
         final data = _decodeMap(response.body);
 
@@ -111,9 +179,11 @@ class AuthService {
         if (response.statusCode == 200 && data['success'] == true) {
           final token = data['token']?.toString();
           if (token == null || token.isEmpty) {
-            return const AuthResult(
-              success: false,
-              message: 'Authentication token missing in server response.',
+            return const _LoginPass(
+              result: AuthResult(
+                success: false,
+                message: 'Authentication token missing in server response.',
+              ),
             );
           }
 
@@ -134,39 +204,51 @@ class AuthService {
             await FcmWakeHandler.syncTokenWithBackend();
           } catch (_) {}
 
-          return AuthResult(
-            success: true,
-            message: data['message']?.toString() ?? 'Login successful',
-            token: token,
+          return _LoginPass(
+            result: AuthResult(
+              success: true,
+              message: data['message']?.toString() ?? 'Login successful',
+              token: token,
+            ),
           );
         }
 
         if (response.statusCode == 429) {
           final retryAfter = response.headers['retry-after'];
-          return AuthResult(
-            success: false,
-            message: retryAfter != null && retryAfter.isNotEmpty
-                ? 'Too many requests. Please wait $retryAfter seconds and try again.'
-                : 'Too many requests. Please wait a moment and try again.',
+          return _LoginPass(
+            result: AuthResult(
+              success: false,
+              message: retryAfter != null && retryAfter.isNotEmpty
+                  ? 'Too many requests. Please wait $retryAfter seconds and try again.'
+                  : 'Too many requests. Please wait a moment and try again.',
+            ),
           );
         }
 
         if (response.statusCode == 422) {
-          return const AuthResult(
-            success: false,
-            message: 'Please check your email and password format.',
+          return const _LoginPass(
+            result: AuthResult(
+              success: false,
+              message: 'Please check your email and password format.',
+            ),
           );
         }
 
-        return AuthResult(
-          success: false,
-          message: UserFacingError.forLogin(
-            statusCode: response.statusCode,
-            rawMessage:
-                data['message']?.toString() ?? data['error']?.toString(),
+        return _LoginPass(
+          result: AuthResult(
+            success: false,
+            message: UserFacingError.forLogin(
+              statusCode: response.statusCode,
+              rawMessage:
+                  data['message']?.toString() ?? data['error']?.toString(),
+            ),
           ),
         );
       } on TimeoutException catch (error) {
+        // A timeout is not proof the device is offline. The production host
+        // has been measured answering in ~20s while perfectly healthy, so say
+        // so rather than telling the user to check working Wi-Fi.
+        sawTimeout = true;
         lastNetworkError = 'Request timed out.';
         lastNetworkDetails = error.toString();
         lastNetworkException = error;
@@ -190,10 +272,13 @@ class AuthService {
       }
     }
 
-    // Every URL answered 401/403, so the credentials really are the problem.
-    // Report that rather than the "no internet" fallback below.
-    if (credentialRejection != null && lastNetworkError == null) {
-      return credentialRejection;
+    // A 401/403 from a server we successfully reached is proof the network
+    // worked, so a credential rejection outranks any network error seen along
+    // the way. The previous guard required `lastNetworkError == null`, which
+    // meant one flaky candidate URL could mask a genuine bad password and
+    // report "No internet connection" instead.
+    if (credentialRejection != null) {
+      return _LoginPass(result: credentialRejection);
     }
 
     final baseUrls = AppConfig.authApiBaseUrlCandidates.join(', ');
@@ -206,11 +291,19 @@ class AuthService {
       'Tried bases: $baseUrls. Last URL: ${lastAttemptedLoginUrl ?? 'n/a'}. '
       'Details: ${lastNetworkDetails ?? 'n/a'}',
     );
-    return AuthResult(
-      success: false,
-      message: lastNetworkException is HandshakeException
-          ? UserFacingError.serverDown
-          : UserFacingError.noInternet,
+    return _LoginPass(
+      onlyTimeouts: sawTimeout && lastNetworkException is TimeoutException,
+      result: AuthResult(
+        success: false,
+        message: switch (lastNetworkException) {
+          HandshakeException() => UserFacingError.serverDown,
+          // A timeout means the server was slow to answer, not that the device
+          // is offline. Telling someone to check their Wi-Fi when the Wi-Fi is
+          // fine sends them down the wrong path.
+          TimeoutException() => UserFacingError.serverSlow,
+          _ => UserFacingError.noInternet,
+        },
+      ),
     );
   }
 
@@ -256,7 +349,7 @@ class AuthService {
               'User-Agent': 'PPHLAttendance/2.1 (Android; Flutter)',
             },
           )
-          .timeout(const Duration(seconds: 15));
+          .timeout(_readTimeout);
 
       if (response.statusCode == 429) {
         return false;
@@ -303,7 +396,7 @@ class AuthService {
     for (final url in await _profileUrls()) {
       try {
         var response = await _authorizedGet(url: url, token: token)
-            .timeout(const Duration(seconds: 15));
+            .timeout(_readTimeout);
 
         if (response.statusCode == 404) {
           continue;
@@ -326,7 +419,7 @@ class AuthService {
           }
           token = refreshedToken;
           response = await _authorizedGet(url: url, token: token)
-              .timeout(const Duration(seconds: 15));
+              .timeout(_readTimeout);
           if (response.statusCode == 401) {
             await logout(invalidateServerSession: false);
             return null;
@@ -344,6 +437,11 @@ class AuthService {
           _cachedProfileAt = DateTime.now();
           return profile;
         }
+      } on TimeoutException {
+        // A slow connect is not a dead URL. Fall through to the next candidate
+        // rather than treating it like a hard failure, so one congested
+        // attempt does not blank the whole profile.
+        continue;
       } catch (_) {
         continue;
       }
