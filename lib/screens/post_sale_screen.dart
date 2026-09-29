@@ -6,6 +6,7 @@ import '../models/dealer_list_models.dart';
 import '../models/sales_post_models.dart';
 import '../services/auth_service.dart';
 import '../services/sales_service.dart';
+import '../services/zone_scope_service.dart';
 import '../widgets/searchable_select_field.dart';
 import '../widgets/ui/ui.dart';
 import '../widgets/voice_input_field.dart';
@@ -70,6 +71,7 @@ class _PostSaleScreenState extends State<PostSaleScreen> {
       _dealerLoadError = null;
     });
     final result = await _salesService.fetchAllDealerLists();
+    final scope = await ZoneScopeService.instance.load();
     if (!mounted) return;
     if (!result.success || result.data == null) {
       setState(() {
@@ -80,7 +82,10 @@ class _PostSaleScreenState extends State<PostSaleScreen> {
     }
     setState(() {
       _loadingDealers = false;
-      _dealerLists = result.data;
+      // Post sale offers only the dealers inside the employee's zones.
+      _dealerLists = scope == null
+          ? result.data
+          : result.data!.scopedTo(scope.zoneNames);
     });
   }
 

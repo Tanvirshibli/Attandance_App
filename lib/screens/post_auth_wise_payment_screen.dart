@@ -11,6 +11,7 @@ import '../models/payment_setup_models.dart';
 import '../services/auth_service.dart';
 import '../services/payment_service.dart';
 import '../services/sales_service.dart';
+import '../services/zone_scope_service.dart';
 import '../widgets/searchable_select_field.dart';
 import '../widgets/ui/ui.dart';
 import '../widgets/voice_input_field.dart';
@@ -141,6 +142,7 @@ class _PostAuthWisePaymentScreenState extends State<PostAuthWisePaymentScreen> {
 
     final setupResult = await _paymentService.fetchPaymentSetupData();
     final dealerResult = await _salesService.fetchAllDealerLists();
+    final scope = await ZoneScopeService.instance.load();
     if (!mounted) return;
 
     if (!setupResult.success || setupResult.data == null) {
@@ -164,7 +166,12 @@ class _PostAuthWisePaymentScreenState extends State<PostAuthWisePaymentScreen> {
     setState(() {
       _loadingSetup = false;
       _setup = setup;
-      _dealerLists = dealerResult.data;
+      // Receive payments only against the dealers inside the employee's zones.
+      _dealerLists = dealerResult.data == null
+          ? null
+          : (scope == null
+              ? dealerResult.data
+              : dealerResult.data!.scopedTo(scope.zoneNames));
       if (dealerResult.success != true || dealerResult.data == null) {
         _setupError = dealerResult.message ??
             'Dealer lists could not be loaded. Employee receive still works.';

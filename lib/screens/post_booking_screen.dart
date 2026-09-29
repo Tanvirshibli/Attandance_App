@@ -7,6 +7,7 @@ import '../models/sales_booking_post_models.dart';
 import '../services/auth_service.dart';
 import '../services/payment_service.dart';
 import '../services/sales_service.dart';
+import '../services/zone_scope_service.dart';
 import '../widgets/searchable_select_field.dart';
 import '../widgets/ui/ui.dart';
 import '../widgets/voice_input_field.dart';
@@ -167,6 +168,7 @@ class _PostBookingScreenState extends State<PostBookingScreen> {
     final profile = await _authService.getCurrentUserProfile();
     final formResult = await _salesService.fetchBookingFormData();
     final dealerResult = await _salesService.fetchAllDealerLists();
+    final scope = await ZoneScopeService.instance.load();
     final setupResult = await _paymentService.fetchPaymentSetupData();
     if (!mounted) return;
 
@@ -195,7 +197,11 @@ class _PostBookingScreenState extends State<PostBookingScreen> {
     setState(() {
       _loading = false;
       _formData = formResult.data;
-      _dealerLists = dealerResult.data;
+      _dealerLists = dealerResult.data == null
+          ? null
+          : (scope == null
+              ? dealerResult.data
+              : dealerResult.data!.scopedTo(scope.zoneNames));
       _canonicalEmployeeId = canonical;
       _chicksBookingPersonId = chicksPerson;
       if (dealerResult.success != true) {
