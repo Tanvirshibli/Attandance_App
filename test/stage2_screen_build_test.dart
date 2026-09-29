@@ -1,7 +1,9 @@
 import 'package:employee_attendance/screens/attendance_report_screen.dart';
+import 'package:employee_attendance/screens/marketing/marketing_hub_screen.dart';
 import 'package:employee_attendance/widgets/ui/ui.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 /// Build smoke test for the Stage 2 report screen.
 ///
@@ -63,5 +65,48 @@ void main() {
 
     expect(tester.takeException(), isNull);
     expect(find.text('Geo tracking'), findsOneWidget);
+  });
+
+  // The marketing hub stacks a TabBar, a fixed-height TabBarView and a
+  // trailing card inside a CustomScrollView. A layout failure anywhere in that
+  // chain -- an unbounded height, a mismatched sliver nesting, a TabBarView
+  // without a controller -- blanks the screen with no useful log, so it is
+  // worth a guard.
+  //
+  // The hub gates its tabs behind an async feature check that reads the remote
+  // endpoint config, so prefs are mocked and pumped until that resolves.
+  testWidgets('MarketingHubScreen builds its tabs without throwing', (tester) async {
+    await usePhoneViewport(tester);
+    SharedPreferences.setMockInitialValues({});
+
+    await tester.pumpWidget(const MaterialApp(home: MarketingHubScreen()));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 600));
+
+    expect(tester.takeException(), isNull);
+    // "Farms" appears twice: the tab label and the card title beneath it.
+    expect(find.text('Farms'), findsNWidgets(2));
+    expect(find.text('Dealers'), findsOneWidget);
+    expect(find.text('Markets'), findsOneWidget);
+  });
+
+  testWidgets('the marketing hub tabs switch to the dealer module', (tester) async {
+    await usePhoneViewport(tester);
+    SharedPreferences.setMockInitialValues({});
+
+    await tester.pumpWidget(const MaterialApp(home: MarketingHubScreen()));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 600));
+
+    // The farm tab is selected first, so only the farms module is mounted.
+    expect(find.text('Add farm'), findsOneWidget);
+
+    await tester.tap(find.text('Dealers'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+
+    expect(tester.takeException(), isNull);
+    expect(find.text('Add dealer'), findsOneWidget);
+    expect(find.text('Add farm'), findsNothing);
   });
 }

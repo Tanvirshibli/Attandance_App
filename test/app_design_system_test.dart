@@ -275,6 +275,102 @@ void main() {
     });
   });
 
+  group('AppPillButton', () {
+    Widget pill({bool filled = true}) {
+      return MaterialApp(
+        home: Scaffold(
+          body: AppPillButton(
+            icon: Icons.add,
+            label: 'Add farm',
+            onTap: () {},
+            filled: filled,
+          ),
+        ),
+      );
+    }
+
+    // The whole point of the pill over the bare icon button it replaced is
+    // that the action is readable without a tooltip or a long press.
+    testWidgets('shows its label, not just a glyph', (tester) async {
+      await tester.pumpWidget(pill());
+
+      expect(find.text('Add farm'), findsOneWidget);
+    });
+
+    testWidgets('fires its tap', (tester) async {
+      var taps = 0;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: AppPillButton(
+              icon: Icons.add,
+              label: 'Add farm',
+              onTap: () => taps++,
+            ),
+          ),
+        ),
+      );
+
+      await tester.tap(find.byType(AppPillButton));
+      await tester.pump();
+      expect(taps, 1);
+    });
+
+    // 44dp, not the 48dp of a full-width button: a pill shares a row rather
+    // than owning it. Below 44 the target gets uncomfortable.
+    testWidgets('meets the 44dp minimum height', (tester) async {
+      await tester.pumpWidget(pill());
+
+      final size = tester.getSize(find.byType(AppPillButton));
+      expect(size.height, greaterThanOrEqualTo(44));
+    });
+
+    testWidgets('a filled pill puts the label on the module colour', (tester) async {
+      await tester.pumpWidget(pill());
+
+      final text = tester.widget<Text>(find.text('Add farm'));
+      expect((text.style?.color), Colors.white);
+    });
+
+    // The tonal variant is the secondary action beside a filled primary, so
+    // its label has to stay readable against the tinted surface.
+    testWidgets('a tonal pill keeps the label on the module colour', (tester) async {
+      await tester.pumpWidget(pill(filled: false));
+
+      final text = tester.widget<Text>(find.text('Add farm'));
+      expect((text.style?.color), isNot(Colors.white));
+      expect((text.style?.color), AppColors.primary);
+    });
+
+    testWidgets('a dense pill is narrower than a roomy one', (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: Row(
+              children: [
+                AppPillButton(
+                  icon: Icons.add,
+                  label: 'Add farm',
+                  onTap: () {},
+                  dense: true,
+                ),
+                AppPillButton(
+                  icon: Icons.add,
+                  label: 'Add farm',
+                  onTap: () {},
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+
+      final dense = tester.getSize(find.byType(AppPillButton).first);
+      final roomy = tester.getSize(find.byType(AppPillButton).last);
+      expect(dense.width, lessThan(roomy.width));
+    });
+  });
+
   group('AppCard', () {
     testWidgets('a non-interactive card shows no ripple host', (tester) async {
       await tester.pumpWidget(
