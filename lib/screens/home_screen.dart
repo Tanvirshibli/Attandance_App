@@ -2,7 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:animate_do/animate_do.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:google_fonts/google_fonts.dart';
-import '../config/theme.dart';
+
+// This screen is mid-migration: the un-migrated parts still read the legacy
+// `AppColors` from theme.dart, while the new card uses the new kit. The new
+// tokens come in under a prefix so both can coexist without renaming one of
+// them; the whole import collapses when the rest of the file is migrated.
+import '../config/theme.dart' as legacy;
+import '../widgets/ui/ui.dart' as ui;
 import '../models/attendance_request_record.dart';
 import '../models/attendance_summary.dart';
 import '../models/auth_user_profile.dart';
@@ -172,31 +178,27 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     DateTime today, {
     bool preserveLocal = false,
   }) {
-    var todayRecord =
-        _attendanceRequestService.resolveTodayRecord(records, today);
+    var todayRecord = _attendanceRequestService.resolveTodayRecord(
+      records,
+      today,
+    );
 
     if (preserveLocal && _lastLocalTodayRecord != null) {
       if (todayRecord == null) {
         todayRecord = _lastLocalTodayRecord;
       } else if (!todayRecord.hasCheckIn && _lastLocalTodayRecord!.hasCheckIn) {
-        todayRecord = _attendanceRequestService.mergeRecords(
-          [
-            _lastLocalTodayRecord!,
-            todayRecord,
-          ],
-          preferDay: today,
-        );
+        todayRecord = _attendanceRequestService.mergeRecords([
+          _lastLocalTodayRecord!,
+          todayRecord,
+        ], preferDay: today);
       } else if (_isRecentLocalPunch() &&
           _lastLocalTodayRecord!.hasCheckOut &&
           todayRecord.hasCheckIn &&
           !todayRecord.hasCheckOut) {
-        todayRecord = _attendanceRequestService.mergeRecords(
-          [
-            _lastLocalTodayRecord!,
-            todayRecord,
-          ],
-          preferDay: today,
-        );
+        todayRecord = _attendanceRequestService.mergeRecords([
+          _lastLocalTodayRecord!,
+          todayRecord,
+        ], preferDay: today);
       } else if (todayRecord.hasCheckIn &&
           !todayRecord.hasCheckOut &&
           _lastLocalTodayRecord!.hasCheckOut) {
@@ -220,10 +222,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final canPunchOut = todayRecord?.canPunchCheckOut ?? false;
     final isClockedIn = canPunchOut;
     final isDayComplete = todayRecord?.isDayComplete ?? false;
-    final pendingApproval = todayRecord != null &&
+    final pendingApproval =
+        todayRecord != null &&
         todayRecord.status.toLowerCase() == 'requested' &&
         !todayRecord.isRejected;
-    final approved = todayRecord != null &&
+    final approved =
+        todayRecord != null &&
         todayRecord.status.toLowerCase() == 'approved' &&
         !todayRecord.isRejected;
 
@@ -261,17 +265,18 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     _lastLocalTodayRecord = punched;
 
     final updated = List<AttendanceRequestRecord>.from(_requestedRecords);
-    final existingToday =
-        _attendanceRequestService.resolveTodayRecord(updated, today);
+    final existingToday = _attendanceRequestService.resolveTodayRecord(
+      updated,
+      today,
+    );
     if (existingToday != null) {
-      final merged = _attendanceRequestService.mergeRecords(
-        [
-          existingToday,
-          punched,
-        ],
-        preferDay: today,
+      final merged = _attendanceRequestService.mergeRecords([
+        existingToday,
+        punched,
+      ], preferDay: today);
+      final idx = updated.indexWhere(
+        (record) => record.matchesCalendarDay(today),
       );
-      final idx = updated.indexWhere((record) => record.matchesCalendarDay(today));
       if (idx >= 0) {
         updated[idx] = merged;
       } else {
@@ -303,17 +308,17 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       // there are no local punches to estimate from.
       if (summary.parsedFromKnownShape) {
         if (summary.hasAnyKpi || _monthPunchPresentDays(from, to) == 0) {
-          setState(
-            () => _summary = summary.reconciledWithPunchDays(punchDays),
-          );
+          setState(() => _summary = summary.reconciledWithPunchDays(punchDays));
           return;
         }
       }
     }
 
     setState(
-      () => _summary = _summaryFromPunchRecords(from, to)
-          .reconciledWithPunchDays(punchDays),
+      () => _summary = _summaryFromPunchRecords(
+        from,
+        to,
+      ).reconciledWithPunchDays(punchDays),
     );
   }
 
@@ -354,7 +359,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
     // Days in [from, today] without any punch count as absent.
     var absentDays = 0;
-    for (var i = 0;; i++) {
+    for (var i = 0; ; i++) {
       final day = DateTime(from.year, from.month, from.day + i);
       if (day.isAfter(end)) break;
       if (!punched.contains(day)) absentDays++;
@@ -378,8 +383,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   List<double> _computeWeeklyHours(List<AttendanceRequestRecord> records) {
     final hours = List<double>.filled(7, 0);
     final now = DateTime.now();
-    final monday = DateTime(now.year, now.month, now.day)
-        .subtract(Duration(days: now.weekday - 1));
+    final monday = DateTime(
+      now.year,
+      now.month,
+      now.day,
+    ).subtract(Duration(days: now.weekday - 1));
 
     for (final record in records) {
       final day = record.effectiveCalendarDay;
@@ -402,9 +410,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
     if (_isDayComplete) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Today\'s attendance is already logged.'),
-        ),
+        const SnackBar(content: Text('Today\'s attendance is already logged.')),
       );
       return;
     }
@@ -444,11 +450,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     });
     if (!mounted) return;
     try {
-      final punched = await Navigator.of(context).push<AttendanceRequestRecord?>(
-        MaterialPageRoute(
-          builder: (_) => CheckInScreen(isCheckOut: isCheckOut),
-        ),
-      );
+      final punched = await Navigator.of(context)
+          .push<AttendanceRequestRecord?>(
+            MaterialPageRoute(
+              builder: (_) => CheckInScreen(isCheckOut: isCheckOut),
+            ),
+          );
       if (punched != null) {
         _applyAttendanceRecord(punched);
       }
@@ -464,9 +471,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   Future<void> _openFaceRegistration() async {
     if (!mounted) return;
-    await Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => const FaceRegistrationScreen()),
-    );
+    await Navigator.of(
+      context,
+    ).push(MaterialPageRoute(builder: (_) => const FaceRegistrationScreen()));
     if (!mounted) return;
     final registered = await _faceService.isFaceRegistered();
     if (!mounted) return;
@@ -527,126 +534,122 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: legacy.AppColors.background,
       body: RefreshIndicator(
         onRefresh: _refreshHomeData,
-        color: AppColors.primary,
+        color: legacy.AppColors.primary,
         child: CustomScrollView(
           physics: const AlwaysScrollableScrollPhysics(
             parent: BouncingScrollPhysics(),
           ),
           slivers: [
-          // Custom App Bar
-          SliverToBoxAdapter(
-            child: _buildHeader(context),
-          ),
+            // Custom App Bar
+            SliverToBoxAdapter(child: _buildHeader(context)),
 
-          // Quick Stats
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
-              child: FadeInUp(
-                delay: const Duration(milliseconds: 200),
-                duration: const Duration(milliseconds: 500),
-                child: _buildQuickStats(),
-              ),
-            ),
-          ),
-
-          if (!_isLoadingProfile && !_faceRegistered)
+            // Quick Stats
             SliverToBoxAdapter(
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
                 child: FadeInUp(
-                  delay: const Duration(milliseconds: 250),
+                  delay: const Duration(milliseconds: 200),
                   duration: const Duration(milliseconds: 500),
-                  child: _buildFaceMissingCard(),
+                  child: _buildQuickStats(),
                 ),
               ),
             ),
 
-          // Attendance actions
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(20, 8, 20, 8),
-              child: FadeInUp(
-                delay: const Duration(milliseconds: 300),
-                duration: const Duration(milliseconds: 500),
-                child: _buildAttendanceActionCard(context),
+            if (!_isLoadingProfile && !_faceRegistered)
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+                  child: FadeInUp(
+                    delay: const Duration(milliseconds: 250),
+                    duration: const Duration(milliseconds: 500),
+                    child: _buildFaceMissingCard(),
+                  ),
+                ),
+              ),
+
+            // Attendance actions
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(20, 8, 20, 8),
+                child: FadeInUp(
+                  delay: const Duration(milliseconds: 300),
+                  duration: const Duration(milliseconds: 500),
+                  child: _buildAttendanceActionCard(context),
+                ),
               ),
             ),
-          ),
 
-          // Weekly Chart
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(20, 8, 20, 8),
-              child: FadeInUp(
-                delay: const Duration(milliseconds: 400),
-                duration: const Duration(milliseconds: 500),
-                child: _buildWeeklyChart(),
+            // Weekly Chart
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(20, 8, 20, 8),
+                child: FadeInUp(
+                  delay: const Duration(milliseconds: 400),
+                  duration: const Duration(milliseconds: 500),
+                  child: _buildWeeklyChart(),
+                ),
               ),
             ),
-          ),
 
-          // Recent Attendance
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
-              child: FadeInUp(
-                delay: const Duration(milliseconds: 500),
-                duration: const Duration(milliseconds: 500),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      'Recent Attendance',
-                      style: GoogleFonts.poppins(
-                        fontSize: 17,
-                        fontWeight: FontWeight.w600,
-                        color: AppColors.textPrimary,
-                      ),
-                    ),
-                    TextButton(
-                      onPressed: () {},
-                      child: Text(
-                        'View All',
+            // Recent Attendance
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
+                child: FadeInUp(
+                  delay: const Duration(milliseconds: 500),
+                  duration: const Duration(milliseconds: 500),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        'Recent Attendance',
                         style: GoogleFonts.poppins(
-                          fontSize: 13,
+                          fontSize: 17,
                           fontWeight: FontWeight.w600,
-                          color: AppColors.primary,
+                          color: legacy.AppColors.textPrimary,
                         ),
                       ),
-                    ),
-                  ],
+                      TextButton(
+                        onPressed: () {},
+                        child: Text(
+                          'View All',
+                          style: GoogleFonts.poppins(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            color: legacy.AppColors.primary,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),
-          ),
 
-          SliverList(
-            delegate: SliverChildBuilderDelegate(
-              (context, index) {
-                final record = _requestedRecords[index].toTileRecord();
-                return FadeInUp(
-                  delay: Duration(milliseconds: 550 + (index * 50)),
-                  duration: const Duration(milliseconds: 400),
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
-                    child: AttendanceTile(record: record),
-                  ),
-                );
-              },
-              childCount: _requestedRecords.length > 5
-                  ? 5
-                  : _requestedRecords.length,
+            SliverList(
+              delegate: SliverChildBuilderDelegate(
+                (context, index) {
+                  final record = _requestedRecords[index].toTileRecord();
+                  return FadeInUp(
+                    delay: Duration(milliseconds: 550 + (index * 50)),
+                    duration: const Duration(milliseconds: 400),
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+                      child: AttendanceTile(record: record),
+                    ),
+                  );
+                },
+                childCount: _requestedRecords.length > 5
+                    ? 5
+                    : _requestedRecords.length,
+              ),
             ),
-          ),
 
-          const SliverToBoxAdapter(
-            child: SizedBox(height: 100),
-          ),
-        ],
+            const SliverToBoxAdapter(child: SizedBox(height: 100)),
+          ],
         ),
       ),
     );
@@ -661,7 +664,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         24,
       ),
       decoration: const BoxDecoration(
-        gradient: AppColors.primaryGradient,
+        gradient: legacy.AppColors.primaryGradient,
         borderRadius: BorderRadius.only(
           bottomLeft: Radius.circular(28),
           bottomRight: Radius.circular(28),
@@ -710,7 +713,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                         ),
                       ),
                       Text(
-                        _isLoadingProfile ? 'Loading profile...' : _profile.name,
+                        _isLoadingProfile
+                            ? 'Loading profile...'
+                            : _profile.name,
                         style: GoogleFonts.poppins(
                           fontSize: 18,
                           fontWeight: FontWeight.w600,
@@ -755,7 +760,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                         width: 10,
                         height: 10,
                         decoration: BoxDecoration(
-                          color: AppColors.error,
+                          color: legacy.AppColors.error,
                           shape: BoxShape.circle,
                           border: Border.all(color: Colors.white, width: 1.5),
                         ),
@@ -774,28 +779,36 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               decoration: BoxDecoration(
                 color: Colors.white.withValues(alpha: 0.12),
                 borderRadius: BorderRadius.circular(16),
-                border: Border.all(
-                  color: Colors.white.withValues(alpha: 0.15),
-                ),
+                border: Border.all(color: Colors.white.withValues(alpha: 0.15)),
               ),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceAround,
                 children: [
-                  _buildTodayStat('Check In', _checkInTime, Icons.login_rounded),
+                  _buildTodayStat(
+                    'Check In',
+                    _checkInTime,
+                    Icons.login_rounded,
+                  ),
                   Container(
                     width: 1,
                     height: 40,
                     color: Colors.white.withValues(alpha: 0.2),
                   ),
                   _buildTodayStat(
-                      'Check Out', _checkOutTime, Icons.logout_rounded),
+                    'Check Out',
+                    _checkOutTime,
+                    Icons.logout_rounded,
+                  ),
                   Container(
                     width: 1,
                     height: 40,
                     color: Colors.white.withValues(alpha: 0.2),
                   ),
                   _buildTodayStat(
-                      'Hours', _todayWorkHours, Icons.timer_outlined),
+                    'Hours',
+                    _todayWorkHours,
+                    Icons.timer_outlined,
+                  ),
                 ],
               ),
             ),
@@ -820,10 +833,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         ),
         Text(
           label,
-          style: GoogleFonts.poppins(
-            fontSize: 11,
-            color: Colors.white54,
-          ),
+          style: GoogleFonts.poppins(fontSize: 11, color: Colors.white54),
         ),
       ],
     );
@@ -837,7 +847,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             label: 'Present',
             value: '${_summary.presentCount}',
             icon: Icons.check_circle_outline,
-            color: AppColors.success,
+            color: legacy.AppColors.success,
           ),
         ),
         const SizedBox(width: 10),
@@ -846,7 +856,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             label: 'Absent',
             value: '${_summary.absentCount}',
             icon: Icons.cancel_outlined,
-            color: AppColors.error,
+            color: legacy.AppColors.error,
           ),
         ),
         const SizedBox(width: 10),
@@ -855,7 +865,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             label: 'Holiday',
             value: '${_summary.holidayCount}',
             icon: Icons.celebration_outlined,
-            color: AppColors.warning,
+            color: legacy.AppColors.warning,
           ),
         ),
         const SizedBox(width: 10),
@@ -864,7 +874,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             label: 'Leave',
             value: '${_summary.leaveCount}',
             icon: Icons.event_busy_outlined,
-            color: AppColors.info,
+            color: legacy.AppColors.info,
           ),
         ),
       ],
@@ -875,9 +885,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: AppColors.warning.withValues(alpha: 0.12),
+        color: legacy.AppColors.warning.withValues(alpha: 0.12),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppColors.warning.withValues(alpha: 0.45)),
+        border: Border.all(
+          color: legacy.AppColors.warning.withValues(alpha: 0.45),
+        ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -887,7 +899,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             style: GoogleFonts.poppins(
               fontSize: 13,
               fontWeight: FontWeight.w500,
-              color: AppColors.textPrimary,
+              color: legacy.AppColors.textPrimary,
             ),
           ),
           const SizedBox(height: 10),
@@ -896,7 +908,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             child: ElevatedButton(
               onPressed: _openFaceRegistration,
               style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.warning,
+                backgroundColor: legacy.AppColors.warning,
                 foregroundColor: Colors.white,
                 elevation: 0,
                 shape: RoundedRectangleBorder(
@@ -915,151 +927,143 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   Widget _buildAttendanceActionCard(BuildContext context) {
-    final gradient = _isDayComplete
-        ? (_todayApproved ? AppColors.successGradient : AppColors.primaryGradient)
-        : (_isClockedIn ? AppColors.successGradient : AppColors.primaryGradient);
-    final shadowColor = _isDayComplete
-        ? (_todayApproved ? AppColors.success : AppColors.primary)
-        : (_isClockedIn ? AppColors.success : AppColors.primary);
+    // A status colour is a signal, not a surface. The card used to flood a
+    // large block with saturated success green, which shouted louder than the
+    // "Check Out" button living inside it. Now the state is carried by a thin
+    // accent rail, a small status chip and the icon, and the card itself stays
+    // on the brand surface so the action reads first.
+    final isDone = _isDayComplete;
+    final isActive = !isDone && _isClockedIn;
+    final stateColor = isDone
+        ? (_todayApproved ? ui.AppColors.success : ui.AppColors.warning)
+        : (isActive ? ui.AppColors.success : ui.AppColors.primary);
 
     return Container(
-      padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        gradient: gradient,
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: shadowColor.withValues(alpha: 0.3),
-            blurRadius: 20,
-            offset: const Offset(0, 8),
-          ),
-        ],
+        color: ui.AppColors.surface,
+        borderRadius: BorderRadius.circular(ui.AppRadius.xl),
+        border: Border.all(color: stateColor.withValues(alpha: 0.28)),
+        boxShadow: ui.AppShadows.card,
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            _attendanceActionTitle(),
-            style: GoogleFonts.poppins(
-              fontSize: 18,
-              fontWeight: FontWeight.w600,
-              color: Colors.white,
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            _attendanceActionSubtitle(),
-            style: GoogleFonts.poppins(
-              fontSize: 13,
-              color: Colors.white70,
-            ),
-          ),
-          if (_isDayComplete) ...[
-            const SizedBox(height: 14),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-              decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.15),
-                borderRadius: BorderRadius.circular(14),
-              ),
-              child: Row(
-                children: [
-                  Icon(
-                    _todayApproved
-                        ? Icons.check_circle_outline_rounded
-                        : Icons.hourglass_top_rounded,
-                    color: Colors.white,
-                    size: 20,
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Text(
-                      _todayApproved
-                          ? 'No further punches needed today.'
-                          : 'Awaiting supervisor approval.',
-                      style: GoogleFonts.poppins(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w500,
-                        color: Colors.white,
+      child: IntrinsicHeight(
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Container(width: 5, color: stateColor),
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.all(ui.AppSpace.md + 2),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            _attendanceActionTitle(),
+                            style: ui.AppType.h3.copyWith(
+                              color: ui.AppColors.ink,
+                            ),
+                          ),
+                        ),
+                        _StateChip(
+                          label: _actionStateLabel(
+                            isDone: isDone,
+                            isActive: isActive,
+                          ),
+                          color: stateColor,
+                          icon: isDone
+                              ? (_todayApproved
+                                    ? ui.AppIcons.check
+                                    : ui.AppIcons.clock)
+                              : (isActive
+                                    ? ui.AppIcons.clock
+                                    : ui.AppIcons.calendar),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: ui.AppSpace.xxs),
+                    Text(
+                      _attendanceActionSubtitle(),
+                      style: ui.AppType.meta.copyWith(
+                        color: ui.AppColors.inkMuted,
                       ),
                     ),
-                  ),
-                ],
+                    if (isDone) ...[
+                      const SizedBox(height: ui.AppSpace.md),
+                      Row(
+                        children: [
+                          Icon(
+                            _todayApproved
+                                ? Icons.check_circle_outline_rounded
+                                : Icons.hourglass_top_rounded,
+                            color: stateColor,
+                            size: 18,
+                          ),
+                          const SizedBox(width: ui.AppSpace.xs),
+                          Expanded(
+                            child: Text(
+                              _todayApproved
+                                  ? 'No further punches needed today.'
+                                  : 'Awaiting supervisor approval.',
+                              style: ui.AppType.meta.copyWith(
+                                color: ui.AppColors.inkMuted,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ] else ...[
+                      const SizedBox(height: ui.AppSpace.md),
+                      if (_canPunchOut)
+                        ui.AppButton(
+                          label: _checkOutTime != '--'
+                              ? 'Update check out'
+                              : 'Check out',
+                          icon: ui.AppIcons.chevron,
+                          onPressed: _checkFlowOpening
+                              ? null
+                              : () => _openCheckFlow(isCheckOut: true),
+                          accent: stateColor,
+                        )
+                      else if (_canPunchIn)
+                        ui.AppButton(
+                          label: _checkInTime != '--'
+                              ? 'Re-check in'
+                              : 'Check in',
+                          icon: ui.AppIcons.chevron,
+                          onPressed: _checkFlowOpening
+                              ? null
+                              : () => _openCheckFlow(isCheckOut: false),
+                          accent: stateColor,
+                        ),
+                    ],
+                  ],
+                ),
               ),
             ),
-          ] else ...[
-            const SizedBox(height: 14),
-            if (_canPunchOut)
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton.icon(
-                  onPressed: _checkFlowOpening
-                      ? null
-                      : () => _openCheckFlow(isCheckOut: true),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.white,
-                    foregroundColor: AppColors.success,
-                    disabledBackgroundColor: Colors.white.withValues(alpha: 0.5),
-                    disabledForegroundColor: AppColors.textHint,
-                    elevation: 0,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(14),
-                    ),
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                  ),
-                  icon: const Icon(Icons.logout_rounded, size: 20),
-                  label: Text(
-                    _checkOutTime != '--' ? 'Update Check Out' : 'Check Out',
-                    style: GoogleFonts.poppins(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ),
-              )
-            else if (_canPunchIn)
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton.icon(
-                  onPressed: _checkFlowOpening
-                      ? null
-                      : () => _openCheckFlow(isCheckOut: false),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.white,
-                    foregroundColor: AppColors.primary,
-                    disabledBackgroundColor: Colors.white.withValues(alpha: 0.5),
-                    disabledForegroundColor: AppColors.textHint,
-                    elevation: 0,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(14),
-                    ),
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                  ),
-                  icon: const Icon(Icons.login_rounded, size: 20),
-                  label: Text(
-                    'Check In',
-                    style: GoogleFonts.poppins(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ),
-              ),
           ],
-        ],
+        ),
       ),
     );
+  }
+
+  String _actionStateLabel({required bool isDone, required bool isActive}) {
+    if (isDone) return _todayApproved ? 'Complete' : 'Pending';
+    if (isActive) return 'Clocked in';
+    if (_canPunchIn) return 'Ready';
+    return 'Closed';
   }
 
   Widget _buildWeeklyChart() {
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: AppColors.surface,
+        color: legacy.AppColors.surface,
         borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
-            color: AppColors.shadow.withValues(alpha: 0.06),
+            color: legacy.AppColors.shadow.withValues(alpha: 0.06),
             blurRadius: 15,
             offset: const Offset(0, 5),
           ),
@@ -1076,13 +1080,16 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 style: GoogleFonts.poppins(
                   fontSize: 16,
                   fontWeight: FontWeight.w600,
-                  color: AppColors.textPrimary,
+                  color: legacy.AppColors.textPrimary,
                 ),
               ),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 4,
+                ),
                 decoration: BoxDecoration(
-                  color: AppColors.primary.withValues(alpha: 0.1),
+                  color: legacy.AppColors.primary.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Text(
@@ -1090,7 +1097,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   style: GoogleFonts.poppins(
                     fontSize: 11,
                     fontWeight: FontWeight.w500,
-                    color: AppColors.primary,
+                    color: legacy.AppColors.primary,
                   ),
                 ),
               ),
@@ -1111,14 +1118,22 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                       showTitles: true,
                       reservedSize: 30,
                       getTitlesWidget: (value, meta) {
-                        final days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+                        final days = [
+                          'Mon',
+                          'Tue',
+                          'Wed',
+                          'Thu',
+                          'Fri',
+                          'Sat',
+                          'Sun',
+                        ];
                         return Padding(
                           padding: const EdgeInsets.only(top: 8),
                           child: Text(
                             days[value.toInt()],
                             style: GoogleFonts.poppins(
                               fontSize: 11,
-                              color: AppColors.textHint,
+                              color: legacy.AppColors.textHint,
                             ),
                           ),
                         );
@@ -1146,7 +1161,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     barRods: [
                       BarChartRodData(
                         toY: hours.clamp(0, 12),
-                        color: hours > 0 ? AppColors.primary : AppColors.divider,
+                        color: hours > 0
+                            ? legacy.AppColors.primary
+                            : legacy.AppColors.divider,
                         width: 22,
                         borderRadius: const BorderRadius.only(
                           topLeft: Radius.circular(6),
@@ -1155,7 +1172,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                         backDrawRodData: BackgroundBarChartRodData(
                           show: true,
                           toY: 12,
-                          color: AppColors.primary.withValues(alpha: 0.06),
+                          color: legacy.AppColors.primary.withValues(
+                            alpha: 0.06,
+                          ),
                         ),
                       ),
                     ],
@@ -1174,5 +1193,46 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (hour < 12) return 'Good Morning 👋';
     if (hour < 17) return 'Good Afternoon 👋';
     return 'Good Evening 👋';
+  }
+}
+
+/// A small, non-interactive state label for the attendance action card.
+class _StateChip extends StatelessWidget {
+  const _StateChip({
+    required this.label,
+    required this.color,
+    required this.icon,
+  });
+
+  final String label;
+  final Color color;
+  final IconData icon;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(
+        horizontal: ui.AppSpace.xs,
+        vertical: 4,
+      ),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(ui.AppRadius.pill),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          ui.AppIcon(icon, size: 12, color: color, secondaryOpacity: 0.5),
+          const SizedBox(width: ui.AppSpace.xxs),
+          Text(
+            label,
+            style: ui.AppType.micro.copyWith(
+              color: color,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }

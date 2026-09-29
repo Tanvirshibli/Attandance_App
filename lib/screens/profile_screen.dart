@@ -2,7 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:animate_do/animate_do.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:package_info_plus/package_info_plus.dart';
-import '../config/theme.dart';
+// Mid-migration: the un-migrated parts read the legacy `AppColors`, the new
+// settings rows read the module accents from the new kit. The prefix lets both
+// coexist until the rest of the file is migrated.
+import '../config/theme.dart' as legacy;
+import '../widgets/ui/ui.dart' as ui;
 import '../models/auth_user_profile.dart';
 import '../services/auth_service.dart';
 import '../services/face_recognition_service.dart';
@@ -61,7 +65,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
     });
 
     try {
-      final profile = await _authService.getCurrentUserProfile();
+      // The backend intermittently takes ~20s to complete a TCP connect. One
+      // retry turns that transient blip into a slightly slower load instead of
+      // a "Could not load profile data" error the user has to retry by hand.
+      AuthUserProfile? profile;
+      for (var attempt = 0; attempt < 2; attempt++) {
+        profile = await _authService.getCurrentUserProfile(
+          forceRefresh: attempt > 0,
+        );
+        if (profile != null) break;
+        if (attempt == 0) {
+          await Future<void>.delayed(const Duration(seconds: 2));
+        }
+      }
       if (!mounted) return;
 
       setState(() {
@@ -93,11 +109,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: legacy.AppColors.background,
       body: CustomScrollView(
         physics: const BouncingScrollPhysics(),
         slivers: [
           SliverToBoxAdapter(child: _buildHeader(context)),
+          if (_profileError != null)
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
+                child: _buildProfileError(context),
+              ),
+            ),
           SliverToBoxAdapter(
             child: Padding(
               padding: const EdgeInsets.fromLTRB(20, 8, 20, 8),
@@ -147,20 +170,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ),
             ),
           ),
-          if (_profileError != null)
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(20, 8, 20, 8),
-                child: TextButton.icon(
-                  onPressed: _isLoadingProfile ? null : _loadProfile,
-                  icon: const Icon(Icons.refresh_rounded, size: 18),
-                  label: Text(
-                    _profileError!,
-                    style: GoogleFonts.poppins(fontSize: 12),
-                  ),
-                ),
-              ),
-            ),
           if (_isLoadingProfile)
             const SliverToBoxAdapter(
               child: Padding(
@@ -169,6 +178,63 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ),
             ),
           const SliverToBoxAdapter(child: SizedBox(height: 100)),
+        ],
+      ),
+    );
+  }
+
+  /// A profile load failure, shown as a proper banner above the profile card
+  /// rather than a bare retry link below the sign-out button — where it read
+  /// as a stray label and told the user nothing about what had failed.
+  Widget _buildProfileError(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: legacy.AppColors.error.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: legacy.AppColors.error.withValues(alpha: 0.25)),
+      ),
+      child: Row(
+        children: [
+          const Icon(
+            Icons.cloud_off_rounded,
+            color: legacy.AppColors.error,
+            size: 20,
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  'Profile could not be loaded',
+                  style: GoogleFonts.poppins(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: legacy.AppColors.textPrimary,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  'The server is slow to respond. Showing saved details — '
+                  'tap retry to fetch the latest.',
+                  style: GoogleFonts.poppins(
+                    fontSize: 11,
+                    color: legacy.AppColors.textSecondary,
+                    height: 1.35,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          IconButton(
+            tooltip: 'Retry',
+            onPressed: _isLoadingProfile ? null : _loadProfile,
+            icon: const Icon(Icons.refresh_rounded, size: 20),
+            color: legacy.AppColors.error,
+          ),
         ],
       ),
     );
@@ -183,7 +249,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         32,
       ),
       decoration: const BoxDecoration(
-        gradient: AppColors.primaryGradient,
+        gradient: legacy.AppColors.primaryGradient,
         borderRadius: BorderRadius.only(
           bottomLeft: Radius.circular(28),
           bottomRight: Radius.circular(28),
@@ -283,11 +349,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: AppColors.surface,
+        color: legacy.AppColors.surface,
         borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
-            color: AppColors.shadow.withValues(alpha: 0.06),
+            color: legacy.AppColors.shadow.withValues(alpha: 0.06),
             blurRadius: 15,
             offset: const Offset(0, 5),
           ),
@@ -301,7 +367,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             style: GoogleFonts.poppins(
               fontSize: 15,
               fontWeight: FontWeight.w600,
-              color: AppColors.textPrimary,
+              color: legacy.AppColors.textPrimary,
             ),
           ),
           const SizedBox(height: 16),
@@ -330,10 +396,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
             width: 36,
             height: 36,
             decoration: BoxDecoration(
-              color: AppColors.primary.withValues(alpha: 0.08),
+              color: legacy.AppColors.primary.withValues(alpha: 0.08),
               borderRadius: BorderRadius.circular(10),
             ),
-            child: Icon(icon, size: 16, color: AppColors.primary),
+            child: Icon(icon, size: 16, color: legacy.AppColors.primary),
           ),
           const SizedBox(width: 14),
           Expanded(
@@ -344,7 +410,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   label,
                   style: GoogleFonts.poppins(
                     fontSize: 11,
-                    color: AppColors.textHint,
+                    color: legacy.AppColors.textHint,
                   ),
                 ),
                 Text(
@@ -352,7 +418,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   style: GoogleFonts.poppins(
                     fontSize: 13,
                     fontWeight: FontWeight.w500,
-                    color: AppColors.textPrimary,
+                    color: legacy.AppColors.textPrimary,
                   ),
                 ),
               ],
@@ -364,7 +430,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Widget _infoDivider() {
-    return Divider(color: AppColors.divider.withValues(alpha: 0.5), height: 1);
+    return Divider(color: legacy.AppColors.divider.withValues(alpha: 0.5), height: 1);
   }
 
   Widget _buildFaceMissingWarning(BuildContext context) {
@@ -372,16 +438,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
       width: double.infinity,
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: AppColors.warning.withValues(alpha: 0.12),
+        color: legacy.AppColors.warning.withValues(alpha: 0.12),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppColors.warning.withValues(alpha: 0.45)),
+        border: Border.all(color: legacy.AppColors.warning.withValues(alpha: 0.45)),
       ),
       child: Text(
         'Your face data is missing or unreadable. Please register your face again.',
         style: GoogleFonts.poppins(
           fontSize: 13,
           fontWeight: FontWeight.w500,
-          color: AppColors.textPrimary,
+          color: legacy.AppColors.textPrimary,
         ),
       ),
     );
@@ -396,7 +462,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           style: GoogleFonts.poppins(
             fontSize: 15,
             fontWeight: FontWeight.w600,
-            color: AppColors.textPrimary,
+            color: legacy.AppColors.textPrimary,
           ),
         ),
         const SizedBox(height: 12),
@@ -405,7 +471,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             _quickActionCard(
               Icons.calendar_today_outlined,
               'Leave\nRequest',
-              AppColors.info,
+              legacy.AppColors.info,
               onTap: () {
                 Navigator.of(context).push(
                   MaterialPageRoute(builder: (_) => const LeaveHubScreen()),
@@ -416,7 +482,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             _quickActionCard(
               Icons.description_outlined,
               'View\nReports',
-              AppColors.success,
+              legacy.AppColors.success,
               onTap: () {
                 Navigator.of(context).push(
                   MaterialPageRoute(
@@ -429,7 +495,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             _quickActionCard(
               Icons.face_retouching_natural,
               _faceRegistered ? 'Re-register\nFace' : 'Register\nFace',
-              AppColors.warning,
+              legacy.AppColors.warning,
               onTap: () async {
                 await Navigator.of(context).push(
                   MaterialPageRoute(
@@ -444,7 +510,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               },
             ),
             const SizedBox(width: 12),
-            _quickActionCard(Icons.qr_code_outlined, 'My QR\nCode', AppColors.primary),
+            _quickActionCard(Icons.qr_code_outlined, 'My QR\nCode', legacy.AppColors.primary),
           ],
         ),
       ],
@@ -459,11 +525,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
         child: Container(
           padding: const EdgeInsets.symmetric(vertical: 18),
           decoration: BoxDecoration(
-            color: AppColors.surface,
+            color: legacy.AppColors.surface,
             borderRadius: BorderRadius.circular(16),
             boxShadow: [
               BoxShadow(
-                color: AppColors.shadow.withValues(alpha: 0.04),
+                color: legacy.AppColors.shadow.withValues(alpha: 0.04),
                 blurRadius: 8,
                 offset: const Offset(0, 3),
               ),
@@ -487,7 +553,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 style: GoogleFonts.poppins(
                   fontSize: 10,
                   fontWeight: FontWeight.w500,
-                  color: AppColors.textSecondary,
+                  color: legacy.AppColors.textSecondary,
                   height: 1.3,
                 ),
               ),
@@ -501,11 +567,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Widget _buildSettingsSection() {
     return Container(
       decoration: BoxDecoration(
-        color: AppColors.surface,
+        color: legacy.AppColors.surface,
         borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
-            color: AppColors.shadow.withValues(alpha: 0.06),
+            color: legacy.AppColors.shadow.withValues(alpha: 0.06),
             blurRadius: 15,
             offset: const Offset(0, 5),
           ),
@@ -513,10 +579,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
       ),
       child: Column(
         children: [
-          _settingsTile(Icons.notifications_outlined, 'Notifications', true),
+          _settingsTile(Icons.notifications_outlined, 'Notifications', true,
+              color: ui.AppColors.mSales),
           _settingsDivider(),
           _settingsTile(Icons.location_on_outlined, 'Location Services', true,
-              onTap: () {
+              color: ui.AppColors.mGeo, onTap: () {
             Navigator.of(context).push(
               MaterialPageRoute(
                 builder: (_) => const GeoTrackingScreen(),
@@ -524,23 +591,35 @@ class _ProfileScreenState extends State<ProfileScreen> {
             );
           }),
           _settingsDivider(),
-          _settingsTile(Icons.dark_mode_outlined, 'Dark Mode', false),
+          _settingsTile(Icons.dark_mode_outlined, 'Dark Mode', false,
+              color: ui.AppColors.mHr),
           _settingsDivider(),
           _settingsTile(Icons.language_outlined, 'Language', null,
-              trailing: 'English'),
+              color: ui.AppColors.mVehicles, trailing: 'English'),
           _settingsDivider(),
-          _settingsTile(Icons.security_outlined, 'Change Password', null),
+          _settingsTile(Icons.security_outlined, 'Change Password', null,
+              color: ui.AppColors.mAttendance),
           _settingsDivider(),
-          _settingsTile(Icons.help_outline, 'Help & Support', null),
+          _settingsTile(Icons.help_outline, 'Help & Support', null,
+              color: ui.AppColors.mFarms),
           _settingsDivider(),
-          _settingsTile(Icons.info_outline, 'About', null, trailing: _appVersionLabel),
+          _settingsTile(Icons.info_outline, 'About', null,
+              color: ui.AppColors.mPayments, trailing: _appVersionLabel),
         ],
       ),
     );
   }
 
+  /// A settings row.
+  ///
+  /// [state] is shown as a static, non-interactive chip. It used to be a
+  /// `Switch` with an empty `onChanged`, which looked interactive but did
+  /// nothing when tapped — worse than showing no control at all, because it
+  /// invites the user to keep tapping. The app has no backend for these
+  /// settings yet, so they are honestly presented as read-only state.
   Widget _settingsTile(IconData icon, String title, bool? switchValue,
-      {String? trailing, VoidCallback? onTap}) {
+      {String? trailing, VoidCallback? onTap, Color? color}) {
+    final tint = color ?? legacy.AppColors.primary;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
       child: ListTile(
@@ -550,35 +629,71 @@ class _ProfileScreenState extends State<ProfileScreen> {
           width: 38,
           height: 38,
           decoration: BoxDecoration(
-            color: AppColors.primary.withValues(alpha: 0.08),
+            color: tint.withValues(alpha: 0.08),
             borderRadius: BorderRadius.circular(10),
           ),
-          child: Icon(icon, size: 18, color: AppColors.primary),
+          child: Icon(icon, size: 18, color: tint),
         ),
         title: Text(
           title,
           style: GoogleFonts.poppins(
             fontSize: 14,
             fontWeight: FontWeight.w500,
-            color: AppColors.textPrimary,
+            color: legacy.AppColors.textPrimary,
           ),
         ),
         trailing: switchValue != null
-            ? Switch(
-                value: switchValue,
-                onChanged: (_) {},
-                activeTrackColor: AppColors.primary,
+            ? Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 4,
+                ),
+                decoration: BoxDecoration(
+                  color: (switchValue ? legacy.AppColors.success : legacy.AppColors.textHint)
+                      .withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      width: 6,
+                      height: 6,
+                      decoration: BoxDecoration(
+                        color: switchValue
+                            ? legacy.AppColors.success
+                            : legacy.AppColors.textHint,
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      switchValue ? 'On' : 'Off',
+                      style: GoogleFonts.poppins(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        color: switchValue
+                            ? legacy.AppColors.success
+                            : legacy.AppColors.textHint,
+                      ),
+                    ),
+                  ],
+                ),
               )
             : trailing != null
                 ? Text(
                     trailing,
                     style: GoogleFonts.poppins(
                       fontSize: 12,
-                      color: AppColors.textHint,
+                      color: legacy.AppColors.textHint,
                     ),
                   )
-                : Icon(Icons.chevron_right_rounded,
-                    color: AppColors.textHint, size: 20),
+                // Only advertise "go deeper" where a destination actually
+                // exists. A chevron on an inert row is a broken promise.
+                : (onTap != null
+                    ? Icon(Icons.chevron_right_rounded,
+                        color: legacy.AppColors.textHint, size: 20)
+                    : const SizedBox.shrink()),
       ),
     );
   }
@@ -586,7 +701,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Widget _settingsDivider() {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: Divider(color: AppColors.divider.withValues(alpha: 0.5), height: 1),
+      child: Divider(color: legacy.AppColors.divider.withValues(alpha: 0.5), height: 1),
     );
   }
 
@@ -604,17 +719,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
             (route) => false,
           );
         },
-        icon: const Icon(Icons.logout_rounded, size: 20, color: AppColors.error),
+        icon: const Icon(Icons.logout_rounded, size: 20, color: legacy.AppColors.error),
         label: Text(
           'Sign Out',
           style: GoogleFonts.poppins(
             fontSize: 15,
             fontWeight: FontWeight.w600,
-            color: AppColors.error,
+            color: legacy.AppColors.error,
           ),
         ),
         style: OutlinedButton.styleFrom(
-          side: const BorderSide(color: AppColors.error),
+          side: const BorderSide(color: legacy.AppColors.error),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(14),
           ),
