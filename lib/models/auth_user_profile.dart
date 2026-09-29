@@ -12,7 +12,7 @@ class AuthUserProfile {
     required this.joiningDate,
     this.canonicalEmployeeId,
     this.faceRegistration,
-    this.zoneId,
+    this.zoneIds = const [],
     this.zoneName,
   });
 
@@ -27,11 +27,17 @@ class AuthUserProfile {
   final int? canonicalEmployeeId;
   final FaceRegistrationData? faceRegistration;
 
-  /// Hierarchy zone of the logged-in employee (company > zone > sector > depot).
-  /// Null until the HRM profile payload exposes it — filtering degrades
-  /// gracefully while absent.
-  final int? zoneId;
+  /// Hierarchy zones of the logged-in employee (company > zone > sector > depot).
+  /// HRM stores this as a jsonb array, so an employee can hold several zones and
+  /// sees the union of their data. Empty until the HRM profile populates it;
+  /// filtering degrades gracefully while absent.
+  final List<int> zoneIds;
   final String? zoneName;
+
+  /// The first assigned zone, for the legacy single-zone call sites that have
+  /// not moved to [ZoneScope] yet.
+  @Deprecated('Use zoneIds — the employee may hold several zones.')
+  int? get zoneId => zoneIds.isEmpty ? null : zoneIds.first;
 
   String get avatarLetters {
     final trimmedName = name.trim();
@@ -114,7 +120,7 @@ class AuthUserProfile {
       ], fallback: 'N/A'),
       canonicalEmployeeId: _parseCanonicalEmployeeId(json, employee),
       faceRegistration: FaceRegistrationData.fromJson(json['face_registration']),
-      zoneId: _toPositiveInt(
+      zoneIds: _toPositiveIntList(
         json['zoneId'] ??
             json['zone_id'] ??
             employee['zoneId'] ??
@@ -165,6 +171,36 @@ class AuthUserProfile {
       }
     }
     return null;
+  }
+
+  /// HRM returns `user.zoneId` as a jsonb **array**. The previous parser ran
+  /// `int.tryParse` on it, so `[1,2,3]` became null and every zone filter in
+  /// the app silently degraded to "no zone" — zone scoping never ran at all.
+  ///
+  /// Also accepts a bare scalar or a comma-separated string so a single-zone
+  /// payload from another source still parses. Order is preserved and
+  /// duplicates dropped.
+  static List<int> _toPositiveIntList(Object? value) {
+    if (value == null) return const [];
+
+    final raw = <Object?>[];
+    if (value is List) {
+      raw.addAll(value);
+    } else if (value is String && value.contains(',')) {
+      raw.addAll(value.split(','));
+    } else {
+      raw.add(value);
+    }
+
+    final ids = <int>[];
+    final seen = <int>{};
+    for (final item in raw) {
+      final parsed = _toPositiveInt(item);
+      if (parsed != null && seen.add(parsed)) {
+        ids.add(parsed);
+      }
+    }
+    return ids;
   }
 
   static int? _toPositiveInt(Object? value) {
