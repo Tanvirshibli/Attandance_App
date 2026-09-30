@@ -67,11 +67,11 @@ void main() {
     expect(find.text('Geo tracking'), findsOneWidget);
   });
 
-  // The marketing hub stacks a TabBar, a fixed-height TabBarView and a
-  // trailing card inside a CustomScrollView. A layout failure anywhere in that
-  // chain -- an unbounded height, a mismatched sliver nesting, a TabBarView
-  // without a controller -- blanks the screen with no useful log, so it is
-  // worth a guard.
+  // The marketing hub stacks a header, the zone note, a TabBar and a
+  // full-height TabBarView of grids, with the tab's actions pinned to a
+  // bottom bar. A layout failure anywhere in that chain -- an unbounded
+  // height, pills that cannot fit the row, a TabBarView without a controller --
+  // blanks the screen with no useful log, so it is worth a guard.
   //
   // The hub gates its tabs behind an async feature check that reads the remote
   // endpoint config, so prefs are mocked and pumped until that resolves.
@@ -84,10 +84,14 @@ void main() {
     await tester.pump(const Duration(milliseconds: 600));
 
     expect(tester.takeException(), isNull);
-    // "Farms" appears twice: the tab label and the card title beneath it.
-    expect(find.text('Farms'), findsNWidgets(2));
+    // The module card is gone: "Farms" is now only the tab label, and the
+    // second heading the old card drew no longer exists.
+    expect(find.text('Farms'), findsOneWidget);
     expect(find.text('Dealers'), findsOneWidget);
     expect(find.text('Markets'), findsOneWidget);
+    // The pinned bar is what replaced the card's inline action row.
+    expect(find.text('Add farm'), findsOneWidget);
+    expect(find.text('All farms'), findsOneWidget);
   });
 
   testWidgets('the marketing hub tabs switch to the dealer module', (tester) async {
@@ -98,8 +102,9 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 600));
 
-    // The farm tab is selected first, so only the farms module is mounted.
+    // The farm tab is selected first, so the pinned action bar names it.
     expect(find.text('Add farm'), findsOneWidget);
+    expect(find.text('All farms'), findsOneWidget);
 
     await tester.tap(find.text('Dealers'));
     await tester.pump();
@@ -107,6 +112,7 @@ void main() {
 
     expect(tester.takeException(), isNull);
     expect(find.text('Add dealer'), findsOneWidget);
+    expect(find.text('All dealers'), findsOneWidget);
     expect(find.text('Add farm'), findsNothing);
   });
 }

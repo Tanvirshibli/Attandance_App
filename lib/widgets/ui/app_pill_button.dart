@@ -61,11 +61,19 @@ class AppPillButton extends StatelessWidget {
             children: [
               Icon(icon, size: dense ? 16 : 18, color: foreground),
               const SizedBox(width: 6),
-              Text(
-                label,
-                style: AppType.meta.copyWith(
-                  color: foreground,
-                  fontWeight: FontWeight.w600,
+              // Flexible so a long label ellipsises inside whatever width the
+              // pill is given. Without this the Row is sized to the text and
+              // overflows by however many pixels the label is too long — which
+              // is what happened to "Add dealer" / "All dealers" sharing a row
+              // on a narrow handset.
+              Flexible(
+                child: Text(
+                  label,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppType.meta.copyWith(
+                    color: foreground,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
               ),
             ],
