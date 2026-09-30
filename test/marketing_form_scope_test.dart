@@ -1,5 +1,6 @@
 import 'package:employee_attendance/data/marketing_demo_masters.dart';
 import 'package:employee_attendance/models/booking_form_data_models.dart';
+import 'package:employee_attendance/models/marketing_context.dart';
 import 'package:employee_attendance/models/marketing_models.dart';
 import 'package:employee_attendance/services/employee_marketing_scope_service.dart';
 import 'package:employee_attendance/services/marketing_service.dart';
@@ -99,6 +100,166 @@ void main() {
       expect(restored.zone, isNull);
       expect(restored.company, isNull);
       expect(restored.sector, isNull);
+    });
+  });
+
+  group('MarketingContext', () {
+    Map<String, dynamic> payload({
+      bool withCompany = true,
+      bool withSector = true,
+      bool withMarkets = true,
+    }) {
+      return {
+        'zone': {'id': 4, 'name': 'Zone B'},
+        'company': withCompany
+            ? {'id': 12, 'name': 'Peoples Poultry & Hatchery Ltd'}
+            : null,
+        'sector': withSector
+            ? {'id': 44, 'name': 'Dhaka South', 'companyId': 12}
+            : null,
+        'sectors': withSector
+            ? [
+                {
+                  'id': 44,
+                  'name': 'Dhaka South',
+                  'companyId': 12,
+                  'companyName': 'Peoples Poultry & Hatchery Ltd',
+                }
+              ]
+            : <dynamic>[],
+        'markets': withMarkets
+            ? [
+                {
+                  'id': 9,
+                  'name': 'Rajshahi city market',
+                  'district': 'Rajshahi',
+                  'companyName': 'Peoples Poultry & Hatchery Ltd',
+                  'sectorName': 'Dhaka South',
+                }
+              ]
+            : <dynamic>[],
+      };
+    }
+
+    test('parses the whole resolved context', () {
+      final context = MarketingContext.fromJson(payload());
+
+      expect(context.hasZone, isTrue);
+      expect(context.zone!.id, 4);
+      expect(context.zone!.name, 'Zone B');
+      // The company arrives through the sector's real relation, so the form no
+      // longer has to guess it from a name.
+      expect(context.company!.id, 12);
+      expect(context.sector!.name, 'Dhaka South');
+      expect(context.sectors, hasLength(1));
+      expect(context.markets, hasLength(1));
+      expect(context.markets.first.name, 'Rajshahi city market');
+    });
+
+    test('a zone with no company is distinguishable from an empty scope', () {
+      // An officer whose zone is set but whose sector has no company needs the
+      // admin to fix the sector — not the whole profile.
+      final context = MarketingContext.fromJson(
+        payload(withCompany: false, withSector: false),
+      );
+
+      expect(context.hasZone, isTrue);
+      expect(context.company, isNull);
+      expect(context.hasZoneWithoutCompany, isTrue);
+    });
+
+    test('a null payload degrades to an empty context', () {
+      final context = MarketingContext.fromJson(null);
+      expect(context.hasZone, isFalse);
+      expect(context.company, isNull);
+      expect(context.markets, isEmpty);
+    });
+
+    test('missing keys do not become zero-id members', () {
+      // A zero id written into the payload would be rejected by the API, so an
+      // absent key has to become null.
+      final context = MarketingContext.fromJson(const {});
+      expect(context.zone, isNull);
+      expect(context.company, isNull);
+      expect(context.sector, isNull);
+      expect(context.sectors, isEmpty);
+      expect(context.markets, isEmpty);
+    });
+  });
+
+  group('MarketingDealer', () {
+    test('reads the proxy dealer payload', () {
+      final dealer = MarketingDealer.fromJson(const {
+        'sourceId': 19,
+        'name': 'Al-Modina Poultry',
+        'code': 'DLR250019',
+        'contactPerson': 'Md. Rahim Uddin',
+        'phone': '01712345678',
+        'address': 'Nagarbari, Savar',
+        'zoneName': 'Zone A',
+        'dealerGroup': 'egg',
+      });
+
+      expect(dealer.sourceId, 19);
+      expect(dealer.displayName, 'Al-Modina Poultry');
+      expect(dealer.subtitle, contains('DLR250019'));
+      expect(dealer.subtitle, contains('01712345678'));
+    });
+
+    test('tolerates a dealer carrying no optional fields', () {
+      // Egg dealers in the Sales payload have no addressBn/shippingAddress, and
+      // any field may be null — none of it may throw.
+      final dealer = MarketingDealer.fromJson(const {
+        'sourceId': 27,
+        'name': 'Delta Poultry',
+      });
+
+      expect(dealer.code, isNull);
+      expect(dealer.phone, isNull);
+      expect(dealer.zoneName, isNull);
+      // An empty subtitle keeps the option tile on one line rather than ' · '.
+      expect(dealer.subtitle, isNot(contains('·')));
+      expect(dealer.searchText, contains('delta poultry'));
+    });
+
+    test('falls back to a readable name when the dealer has none', () {
+      final dealer = MarketingDealer.fromJson(const {'sourceId': 5, 'name': ''});
+      expect(dealer.displayName, 'Dealer #5');
+    });
+  });
+
+  group('phone uniqueness pools', () {
+    // Mirrors the server: a farm and a dealer may share a number, two farms may
+    // not. The client has to scope its warning the same way or it would block a
+    // save the database accepts.
+    final farm = Party.fromJson(const {
+      'id': 1,
+      'partyType': 'farm',
+      'name': 'A Farm',
+      'phone': '01712345678',
+    });
+    final dealer = Party.fromJson(const {
+      'id': 2,
+      'partyType': 'dealer',
+      'name': 'A Dealer',
+      'phone': '01712345678',
+    });
+
+    test('a farm phone clashes only with another farm', () {
+      expect(farm.isFarm, isTrue);
+      expect(dealer.isFarm, isFalse);
+    });
+
+    test('the same number in different pools is not a clash', () {
+      bool clashes(Party typed, Party other, {required bool typedIsFarm}) {
+        if (!MarketingService.samePhone(other.phone, typed.phone)) return false;
+        return other.isFarm == typedIsFarm;
+      }
+
+      expect(clashes(farm, dealer, typedIsFarm: true), isFalse);
+      expect(clashes(dealer, farm, typedIsFarm: false), isFalse);
+      expect(clashes(farm, farm, typedIsFarm: true), isTrue);
+      expect(clashes(dealer, dealer, typedIsFarm: false), isTrue);
     });
   });
 

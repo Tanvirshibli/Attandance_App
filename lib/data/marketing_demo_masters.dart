@@ -70,24 +70,6 @@ class MarketingDemoMasters {
     BookingFormSector(id: 13, name: 'Chicks (Sreenagar)', companyId: 1),
   ];
 
-  static const dealers = <MarketingDemoNamed>[
-    MarketingDemoNamed(
-      id: 501,
-      name: 'Bismillah PPHL Feed',
-      subtitle: 'Existing ERP dealer',
-    ),
-    MarketingDemoNamed(
-      id: 502,
-      name: 'Sunrise Agro Store',
-      subtitle: 'Existing ERP dealer',
-    ),
-    MarketingDemoNamed(
-      id: 503,
-      name: 'City Farm Depot',
-      subtitle: 'Existing ERP dealer',
-    ),
-  ];
-
   static const categories = <MarketingDemoNamed>[
     MarketingDemoNamed(id: 21, name: 'Feed'),
     MarketingDemoNamed(id: 22, name: 'Chicks'),

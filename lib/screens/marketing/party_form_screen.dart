@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../../data/marketing_demo_masters.dart';
+import '../../models/marketing_context.dart';
 import '../../models/marketing_models.dart';
 import '../../services/auth_service.dart';
 import '../../services/employee_marketing_scope_service.dart';
@@ -104,8 +105,16 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
   /// catalog. The party's own company comes from the employee's scope.
   final List<BookingFormCompany> _companies = MarketingDemoMasters.companies;
   Party? _parentParty;
-  MarketingDemoNamed? _existingDealer;
   MarketingDemoNamed? _capacityUnit;
+
+  /// Dealers from the Sales master, offered by the existing-dealer picker.
+  ///
+  /// Replaces a hardcoded demo catalog that had no phone, address or zone on it,
+  /// so selecting from it could never autofill anything. Only fetched while the
+  /// party type is an existing dealer — see `_loadExistingDealers`.
+  List<MarketingDealer> _existingDealers = const [];
+  bool _loadingExistingDealers = false;
+  MarketingDealer? _selectedExistingDealer;
   double? _lat;
   double? _lng;
   bool _loadingDealers = false;
@@ -141,10 +150,17 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
   /// Code prefix per record kind.
   String get _codePrefix => _isFarm ? 'FMR' : 'DLR';
 
-  /// A dealer is identified by its phone number, so it is required. Farms share
-  /// the same table but are not looked up by number, and the server enforces the
-  /// same split, so the field stays optional for them.
-  bool get _phoneRequired => !_isFarm;
+  /// A party's phone number identifies it, so it is required for every party
+  /// this form creates — farm included.
+  ///
+  /// Uniqueness is checked against the *farm* pool rather than globally, because
+  /// the server scopes the same way: a farm and a dealer may share a number,
+  /// two farms may not. Checking the wrong pool would warn about a clash the
+  /// index would never reject.
+  static const bool _phoneRequired = true;
+
+  /// Whether the typed phone is being checked in the farm pool.
+  bool get _phoneInFarmPool => _isFarm;
 
   @override
   void initState() {
@@ -189,6 +205,62 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
     );
     if (!mounted) return;
     setState(() => _scope = scope);
+    // The dealer list is scoped by the same zone, so it can only be fetched
+    // once the zone is known.
+    if (_partyType == 'outlet') _loadExistingDealers();
+  }
+
+  /// Loads the existing-dealer list, narrowed to the employee's zone.
+  ///
+  /// Only ever called while the party type is an existing dealer — the picker
+  /// is not rendered otherwise, so fetching for a new dealer or a farm would be
+  /// a request nobody can use.
+  ///
+  /// A failure is not fatal: the picker then offers nothing and the officer can
+  /// still register the dealer by hand. The Sales master is behind a public
+  /// endpoint that can 500 on unrelated data, so this has to be a soft failure.
+  Future<void> _loadExistingDealers() async {
+    setState(() => _loadingExistingDealers = true);
+    final result = await _service.listExistingDealers(
+      zoneName: _scope.zone?.name,
+      limit: 200,
+    );
+    if (!mounted) return;
+    setState(() {
+      _loadingExistingDealers = false;
+      _existingDealers = result.success
+          ? (result.data ?? const <MarketingDealer>[])
+          : const <MarketingDealer>[];
+    });
+  }
+
+  /// Fills whatever the chosen ERP dealer actually carries.
+  ///
+  /// Each field is written only when the source has a value, so a dealer with no
+  /// address does not blank an address the officer has already typed. The phone
+  /// is the exception worth noting: it is required, and the debounce in
+  /// [_onPhoneChanged] re-runs against the new value.
+  void _applyExistingDealer(MarketingDealer? dealer) {
+    if (dealer == null) return;
+
+    void fillIfEmpty(TextEditingController controller, String? value) {
+      final text = (value ?? '').trim();
+      if (text.isEmpty) return;
+      if (controller.text.trim().isNotEmpty) return;
+      controller.text = text;
+    }
+
+    fillIfEmpty(_contact, dealer.contactPerson);
+    fillIfEmpty(_phone, dealer.phone);
+    fillIfEmpty(_altPhone, dealer.altPhone);
+    fillIfEmpty(_address, dealer.address);
+
+    // A selected dealer is a fact about the record, so it goes in the payload
+    // even though the field is otherwise absent from the farm form.
+    setState(() {
+      _selectedExistingDealer = dealer;
+      _phoneClash = null;
+    });
   }
 
   @override
@@ -313,6 +385,11 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
     Party? clash;
     for (final party in result.data ?? const <Party>[]) {
       if (MarketingService.samePhone(party.phone, typed)) {
+        // Only a clash inside the same pool is one. The server scopes its
+        // unique index the same way, so a farm sharing a number with a dealer is
+        // legal and must not be flagged — warning about it would block a save
+        // the database would happily accept.
+        if (party.isFarm != _phoneInFarmPool) continue;
         clash = party;
         break;
       }
@@ -343,7 +420,7 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
           '${code != null && code.isNotEmpty ? ' ($code)' : ''}';
     }
     if (_phoneRequired && _phone.text.trim().isEmpty) {
-      return 'Phone is required for a dealer.';
+      return 'Phone is required.';
     }
     return null;
   }
@@ -354,7 +431,7 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
       return;
     }
     if (_phoneRequired && _phone.text.trim().isEmpty) {
-      _snack('Phone is required for a dealer.');
+      _snack('Phone is required.');
       return;
     }
     // Re-check rather than trusting the blur-time result: the check runs on a
@@ -362,10 +439,17 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
     await _checkPhone();
     if (!mounted) return;
     if (_phoneClash != null) {
-      _snack('That phone number is already linked to another dealer.');
+      _snack(
+        _isFarm
+            ? 'That phone number is already linked to another farm.'
+            : 'That phone number is already linked to another dealer.',
+      );
       return;
     }
-    if (!_isFarm && !_scope.hasZone) {
+    // Every party is scoped to the employee's zone, farm included — the zone
+    // is what every marketing list and report filters on, so an untagged farm
+    // is as unreachable as an untagged dealer.
+    if (!_scope.hasZone) {
       _snack(
         'Your zone could not be resolved. Ask an admin to set your zone, then retry.',
       );
@@ -453,7 +537,8 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
       // worse than leaving the column for an admin to correct.
       if (_scope.market != null) 'market_id': _scope.market!.id,
       if (_isFarm && _parentParty != null) 'parent_party_id': _parentParty!.id,
-      if (_existingDealer != null) 'existing_dealer_id': _existingDealer!.id,
+      if (_selectedExistingDealer != null)
+        'existing_dealer_id': _selectedExistingDealer!.sourceId,
       if (_scope.company != null) 'company_id': _scope.company!.id,
       if (_scope.sector != null) 'sector_id': _scope.sector!.id,
       if (_scope.zone != null) 'zone_id': _scope.zone!.id,
@@ -593,7 +678,16 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
                               setState(() {
                                 _partyType = v;
                                 _phoneClash = null;
+                                // The picker belongs to the existing-dealer type
+                                // alone, so its selection is cleared when the
+                                // type moves away from it.
+                                if (v != 'outlet') {
+                                  _selectedExistingDealer = null;
+                                }
                               });
+                              if (v == 'outlet' && _existingDealers.isEmpty) {
+                                _loadExistingDealers();
+                              }
                             },
                           ),
                         ],
@@ -621,18 +715,28 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
                               : 'Unavailable — will save without one',
                         ),
                         const SizedBox(height: 14),
-                        SearchableSelectField<MarketingDemoNamed>(
-                          label: 'Existing ERP dealer',
-                          icon: Icons.storefront_outlined,
-                          options: MarketingDemoMasters.dealers,
-                          selected: _existingDealer,
-                          displayString: (d) => d.displayName,
-                          searchText: (d) => d.searchText,
-                          subtitleFor: (d) => d.subtitle,
-                          onSelected: (d) =>
-                              setState(() => _existingDealer = d),
-                        ),
-                        const SizedBox(height: 14),
+                        // The existing ERP dealer picker appears only for the
+                        // existing-dealer type. A new dealer or a farm has no
+                        // ERP dealer to attach, so showing an always-visible
+                        // field there just invited an officer to file a farm
+                        // against a demo row.
+                        if (_partyType == 'outlet') ...[
+                          if (_loadingExistingDealers)
+                            const LinearProgressIndicator()
+                          else
+                            SearchableSelectField<MarketingDealer>(
+                              label: 'Existing ERP dealer',
+                              icon: Icons.storefront_outlined,
+                              options: _existingDealers,
+                              selected: _selectedExistingDealer,
+                              displayString: (d) => d.displayName,
+                              searchText: (d) => d.searchText,
+                              subtitleFor: (d) =>
+                                  d.subtitle.isEmpty ? null : d.subtitle,
+                              onSelected: _applyExistingDealer,
+                            ),
+                          const SizedBox(height: 14),
+                        ],
                         // Zone, company, sector and market all come from the
                         // logged-in employee. A field officer should not be
                         // recording their own territory by hand, and a wrong
@@ -642,7 +746,7 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
                           const LinearProgressIndicator()
                         else ...[
                           ReadOnlyField(
-                            label: _phoneRequired ? 'Zone *' : 'Zone',
+                            label: 'Zone *',
                             icon: Icons.map_outlined,
                             value: _scope.zone?.name,
                             hint: 'Not set — ask an admin to set your zone',
@@ -694,7 +798,7 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
                         // required and has to belong to exactly one dealer.
                         // Re-checked on submit too, because the server is the
                         // real authority and the debounce can lag an edit.
-                        _label(_phoneRequired ? 'Phone *' : 'Phone'),
+                        _label('Phone *'),
                         VoiceTextField(
                           controller: _phone,
                           keyboardType: TextInputType.phone,

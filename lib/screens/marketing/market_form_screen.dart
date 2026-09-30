@@ -401,6 +401,18 @@ class _MarketFormScreenState extends State<MarketFormScreen> {
       _snack('That phone number is already linked to another market.');
       return;
     }
+    // A market belongs to a zone, and every zone-scoped list and report keys
+    // off it — so an untagged market is invisible to the officer who filed it.
+    // An edit keeps the zone the saved market already carries, so correcting a
+    // survey is never blocked by a scope that has since changed.
+    final effectiveZoneName =
+        _isEdit ? widget.market!.zoneName : _scope.zone?.name;
+    if (effectiveZoneName == null || effectiveZoneName.trim().isEmpty) {
+      _snack(
+        'Your zone could not be resolved. Ask an admin to set your zone, then retry.',
+      );
+      return;
+    }
     if (_lat == null || _lng == null) {
       final snap = await MarketingLocationHelper.capture();
       if (snap != null) {
