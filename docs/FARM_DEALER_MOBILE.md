@@ -1,10 +1,10 @@
 # Farm & Dealer Mobile Module
 
-Last updated: September 30, 2026 — **v2.5.0+96**
+Last updated: September 30, 2026 — **v2.5.0+97**
 
 Field data collection for **markets**, **dealers**, and **farms** in Attandance_App, backed by ZKTeco `/api/v1/mobile/marketing/*` (no JWT — same pattern as geo). Employee identity uses profile `canonicalEmployeeId` (`employees.id`).
 
-**v2.5.0+96: Relational org master, required farm phone, live dealer picker.**
+**v2.5.0+97: Relational org master, required farm phone, live dealer picker.**
 Company and sector no longer render "Unresolved from your profile". The relation now lives in the ZKTeco backend as a real org master (`mkt_zones` / `mkt_companies` / `mkt_sectors` / `mkt_zone_sectors`), synced from Sales by `marketing:sync-masters`, and the app asks one endpoint instead of guessing. A farm's phone number is now **required and unique among farms** — the old "farms are exempt" rule is gone. The ERP dealer field is removed from the farm form and the existing-dealer picker is now a live Sales-backed list, shown only for an existing dealer, which autofills what the ERP record actually holds. See [Relational org scope](#relational-org-scope), [Phone uniqueness](#phone-uniqueness), [Existing dealer picker](#existing-dealer-picker).
 
 **v2.4.0+94: Full-screen grids, employee-scoped read-only fields, generated codes.**
@@ -63,7 +63,7 @@ The hub is a **three-tab page**: Farms, Dealers, Markets. Farms is selected on o
 
 ## Relational org scope
 
-**v2.5.0+96.** The dealer, farm and market forms used to ask a field officer to pick their own **zone, company, sector and market**. Nothing stopped them choosing a neighbouring one, and every marketing list filters on those columns — so a wrong pick silently filed the record where the officer would not expect to find it. All four are now derived from the logged-in employee.
+**v2.5.0+97.** The dealer, farm and market forms used to ask a field officer to pick their own **zone, company, sector and market**. Nothing stopped them choosing a neighbouring one, and every marketing list filters on those columns — so a wrong pick silently filed the record where the officer would not expect to find it. All four are now derived from the logged-in employee.
 
 ### Why company and sector used to be unresolved
 
@@ -142,7 +142,7 @@ The farm visit report's **Zone** is read-only on the same terms, with one differ
 
 ## Phone uniqueness
 
-**v2.5.0+96.** A party is identified by its phone number, so one number belongs to one record. Required for **every** party the forms create, farm included.
+**v2.5.0+97.** A party is identified by its phone number, so one number belongs to one record. Required for **every** party the forms create, farm included.
 
 | Field | Required | Unique |
 |---|---|---|
@@ -183,11 +183,11 @@ Three layers, because the client cannot be the authority:
 
 ## Existing dealer picker
 
-**v2.5.0+96.** The dealer's **party type** dropdown offers two options: **New dealer** → `dealer`, **Existing dealer** → `outlet`. Both were already in the API enum, so no backend change was needed to name them.
+**v2.5.0+97.** The dealer's **party type** dropdown offers two options: **New dealer** → `dealer`, **Existing dealer** → `outlet`. Both were already in the API enum, so no backend change was needed to name them.
 
 The **Existing ERP dealer** field is a separate thing and has changed twice:
 
-| | Before | After (v2.5.0+96) |
+| | Before | After (v2.5.0+97) |
 |---|---|---|
 | Farm form | always visible | **removed** — a farm has no ERP dealer, and the visible field only invited filing a farm against a demo row |
 | Dealer form | always visible | **only when party type is Existing dealer** |
