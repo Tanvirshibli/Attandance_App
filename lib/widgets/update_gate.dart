@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../config/app_config.dart';
@@ -7,6 +9,17 @@ import '../screens/app_update_screen.dart';
 
 /// Checks GitHub OTA manifest on cold start and blocks the app when an update
 /// is required.
+///
+/// The check runs alongside the app rather than in front of it. It used to await
+/// the manifest before rendering anything at all, which meant every cold start
+/// opened with a "Checking for updates…" spinner held open by a GitHub request —
+/// on the office wifi that is a second of dead screen, and on a phone data
+/// connection it is a lot longer. The app now renders immediately and only
+/// swaps in the update screen if a newer build actually turns up.
+///
+/// A failed check is not surfaced as a blocking error either. The app is
+/// perfectly usable offline; refusing to open because a version lookup failed
+/// would be a worse trade than possibly running one build behind.
 class UpdateGate extends StatefulWidget {
   const UpdateGate({super.key});
 
@@ -17,102 +30,57 @@ class UpdateGate extends StatefulWidget {
 class _UpdateGateState extends State<UpdateGate> {
   final AppUpdateService _updateService = AppUpdateService();
 
-  bool _skipUpdateCheck = false;
-  late Future<AppUpdateCheckResult> _checkFuture;
+  /// Null until the manifest has been read. Rendering `AppBootstrap` while this
+  /// is null is the point of the whole widget.
+  AppUpdateCheckResult? _result;
 
   @override
   void initState() {
     super.initState();
-    _checkFuture = _updateService.checkForUpdate();
+
+    if (!AppConfig.updateCheckEnabled) {
+      return;
+    }
+
+    unawaited(_check());
   }
 
-  void _retryCheck() {
-    setState(() {
-      _checkFuture = _updateService.checkForUpdate();
-    });
+  Future<void> _check() async {
+    try {
+      final result = await _updateService.checkForUpdate();
+
+      // The gate is usually replaced by the app-update screen rather than
+      // rebuilt, but a check that resolves after a sign-out still has to be
+      // able to set state safely.
+      if (!mounted) return;
+
+      setState(() => _result = result);
+    } catch (error) {
+      debugPrint('Update check failed, continuing without it: $error');
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    if (!AppConfig.updateCheckEnabled || _skipUpdateCheck) {
+    final result = _result;
+
+    if (!AppConfig.updateCheckEnabled) {
       return const AppBootstrap();
     }
 
-    return FutureBuilder<AppUpdateCheckResult>(
-      future: _checkFuture,
-      builder: (context, snapshot) {
-        if (!snapshot.hasData) {
-          return const Scaffold(
-            body: Center(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  CircularProgressIndicator(),
-                  SizedBox(height: 16),
-                  Text('Checking for updates…'),
-                ],
-              ),
-            ),
-          );
-        }
+    if (result == null) {
+      return const AppBootstrap();
+    }
 
-        final result = snapshot.data!;
+    if (result.needsUpdate && result.manifest != null) {
+      return AppUpdateScreen(
+        manifest: result.manifest!,
+        installedVersionCode: result.installedVersionCode,
+      );
+    }
 
-        if (result.needsUpdate && result.manifest != null) {
-          return AppUpdateScreen(
-            manifest: result.manifest!,
-            installedVersionCode: result.installedVersionCode,
-          );
-        }
-
-        if (result.hasError) {
-          return Scaffold(
-            body: Center(
-              child: Padding(
-                padding: const EdgeInsets.all(24),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Icon(Icons.cloud_off, size: 48),
-                    const SizedBox(height: 16),
-                    Text(
-                      result.errorMessage ?? 'Could not check for updates.',
-                      textAlign: TextAlign.center,
-                    ),
-                    if (AppConfig.updateManifestUrl.isNotEmpty) ...[
-                      const SizedBox(height: 12),
-                      Text(
-                        AppConfig.updateManifestUrl,
-                        textAlign: TextAlign.center,
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                              color: Theme.of(context)
-                                  .colorScheme
-                                  .onSurface
-                                  .withValues(alpha: 0.6),
-                            ),
-                      ),
-                    ],
-                    const SizedBox(height: 16),
-                    FilledButton(
-                      onPressed: _retryCheck,
-                      child: const Text('Retry'),
-                    ),
-                    const SizedBox(height: 8),
-                    TextButton(
-                      onPressed: () {
-                        setState(() => _skipUpdateCheck = true);
-                      },
-                      child: const Text('Continue offline'),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          );
-        }
-
-        return const AppBootstrap();
-      },
-    );
+    // Nothing newer, or the check failed: either way the app is what should be
+    // on screen, and it is already rendered underneath.
+    return const AppBootstrap();
   }
 }

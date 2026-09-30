@@ -78,17 +78,33 @@ class _LoginScreenState extends State<LoginScreen> {
       return;
     }
 
-    // Refresh dashboard endpoint map after login (non-blocking).
+    // Everything after a successful login runs in the background. The token is
+    // already stored, so the dashboard can render immediately; waiting on
+    // get-my-info here (a 45s timeout) to fill in the header is what made the
+    // app feel slow between tapping Sign In and seeing anything.
     unawaited(EndpointConfigService.instance.refreshConfig());
-
-    final profile = await _authService.getCurrentUserProfile();
-    _faceRecognitionService.hydrateRegistration(profile?.faceRegistration);
+    unawaited(_hydrateProfileInBackground());
 
     if (!mounted) return;
 
     Navigator.of(context).pushReplacement(
       MaterialPageRoute(builder: (_) => const MainShell()),
     );
+  }
+
+  /// Warms the profile cache and the face-registration flag for the screens
+  /// that need them.
+  ///
+  /// Failures are swallowed on purpose: the dashboard loads the profile itself
+  /// and falls back gracefully, so a failure here must not stop the user from
+  /// reaching it.
+  Future<void> _hydrateProfileInBackground() async {
+    try {
+      final profile = await _authService.getCurrentUserProfile();
+      _faceRecognitionService.hydrateRegistration(profile?.faceRegistration);
+    } catch (_) {
+      // Nothing to do — the dashboard retries on its own.
+    }
   }
 
   @override

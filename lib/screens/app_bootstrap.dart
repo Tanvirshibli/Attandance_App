@@ -104,15 +104,33 @@ class _AppBootstrapState extends State<AppBootstrap>
       return _BootstrapState.needsLogin;
     }
 
-    final profile = await _authService.getCurrentUserProfile();
-    _faceRecognitionService.hydrateRegistration(profile?.faceRegistration);
+    // The session is valid, which is the only thing this decision needs. The
+    // profile, the geo timer and the push token are all downstream of that and
+    // none of them gates rendering the shell, so they run alongside it rather
+    // than in front of it. Awaiting get-my-info here put a 45s request in front
+    // of the first frame on every cold start.
+    unawaited(_warmAuthenticatedSession());
+
+    return _BootstrapState.authenticated;
+  }
+
+  /// Everything the app needs once the user is known to be signed in, none of
+  /// which the shell cannot render without.
+  Future<void> _warmAuthenticatedSession() async {
+    try {
+      final profile = await _authService.getCurrentUserProfile();
+      _faceRecognitionService.hydrateRegistration(profile?.faceRegistration);
+    } catch (_) {
+      // The dashboard loads the profile itself and falls back.
+    }
+
     try {
       await GeoTrackingService().ensureEnabledIfAllowed();
     } catch (_) {}
+
     try {
       await FcmWakeHandler.syncTokenWithBackend();
     } catch (_) {}
-    return _BootstrapState.authenticated;
   }
 
   @override
