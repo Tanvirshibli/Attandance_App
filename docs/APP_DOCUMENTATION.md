@@ -214,36 +214,45 @@ User → Login (dummy) → MainShell → [Home | Attendance | Notifications | Pr
 
 ```
 AttendEaseApp
-  └─ UpdateGate (GitHub OTA manifest check on cold start)
-        ├─(update required)→ AppUpdateScreen (blocking download + install)
-        ├─(fetch error)→ Retry / Continue offline
-        └─(up to date / offline continue)→ AppBootstrap
-              ├─ PermissionsGateScreen
-              ├─ ServerBootstrapScreen
-              ├─ LoginScreen
-              └─ MainShell (IndexedStack with bottom nav)
-                  ├── Tab 0: HomeScreen
-                  │     └─(Clock-In Card)→ CheckInScreen → (pop on success)
-                  ├── Tab 1: AttendanceHistoryScreen
-                  ├── Tab 2: NotificationsScreen
-                  ├── Tab 3: ProfileScreen
-                  │     ├─(Register Face)→ FaceRegistrationScreen
-                  │     └─(Sign Out)→ LoginScreen (pushAndRemoveUntil)
-                  └── Tab 4: EmployeeServicesHubScreen (Services)
-                        ├─ AttendanceReportScreen
-                        ├─ LeaveHubScreen (balance cards + leave report)
-                        ├─ PaymentHubScreen (dealer auth-wise report + receive)
-                        ├─ HrBenefitsHubScreen (payslips, loans, PF, mess, compensation)
-                        │   ├─ PayslipListScreen / PayslipDetailScreen
-                        │   ├─ LoanListScreen / LoanDetailScreen
-                        │   ├─ PostPaymentScreen / PaymentReportScreen
-                        │   ├─ ProvidentFundScreen / MessDepositScreen / CompensationScreen
-                        ├─ SalesInfoScreen (overview + own postings)
-                        │   ├─ PostBookingScreen (feed / chicks)
-                        │   └─ PostSaleScreen (egg / fertilizer / liveBird / cullBird)
-                        └─ GeoTrackingScreen
+  └─ LocationGuard (above the Navigator — location check on start and resume)
+        └─ UpdateGate (GitHub OTA manifest check, non-blocking)
+              ├─(update required)→ AppUpdateScreen (blocking download + install)
+              └─ AppBootstrap  (rendered immediately, before the manifest lands)
+                    ├─ PermissionsGateScreen
+                    ├─ ServerBootstrapScreen
+                    ├─ LoginScreen
+                    └─ MainShell (IndexedStack with bottom nav)
+                        ├── Tab 0: HomeScreen
+                        │     └─(Clock-In Card)→ CheckInScreen → (pop on success)
+                        ├── Tab 1: AttendanceHistoryScreen
+                        ├── Tab 2: NotificationsScreen
+                        ├── Tab 3: ProfileScreen
+                        │     ├─(Register Face)→ FaceRegistrationScreen
+                        │     └─(Sign Out)→ LoginScreen (pushAndRemoveUntil)
+                        └── Tab 4: EmployeeServicesHubScreen (Services)
+                              ├─ AttendanceReportScreen
+                              ├─ LeaveHubScreen (balance cards + leave report)
+                              ├─ PaymentHubScreen (dealer auth-wise report + receive)
+                              ├─ HrBenefitsHubScreen (payslips, loans, PF, mess, compensation)
+                              │   ├─ PayslipListScreen / PayslipDetailScreen
+                              │   ├─ LoanListScreen / LoanDetailScreen
+                              │   ├─ PostPaymentScreen / PaymentReportScreen
+                              │   └─ ProvidentFundScreen / MessDepositScreen / CompensationScreen
+                              ├─ SalesInfoScreen (overview + own postings)
+                              │   ├─ PostBookingScreen (feed / chicks)
+                              │   └─ PostSaleScreen (egg / fertilizer / liveBird / cullBird)
+                              └─ GeoTrackingScreen
 ```
 
+- **LocationGuard** sits above the Navigator, so the check covers every screen
+  including ones pushed later. If location cannot be captured it replaces the
+  app with `LocationRequiredSheet`, which cannot be dismissed: the only exits are
+  fixing the setting and retrying, or signing out. Signed-out users are never
+  gated — see [5.2](#52-location-gate).
+- **UpdateGate** no longer blocks the first frame on the manifest fetch. It
+  renders `AppBootstrap` straight away and only swaps in `AppUpdateScreen` if a
+  newer build actually turns up; a failed check is logged and ignored, because
+  the app works fine offline.
 - **MainShell** uses `IndexedStack` to keep all 5 tab screens alive.
 - **CheckInScreen** is pushed as a `MaterialPageRoute` from HomeScreen and pops after success.
 - **FaceRegistrationScreen** is pushed from ProfileScreen's "Quick Actions → Register Face" card.
@@ -254,7 +263,7 @@ See **[OTA_UPDATES.md](OTA_UPDATES.md)** for the full publisher and troubleshoot
 
 | Component | Role |
 |-----------|------|
-| `UpdateGate` | Cold-start wrapper; blocks app when update required |
+| `UpdateGate` | Cold-start wrapper; renders the app immediately, shows the update screen only when a newer version exists |
 | `AppUpdateService` | Fetches manifest, compares `version_code`, downloads APK |
 | `AppUpdateScreen` | Forced update UI with download progress |
 | `ApkInstallerChannel` (Kotlin) | ABI detection + install intent |
@@ -262,19 +271,60 @@ See **[OTA_UPDATES.md](OTA_UPDATES.md)** for the full publisher and troubleshoot
 
 Manifest URL baked at build time from `rocket launcher/config/github.env` → `UPDATE_MANIFEST_URL` dart-define.
 
+### 5.2 Location gate
+
+Attendance is recorded with a location stamp, so the app refuses to be used when
+it cannot capture one. The check is deliberately separate from the first-launch
+`PermissionsGateScreen`: that screen asks for the OS *permission* once, but a
+user can grant it and then switch the device's location service off afterwards.
+Before this gate existed that combination was invisible — `GeoTrackingService`
+silently skipped its pings and the punch only failed at the moment the employee
+was trying to clock in.
+
+| Component | Role |
+|-----------|------|
+| `LocationGateService` (`lib/services/location_gate_service.dart`) | Reports whether location is capturable, and why not |
+| `LocationRequiredSheet` (`lib/widgets/location_required_sheet.dart`) | Blocking, non-dismissible screen naming the problem and its fix |
+| `LocationGuard` (`lib/widgets/location_guard.dart`) | Runs the check on start and on every resume; swaps in the sheet when blocked |
+
+Behaviour worth knowing:
+
+- **Service off and permission denied are different states.** They live in
+  different places in Android Settings, so the sheet names the specific one and
+  opens the matching screen rather than a generic "app settings".
+- **Re-checked on every resume**, because location can be switched off from the
+  app switcher mid-session. A session that starts with location on can end up
+  without it.
+- **Signed-out users are never gated.** There is no punch to record yet, and
+  gating the login screen would strand someone who needs to switch accounts on a
+  device with location off.
+- **Fails open.** If the platform call itself throws, the app continues. The
+  punch path still refuses to record without a fix, and a gate that cannot
+  explain itself would be worse than no gate.
+- **Both location permissions are checked** — `locationWhenInUse` *and*
+  `locationAlways`. A user who revoked background access but kept foreground
+  access would otherwise pass the gate and then silently stop producing
+  background pings.
+
 ---
 
 ## 6. Screen-by-Screen Reference
 
-### 6.1 LoginScreen (`login_screen.dart`, 402 lines)
+### 6.1 LoginScreen (`login_screen.dart`)
 
 | Aspect | Detail |
 |---|---|
 | **State** | `StatefulWidget` |
 | **Auth** | Real backend auth via `POST /api/v1/a/login` |
-| **Flow** | Backend-authenticated sign-in → profile hydration → `pushReplacement` to `MainShell` |
+| **Flow** | Backend-authenticated sign-in → `pushReplacement` to `MainShell` |
+| **Background work** | Endpoint config refresh and profile hydration run unawaited, after navigation |
 | **UI** | Dark gradient background (`AppColors.darkGradient`), animated PPHL GIF logo from `peoplespoultry.com`, login card with email/password fields, remember me checkbox |
 | **Logo URL** | `https://peoplespoultry.com/assets/front/img/1730297252134723053.gif` |
+
+A successful login navigates as soon as the token is stored. The profile fetch
+that used to sit between the two — a 45s-timeout `get-my-info` — no longer
+blocks it: nothing on the dashboard needs it to be present, and `HomeScreen`
+loads the profile itself.
 
 ### 6.2 MainShell (`main_shell.dart`)
 
@@ -292,13 +342,25 @@ Manifest URL baked at build time from `rocket launcher/config/github.env` → `U
 | Aspect | Detail |
 |---|---|
 | **State** | `StatefulWidget` (tracks `_isClockedIn`, check-in/out/hours, summary KPIs, weekly hours) |
-| **Load order** | Profile → attendance list → month summary (resume uses same sequence) |
+| **Load order** | Profile first (it yields the employee id), then the attendance list and month summary **concurrently** |
+| **Resume** | Same sequence, throttled to at most once per 30s; pull-to-refresh bypasses the throttle |
 | **Header** | Gradient card with live backend avatar letters, employee name, designation/employee ID, greeting (dynamic AM/PM), today's check-in/out/hours |
 | **Quick Stats** | 4 `StatCard` widgets: Present / Absent / Holiday / Leave from HRM single-employee daily `rows` (`attendanceType`); punch-day fallback when rows empty |
 | **Clock-In Card** | Today-only; one punch button at a time (Check In **or** Check Out); day-complete hides both buttons → `CheckInScreen` |
 | **Face warning** | If templates are missing or corrupt, a warning card plus Check In/Out routes to `FaceRegistrationScreen` |
 | **Weekly Chart** | `BarChart` from punch records (open shifts use `now` as end) |
 | **Recent Attendance** | List of top 5 `AttendanceTile` widgets from live requests |
+
+The punch list and the month summary are independent requests — both only need
+the employee id — so they overlap. Two things follow, and both are load-bearing:
+
+- The summary's request starts immediately, but the *decision* about whether to
+  trust it reads `_requestedRecords`. That await has to come before the
+  comparison, or the response is judged against the previous refresh's rows (or
+  an empty list on first load) and the KPI cards show zero.
+- The resume throttle exists because returning from the camera, the face
+  registration screen or a Settings trip all fire `resumed`, and each one
+  previously kicked off four attendance requests across two backends.
 
 ### 6.4 CheckInScreen (`check_in_screen.dart`, ~1260 lines)
 
