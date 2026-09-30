@@ -59,6 +59,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _lastResumeRefresh = DateTime.now();
     _refreshHomeData();
   }
 
@@ -71,50 +72,101 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
-      _refreshHomeData();
+      _refreshHomeDataOnResume();
     }
   }
 
-  /// Profile first, then attendance list + summary (avoids employeeId race).
-  Future<void> _refreshHomeData() async {
-    await _loadProfile();
-    if (!mounted) return;
-    await _loadAttendanceRequests();
+  /// Refreshes on resume, but not on every one.
+  ///
+  /// Returning from the camera, the face-registration screen or a Settings trip
+  /// all fire `resumed`, and each one used to kick off a full reload — four
+  /// attendance requests across two backends. Leaving and re-entering the app
+  /// repeatedly on a weak connection could keep it permanently refreshing. The
+  /// throttle keeps a genuine change (a long gap) refreshing while collapsing
+  /// the bursts, and pull-to-refresh bypasses it because there the user has
+  /// explicitly asked for fresh data.
+  static const _resumeThrottle = Duration(seconds: 30);
+
+  DateTime? _lastResumeRefresh;
+
+  Future<void> _refreshHomeDataOnResume() async {
+    final last = _lastResumeRefresh;
+    final now = DateTime.now();
+
+    if (last != null && now.difference(last) < _resumeThrottle) {
+      return;
+    }
+
+    _lastResumeRefresh = now;
+    await _refreshHomeData();
   }
 
-  Future<void> _loadProfile() async {
+  /// Profile, then the punch list and the month summary together.
+  ///
+  /// The summary and the punch list do not depend on each other for their
+  /// network calls — both only need the employee id — so they are fetched
+  /// concurrently. They used to run one after the other, which meant the KPI
+  /// cards waited on a full attendance fetch (four requests across two backends)
+  /// that they never read.
+  Future<void> _refreshHomeData() async {
+    final employeeId = await _loadProfile();
+
+    if (!mounted) return;
+
+    final recordsDone = _loadAttendanceRecords(employeeId);
+
+    await Future.wait([
+      recordsDone,
+      _loadSummary(employeeId, recordsDone),
+    ]);
+  }
+
+  /// Returns the employee id, or null when the profile could not be resolved.
+  Future<int?> _loadProfile() async {
     try {
       final profile = await _authService.getCurrentUserProfile();
-      if (!mounted) return;
+
       if (profile != null) {
         _faceService.hydrateRegistration(profile.faceRegistration);
       }
+
       final registered = await _faceService.isFaceRegistered();
-      if (!mounted) return;
+
+      if (!mounted) return null;
 
       setState(() {
         _profile = profile ?? AuthUserProfile.fallback();
         _isLoadingProfile = false;
         _faceRegistered = registered;
       });
+
+      return _profile.canonicalEmployeeId;
     } catch (_) {
-      if (!mounted) return;
+      if (!mounted) return null;
+
       final registered = await _faceService.isFaceRegistered();
-      if (!mounted) return;
+      if (!mounted) return null;
+
       setState(() {
         _profile = AuthUserProfile.fallback();
         _isLoadingProfile = false;
         _faceRegistered = registered;
       });
+
+      return null;
     }
   }
 
-  Future<void> _loadAttendanceRequests() async {
-    var employeeId = _profile.canonicalEmployeeId;
-    if (employeeId == null) {
+  Future<void> _loadAttendanceRecords(int? employeeId) async {
+    // The id can be missing if the profile request failed. Worth one retry, but
+    // not worth blocking on: the screen still renders, just without records.
+    var resolvedId = employeeId;
+    if (resolvedId == null) {
       final profile = await _authService.getCurrentUserProfile();
-      employeeId = profile?.canonicalEmployeeId;
-      if (profile != null && mounted) {
+      if (!mounted) return;
+
+      if (profile != null) {
+        resolvedId = profile.canonicalEmployeeId;
         setState(() {
           _profile = profile;
           _isLoadingProfile = false;
@@ -126,15 +178,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final today = DateTime(now.year, now.month, now.day);
 
     final records = await _attendanceRequestService.getHomeAttendanceRecords(
-      employeeId: employeeId,
+      employeeId: resolvedId,
     );
     if (!mounted) return;
 
     _applyRecordsToHomeState(records, today, preserveLocal: true);
-
-    if (employeeId != null && employeeId > 0) {
-      await _loadSummary(employeeId);
-    }
   }
 
   Future<void> _loadAttendanceRequestsWithRetry({
@@ -142,7 +190,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     bool requireCheckOut = false,
   }) async {
     for (var i = 0; i < attempts; i++) {
-      await _loadAttendanceRequests();
+      // Only the punch list is re-fetched here. This runs after a punch, to
+      // wait for the record to appear on the backend, so re-running the whole
+      // dashboard refresh would only repeat work that has not changed.
+      await _loadAttendanceRecords(_profile.canonicalEmployeeId);
       final now = DateTime.now();
       final today = DateTime(now.year, now.month, now.day);
       final todayRecord = _attendanceRequestService.resolveTodayRecord(
@@ -289,36 +340,57 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     _applyRecordsToHomeState(updated, today);
   }
 
-  Future<void> _loadSummary(int employeeId) async {
+  /// Loads the month KPIs.
+  ///
+  /// [recordsDone] is the concurrent punch-list load. The backend call starts
+  /// immediately, so the two requests genuinely overlap, but the decision about
+  /// which value to trust reads the punch records — so that part has to wait for
+  /// [recordsDone] before it can be made.
+  Future<void> _loadSummary(int? employeeId, [Future<void>? recordsDone]) async {
     final now = DateTime.now();
     final from = DateTime(now.year, now.month, 1);
     final to = DateTime(now.year, now.month + 1, 0);
-    final result = await _reportService.getSummary(
-      employeeId: employeeId,
-      from: from,
-      to: to,
-    );
+
+    AttendanceSummary? fetched;
+
+    // Without an id there is nothing to ask the backend about; the fallback
+    // below still produces a usable estimate from the punch records.
+    if (employeeId != null && employeeId > 0) {
+      final result = await _reportService.getSummary(
+        employeeId: employeeId,
+        from: from,
+        to: to,
+      );
+
+      if (result.success && result.data != null) {
+        fetched = result.data;
+      }
+    }
+
+    // Both the decision below and the reconciliation read the punch records, and
+    // those arrive from the concurrent load above. Judging the backend response
+    // before they land would compare it against the *previous* refresh's rows —
+    // or against an empty list on a first load.
+    await recordsDone;
+
     if (!mounted) return;
 
-    final punchDays = _punchDays();
+    final summary = fetched;
 
-    if (result.success && result.data != null) {
-      final summary = result.data!;
-      // Prefer API rows/summary when shape is known and has KPIs, or when
-      // there are no local punches to estimate from.
-      if (summary.parsedFromKnownShape) {
-        if (summary.hasAnyKpi || _monthPunchPresentDays(from, to) == 0) {
-          setState(() => _summary = summary.reconciledWithPunchDays(punchDays));
-          return;
-        }
-      }
+    if (summary != null &&
+        summary.parsedFromKnownShape &&
+        (summary.hasAnyKpi || _monthPunchPresentDays(from, to) == 0)) {
+      setState(
+        () => _summary = summary.reconciledWithPunchDays(_punchDays()),
+      );
+      return;
     }
 
     setState(
       () => _summary = _summaryFromPunchRecords(
         from,
         to,
-      ).reconciledWithPunchDays(punchDays),
+      ).reconciledWithPunchDays(_punchDays()),
     );
   }
 
@@ -405,7 +477,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   Future<void> _openCheckFlow({required bool isCheckOut}) async {
     if (_checkFlowOpening) return;
 
-    await _loadAttendanceRequests();
+    // Re-read the punch list before deciding what to offer: the buttons on this
+    // screen depend on it, and the cached copy can be minutes old.
+    await _loadAttendanceRecords(_profile.canonicalEmployeeId);
     if (!mounted) return;
 
     if (_isDayComplete) {
