@@ -199,6 +199,18 @@ After publishing build **N**:
 3. Phone on build **N−1**: cold start → update screen → download → install → Profile shows **N**
 4. Phone on build **N**: cold start → app enters normally
 
+> **Raw URLs cache.** `raw.githubusercontent.com` can serve a stale manifest for a
+> minute or two after the manifest commit lands. If the manifest still shows the
+> old `version_code`, re-request with a cache-busting query string
+> (`…/manifest.json?nocache=<date>`) before concluding the publish failed — and
+> check `git log origin/main` in `ciphercall/rocket-launcher` for an
+> `OTA release <version>` commit, since that is the authoritative signal.
+
+> **Published build** v2.4.0+95 → tag `v2.4.0-build95`, manifest commit
+> `3fa6406`. Both split APKs verified by download: byte counts and SHA-256 match
+> the manifest exactly, `versionName=2.4.0` / `versionCode=2095` per `aapt2`,
+> `arm64-v8a` only in that asset.
+
 **Verified on real device:** August 12, 2026 — v40 → v41 OTA test successful. Later builds: v41 → v42. **v2.2.3+43** = Receive payment + Post booking UX (sales web create-page layouts). **v2.2.3+44** = Post Booking chicks Zone dropdown from `all-dealer-lists` `zoneList`. **v2.2.3+45** = Face registration/check-in 2 s positioning window + ~1 s hold before auto-capture. **v2.2.3+46** = Home Hours same-day duration (fix 24h extra). **v2.2.3+47** = Vehicles trip list from `get-trips-list`. **v2.2.3+48** = Vehicles fleet list, then Maintenance and Trips per vehicle. **v2.2.3+50** = Geo Tracking OSM layer switcher. **v2.2.3+51** = Geo Tracking native Google Maps (Standard / Terrain / Hybrid Satellite). **v2.2.3+52** = Stricter face placement on registration and check-in, plus a prompt to re-register if face data is missing. **v2.2.3+53** = Face registration and check-in wait until the face fills the oval before capturing. **v2.2.3+54** = Face guide is a rounded square that matches the corner frame. **v2.2.3+55** = One centered face frame (no overlapping boxes). **v2.2.3+56** = Registration advances after a saved capture; live fill and still size use the same 16% floor. **v2.2.3+57** = Success tick centered in the face guide; step/coaching text centered above the frame. **v2.2.3+58** = Face-guide tick on the painted rect; capture screens stay awake; Geo Tracking full-screen map. **v2.2.3+59** = Farm & Dealer forms collect the full Phase-1 field set; searchable ID dropdowns. **v2.2.3+60** = Farm visit report form; Farm & Dealer hub Create and View All cards. **v2.2.3+61** = Farms, Dealers and Markets hub with top-5 previews and compact Create/View-all icon buttons. **v2.2.3+63** = Colorful hub section panels; Recent Attendance card layout fix; farm visit free-text fields with demo chips and paper-aligned units/extra_data. **v2.2.3+72** = Searchable dropdown overlay list on field tap (not Autocomplete). **v2.2.3+71** = Searchable form dropdowns open options list on field tap. **v2.2.3+70** = Marketing photo serve fix; visit detail with photos; API-first dealer/market forms; tap-outside dismiss on searchable fields. **v2.2.3+68** = Farm visit detail photo thumbnails; combined Production%/FCR field on form. **v2.2.3+66** = Separate farm/dealer/market visit forms; farm report autocomplete fields; read-only dealer info on farm visit. **v2.2.3+64** = Markets hub panel purple (`AppColors.secondary`) so Dealers (blue) and Markets are visually distinct.
 
 ---
