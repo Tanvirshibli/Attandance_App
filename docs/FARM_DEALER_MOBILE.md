@@ -1,10 +1,13 @@
 # Farm & Dealer Mobile Module
 
-Last updated: September 29, 2026
+Last updated: September 30, 2026 — **v2.4.0+94**
 
 Field data collection for **markets**, **dealers**, and **farms** in Attandance_App, backed by ZKTeco `/api/v1/mobile/marketing/*` (no JWT — same pattern as geo). Employee identity uses profile `canonicalEmployeeId` (`employees.id`).
 
-**v2.3.0+93: Tabbed hub + labelled pill actions.** The hub is now three **tabs** (Farms / Dealers / Markets) instead of three stacked cards, and the icon-only Create / View-all buttons are **icon + text pills**. Party detail's "Post a visit" and "New follow-up" are pills too. See [Hub layout](#hub-layout).
+**v2.4.0+94: Full-screen grids, employee-scoped read-only fields, generated codes.**
+The hub's three module cards are replaced by one full-height grid per tab with a pinned action bar. Zone / company / sector / market on all three forms are derived from the logged-in employee and shown read-only. Dealer / farm / market codes are allocated server-side (`DLR-09260001`). Phone is required and unique per dealer and per market. See [Hub layout](#hub-layout), [Auto-scoped read-only fields](#auto-scoped-read-only-fields), [Record codes](#record-codes), [Phone uniqueness](#phone-uniqueness).
+
+**v2.3.0+93: Tabbed hub + labelled pill actions.** The hub is three **tabs** (Farms / Dealers / Markets) instead of three stacked cards, and the icon-only Create / View-all buttons are **icon + text pills**. Party detail's "Post a visit" and "New follow-up" are pills too. See [Hub layout](#hub-layout).
 
 **v2.3.0+92: Zone scoping.** Every marketing list, form picker and dealer dropdown is now narrowed to the zones the employee is assigned. See [Zone scoping](#zone-scoping) below.
 
@@ -55,22 +58,120 @@ The hub is a **three-tab page**: Farms, Dealers, Markets. Farms is selected on o
 
 ---
 
+## Auto-scoped read-only fields
+
+**v2.4.0+94.** The dealer, farm and market forms used to ask a field officer to pick their own **zone, company, sector and market**. Nothing stopped them choosing a neighbouring one, and every marketing list filters on those columns — so a wrong pick silently filed the record where the officer would not expect to find it. All four are now derived from the logged-in employee.
+
+`EmployeeMarketingScopeService` (`lib/services/employee_marketing_scope_service.dart`) resolves them once and the three forms share the answer:
+
+| Field | Resolved from | Join |
+|---|---|---|
+| **Zone** | HRM `user.zoneId` → Sales zone master | **by name**, never by id |
+| **Company** | profile `sector` → Sales `form-data` `companyList` | exact name, then prefix |
+| **Sector** | profile `sector` → Sales `form-data` `sectorList` | exact name, then prefix |
+| **Market** | nearest market in the zone to the form's own GPS fix | zone id, zone name, then district |
+
+- **Company/sector match exact first, then prefix.** A plain `contains` would let the profile's `"Peoples Feed"` resolve to `"Peoples Feed (Chicks)"` while the real company sat later in the list.
+- **Exact-then-prefix matters because ids are not portable.** HRM, Sales and ZKTeco each assign zone / company / sector ids independently, so an id from one system means nothing in another. Same rule as the zone scoping below.
+- **Market is the nearest one, not the first row.** This is the one field with no single right answer: a zone normally holds several markets and the officer is the one who knows which they are standing in. Resolving by GPS proximity is defensible; "first row" would file dealers under the wrong market with no way to notice. It stays read-only but is **visible**, so a mis-resolution can be reported instead of being buried in the payload.
+- **Caching**: 24 h in `SharedPreferences`, same TTL pattern as `ZoneScopeService`, cleared on login and logout so one employee's scope never leaks into another's session.
+
+### Graceful degradation
+
+| Condition | Result |
+|---|---|
+| A field resolves | Value shown, id written to the payload |
+| A field does not resolve | *"Not set — ask an admin to set your zone"* / *"Unresolved from your profile"*, and **the key is omitted** |
+| Dealer with **no** resolvable zone | Submit blocked with a clear message — never saved untagged |
+| Zone master or Sales unreachable | Everything resolves to null; the form still works, just unscoped |
+
+> **Never send a guessed id.** A wrong `company_id` files a dealer under another company — a silent data error an admin has to find and undo. An empty column is visible and correctable, so unresolved means omitted, never defaulted.
+
+### Rendering
+
+`ReadOnlyField` (`lib/widgets/ui/read_only_field.dart`): a sunk `AppColors.surfaceSunk` box, `AppColors.inkFaint` text, **no mic**, **no tap handler**, and a small `Icons.lock_outline` suffix. A `SearchableSelectField` with `enabled: false` would still render as a field you could tap; this renders as a settled fact.
+
+The farm visit report's **Zone** is read-only on the same terms, with one difference: **the farm's own zone wins** when it has one (the report is about that farm, not the officer), falling back to the officer's scope for a farm created before zone tagging.
+
+**Still editable:** parent dealer on a farm, the market on an *edit* form, and every contact / credit / location / product field. A farm's dealer relationship is field knowledge, not an HRM attribute — deriving it from the employee's territory would be a guess.
+
+---
+
+## Record codes
+
+**v2.4.0+94.** Codes are `{PREFIX}-{MM}{YY}{SEQ}`, e.g. `DLR-09260007`. The sequence restarts each month.
+
+| Record | Prefix | Source |
+|---|---|---|
+| New dealer / existing dealer | `DLR` | `GET /marketing/parties/next-code?prefix=DLR` |
+| Farm | `FMR` | `GET /marketing/parties/next-code?prefix=FMR` |
+| Market | `MRK` | `GET /marketing/markets/next-code?prefix=MRK` |
+
+- **Allocated server-side under a row lock** (`mkt_marketing_code_sequences`, keyed by prefix + period). A client-side "highest existing + 1" collides the moment two officers open a form in the same second, and that is exactly what the endpoint exists to prevent.
+- **`prefix` is a whitelist**, not free text, so the endpoint cannot be used to allocate arbitrary codes.
+- **Failure leaves the field empty** ("Unavailable — will save without one") rather than inventing a number on the device. `code` is nullable server-side; a missing code is far better than a duplicate.
+- **Markets keep their existing code on edit.** A saved market's `_effectiveCode` prefers `widget.market.code`, so a correction never renumbers a record people already reference.
+
+---
+
+## Phone uniqueness
+
+**v2.4.0+94.** A dealer is identified by its phone number, so one number belongs to one dealer.
+
+| Field | Required | Unique |
+|---|---|---|
+| Dealer / existing dealer | yes | yes |
+| Market | yes | yes |
+| Farm | no | yes, when given |
+
+> **Why farms are exempt.** Farms share `mkt_parties` with dealers but are not looked up by number, so inheriting the dealer requirement would block legitimate farm records. The server enforces the same split via `Rule::requiredIf` on `party_type`.
+
+Three layers, because the client cannot be the authority:
+
+1. **Debounced client check.** `GET /parties?q=<digits>` on a 700 ms debounce while typing, and again on submit (the debounce can lag an edit). The backend `q` filter is a substring `LIKE`, so **every hit is compared after normalisation** — comparing raw strings would let `01712-345678`, `+8801712345678` and `01712345678` register as three different dealers.
+2. **`MarketingService.normalisePhone` / `samePhone`.** Strips spaces, dashes and parentheses, drops a `+88` / `0088` country code, then a national leading `0`. An empty or missing phone never matches anything.
+3. **Server `unique` rule + partial unique index.** The client's early warning is a convenience; the 422 is the enforcement. A clash shows as *"Already linked to <name> (<code>)"* rather than a raw validation blob.
+
+**A failed lookup is not a pass.** It only means the early warning is unavailable — the submit still goes out and is still validated by the server.
+
+`mkt_parties.phone` gets a unique index **over live rows only** (`WHERE phone IS NOT NULL AND deleted_at IS NULL`), because the model uses `SoftDeletes` and a deleted dealer must not hold their number hostage. `mkt_markets` has no soft deletes, so its index has no such clause. Where pre-existing duplicates would make the DDL fail, the index is skipped rather than blocking the deploy — the API-level validation still keeps new rows correct.
+
+---
+
 ## Hub layout
 
-### Tabs
+### Full-screen grids (v2.4.0+94)
 
-One `TabController` drives a `TabBar` plus a fixed-height `TabBarView`, both inside the page's `CustomScrollView` so pull-to-refresh and the page header are untouched.
+The page no longer scrolls. `Scaffold.body` is a plain `Column`, not a `CustomScrollView`:
 
-- The **zone note** sits **above** the tab bar: it describes every module, so it belongs to the page rather than to any one tab.
-- The tab body is a **fixed 268 dp** tall. All three cards carry identical chrome (icon tile, title, action row, up to five preview rows), so one height fits all three and the page does not reflow as the user swipes between tabs.
-- Tabs are built lazily: a module's preview is not constructed until its tab is first shown.
-- The **Follow-ups** tile sits **below** the `TabBarView` so it stays reachable from all three tabs.
+```
+Column
+├── AppHeader
+├── _ZoneScopeNote              (unchanged, when the scope is non-empty)
+├── TabBar                      (unchanged)
+├── Expanded
+│   └── TabBarView              ← every remaining pixel
+│       └── per tab: _RecordGrid (GridView.builder, scrolls on its own)
+└── bottomNavigationBar: _HubActionBar  ← Add … / All … / Follow-ups, pinned
+```
 
-> **Why `SliverMainAxisGroup` and not one `SliverList`.** A `TabBar` and a `TabBarView` are box widgets and each needs its own sliver; a `SliverChildListDelegate` accepts widgets, not slivers. The group keeps the zone note, tab bar, tab body and follow-ups tile as siblings in the same scroll view.
+- The `_HubGroupCard`, the five-row preview lists and the fixed `268 dp` tab body are all gone. They existed only to fit three stacked cards on one screen, and the five-row cap was why "View all" was a mandatory second tap for anything longer.
+- **Delegate**: `SliverGridDelegateWithMaxCrossAxisExtent(maxCrossAxisExtent: 190, childAspectRatio: 0.78, spacing: AppSpace.sm)`. Max-cross-axis rather than a fixed count, so it is two columns on a 1080-wide phone and three or four on a tablet — the same width-driven behaviour as the services hub.
+- **Each cell** is an `InkWell` over a card with the module-colour left rail, the record name (2 lines, ellipsis), a secondary line, and a status chip for parties. Tapping opens the same `PartyDetailScreen` / `MarketDetailScreen` the old preview rows did.
+- **Scroll + refresh** belong to the grid, so `RefreshIndicator` wraps each tab's `GridView` instead of the page. Loading, error and empty states *replace* the grid rather than sitting inside it, so each fills its tab instead of floating in an empty scroll area.
+- **List size**: `limit: 200` (API cap 500) instead of the default 100 — a grid is only worth having with more rows than that. Zone narrowing still runs in Dart *after* the fetch, never as a server-side `zone_id`.
+- **Action bar**: Create / View-all move out of the cards into a `SafeArea` bar under the tabs. An `AnimatedBuilder` on the `TabController` re-labels them on swipe, so the pills name the tab actually on screen. Follow-ups joins that bar as an `AppIconTile` — it belongs to no single tab and must stay reachable from all three, but it no longer costs a row of grid height.
+- **Pill labels flex.** `AppPillButton`'s label is `Flexible` + ellipsis, not a fixed-size `Text`. Sharing a row on a narrow handset previously overflowed by 4.5–15 px; the old card layout dodged that with a `Wrap`, which a pinned bar cannot use.
 
-### Pill actions
+> **Why a `Column` and not a `CustomScrollView`.** The page has no scrolling content left — header, note, tab bar and action bar are all fixed, and the only scrollable is the grid inside `TabBarView`. A `TabBarView` also needs a bounded height, which `Expanded` supplies and a sliver would not.
 
-The Create and View-all buttons were icon-only 36 dp squares whose meaning came from a tooltip — unreadable without a hover or long press, and ambiguous next to each other. They are now **icon + text pills** built from the shared `AppPillButton`:
+### Earlier layout (v2.3.0+93)
+
+One `TabController` drove a `TabBar` plus a fixed-height `TabBarView`, both inside the page's `CustomScrollView`. Superseded by the above.
+
+### Pill actions (unchanged since v2.3.0+93)
+
+The Create and View-all buttons were icon-only 36 dp squares whose meaning came from a tooltip. They are **icon + text pills** built from `AppPillButton`:
 
 | Where | Label |
 |---|---|
@@ -84,9 +185,6 @@ The Create and View-all buttons were icon-only 36 dp squares whose meaning came 
 - `filled: true` (default) is the primary action of a row — solid module colour, white glyph and label. `filled: false` is the secondary beside it — a 10% tint with a 25% border, label in the module colour.
 - `minHeight: 44`. One dp under `AppButton`'s 48, because a pill shares a row rather than owning it.
 - `dense: true` trims the horizontal padding, for the hub where two pills sit together.
-- The card's action row is a **`Wrap`**, not a `Row`. "Add dealer" and "All dealers" together are wider than a phone row, and a bare `Row` overflowed by 20 px on a 1080×2400 viewport; `Wrap` falls them to a second line instead.
-
-The `createTooltip` / `viewTooltip` fields on the hub card are gone — a visible label makes a tooltip redundant.
 
 > **Not changed:** the market detail screen's Edit button. It has no visit or follow-up action, so it was left alone rather than restyled on a guess.
 
@@ -108,8 +206,10 @@ All marketing paths resolve via `EndpointConfigService` (ZKTeco base). Fallbacks
 |-----|--------|------|
 | `marketing.markets` | GET/POST | `/api/v1/mobile/marketing/markets` |
 | `marketing.market.create` | POST | `/api/v1/mobile/marketing/markets` |
+| `marketing.market.nextCode` | GET | `/api/v1/mobile/marketing/markets/next-code?prefix=MRK` |
 | `marketing.parties` | GET | `/api/v1/mobile/marketing/parties` |
 | `marketing.party.create` | POST | `/api/v1/mobile/marketing/parties` |
+| `marketing.party.nextCode` | GET | `/api/v1/mobile/marketing/parties/next-code?prefix=DLR\|FMR` |
 | `marketing.visits` | GET | `/api/v1/mobile/marketing/visits` |
 | `marketing.visit.create` | POST | `/api/v1/mobile/marketing/visits` |
 | `marketing.visit.checkIn` | POST | `/api/v1/mobile/marketing/visits/{id}/check-in` |
@@ -152,18 +252,23 @@ Server-generated `public_id` / `visit_no` stay off create forms. Visit `client_u
 
 ### Create / edit market (market survey)
 
-Searchable company, **zone**, and sector; status `active` / `inactive`; name, code, geo address fields, notes. Market-intelligence fields: `feed_share_percent`, `chicks_share_percent`, `product_types` (multi-select chips), `feed_dealer_count`, `chicks_dealer_count`, `broiler_farm_count`, `layer_farm_count`, `color_farm_count`, `cock_farm_count`, plus dynamic **competitor rows** (`name` + `share_percent`). On open, app auto-fills `lat`/`lng` and best-effort geo/address from reverse geocode (editable). No Capture GPS button. → `POST /markets` create; **Edit market** on the detail screen → `PUT /markets/{id}` (partial fields; `updated_by_employee_id` stamped). There is **no market-visit flow** — markets are records, not visits.
+Searchable company, **zone**, and sector (all **read-only from the employee's scope** since v2.4.0+94); status `active` / `inactive`; name, **phone** (required + unique), **code** (allocated, read-only), geo address fields, notes, and a photo gallery. Market-intelligence fields: `feed_share_percent`, `chicks_share_percent`, `product_types` (multi-select chips), `feed_dealer_count`, `chicks_dealer_count`, `broiler_farm_count`, `layer_farm_count`, `color_farm_count`, `cock_farm_count`, plus dynamic **competitor rows** (`name` + `share_percent`). On open, app auto-fills `lat`/`lng` and best-effort geo/address from reverse geocode (editable). No Capture GPS button. → `POST /markets` create; **Edit market** on the detail screen → `PUT /markets/{id}` (partial fields; `updated_by_employee_id` stamped). There is **no market-visit flow** — markets are records, not visits.
+
+> **Market photos (v2.4.0+94).** Uploads use `attachable_type=market`. This required widening the backend whitelist — `MktMarket` already declared an `attachments()` morph relation, but the type was rejected by validation.
 
 ### Create party (dealer / farm)
 
 1. Sections: Basic / Contact / Farm&Credit / Location / Products / Photos.
 2. Payload **requires** `employee_id` (plus `created_by_employee_id` / `owner_employee_id`).
-3. Scalars: `code`, `owner_name` (separate from contact person), `business_years`, `capacity_unit_id`, `existing_dealer_id`.
-4. Searchable: live market (filtered to the chosen zone by name and that zone's districts), live parent dealer (farms), company/sector (Sales then demo), existing ERP dealer (demo), **zone** (Sales `get-zone`, demo zones as fallback) — **required for dealers**, pre-seeded to the employee's first assigned zone, matched by name.
-5. Extra fields: email, alt phone, NID, trade license, `farm_type`, `capacity`, `credit_limit`, `payment_mode`, `lead_status`.
-6. Product rows: relation types include `business`; searchable product (fills `product_name` + `product_id`); category, unit, company; `brand_name`, `monthly_quantity` / `current_stock`, `unit_price`, `competitor_company`, `is_our_product`, notes. A row is sent only when `product_name` is present.
-7. Auto location on open → `lat`/`lng` + address prefill (editable). No Capture GPS button.
-8. Optional multi-photo gallery → attachments `attachable_type=party`.
+3. **Party type** offers two options (v2.4.0+94): **New dealer** → `dealer`, **Existing dealer** → `outlet`. Both were already in the API enum, so no backend change was needed to name them properly. A farm screen shows its type read-only. The other enum values (`farmer`, `prospect`) remain valid in data and in existing records; they are just not something a field officer creates here.
+4. **Code** is allocated server-side and read-only — see [Record codes](#record-codes). `_code` is only kept as a fallback for a hand-seeded value.
+5. Scalars: `owner_name` (separate from contact person), `business_years`, `capacity_unit_id`, `existing_dealer_id`.
+6. Searchable: live parent dealer (farms), existing ERP dealer (demo catalog), product / category / unit / company per product row.
+7. **Zone / company / sector / market are read-only** from the employee's scope — see [Auto-scoped read-only fields](#auto-scoped-read-only-fields). **Phone** is required for dealers and unique — see [Phone uniqueness](#phone-uniqueness).
+8. Extra fields: email, alt phone, NID, trade license, `farm_type`, `capacity`, `credit_limit`, `payment_mode`, `lead_status`.
+9. Product rows: relation types include `business`; searchable product (fills `product_name` + `product_id`); category, unit, company; `brand_name`, `monthly_quantity` / `current_stock`, `unit_price`, `competitor_company`, `is_our_product`, notes. A row is sent only when `product_name` is present.
+10. Auto location on open → `lat`/`lng` + address prefill (editable). No Capture GPS button.
+11. Optional multi-photo gallery → attachments `attachable_type=party`, WebP under `image[]`.
 
 ### Visit (dealer)
 
@@ -242,6 +347,9 @@ Selecting a product fills `product_name` and related category/company when those
 | `lib/models/zone_models.dart` | `SalesZone` / `ZoneDistrict` wire models for `get-zone` |
 | `lib/models/zone_scope.dart` | `ZoneScope` — the resolved zone set and the `matches` predicate |
 | `lib/widgets/ui/app_pill_button.dart` | `AppPillButton` — icon + label action used across the hub and party detail |
+| `lib/widgets/ui/read_only_field.dart` | `ReadOnlyField` — a value the app derived, shown locked |
+| `lib/services/employee_marketing_scope_service.dart` | Resolves zone / company / sector / market from the employee; 24 h cache |
+| `lib/services/marketing_service.dart` | HTTP client (`nextCode`, `findPartiesByPhone`, `findMarketsByPhone`, `normalisePhone`, `samePhone`, check-in/out, market update) |
 | `lib/services/zone_scope_service.dart` | Resolves the profile's zone ids against the master; 24 h cache |
 | `lib/widgets/searchable_select_field.dart` | Type-to-search dropdown (shared with Post booking) |
 | `lib/widgets/voice_input_field.dart` | `VoiceTextField` + `VoiceMicButton` (mic on typed fields) |
