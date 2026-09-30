@@ -101,6 +101,7 @@ class Market {
     required this.id,
     required this.name,
     this.code,
+    this.phone,
     this.divisionName,
     this.district,
     this.upazila,
@@ -129,6 +130,10 @@ class Market {
   final int id;
   final String name;
   final String? code;
+
+  /// Required and unique per market. Added server-side in v2.4.0.
+  final String? phone;
+
   final String? divisionName;
   final String? district;
   final String? upazila;
@@ -175,6 +180,7 @@ class Market {
       id: marketingParseInt(json['id']) ?? 0,
       name: (json['name'] ?? '').toString(),
       code: marketingNonEmpty(json['code']),
+      phone: marketingNonEmpty(json['phone']),
       divisionName: marketingNonEmpty(
         json['divisionName'] ?? json['division_name'],
       ),

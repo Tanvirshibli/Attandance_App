@@ -54,6 +54,100 @@ class MarketingService {
     return _getList(uri, Market.fromJson);
   }
 
+  /// The next record code to submit with, e.g. `DLR-09260007`.
+  ///
+  /// [prefix] is one of the server's whitelisted values (`DLR` dealer, `FMR`
+  /// farm, `MRK` market); anything else is rejected with 422.
+  ///
+  /// The sequence is allocated server-side under a row lock, so two field
+  /// officers opening a form at the same moment get different numbers. A failure
+  /// here means the endpoint is unreachable — flagged [ApiResult.isSetupIssue]
+  /// so the caller can keep the code field empty rather than invent one that
+  /// might collide.
+  Future<ApiResult<String>> nextCode(String prefix) async {
+    if (!await isMarketingEnabled()) {
+      return ApiResult.fail('feature_disabled');
+    }
+
+    final base = await _url(
+      'marketing.parties',
+      '/api/v1/mobile/marketing/parties',
+    );
+    final uri = Uri.parse('$base/next-code').replace(
+      queryParameters: {'prefix': prefix},
+    );
+
+    try {
+      final response = await http
+          .get(uri, headers: _headers)
+          .timeout(const Duration(seconds: 30));
+
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        final decoded = _decode(response.body);
+        if (decoded is Map && decoded['success'] != false) {
+          final data = decoded['data'];
+          if (data is Map && data['code'] is String) {
+            return ApiResult.ok(data['code'] as String);
+          }
+        }
+      }
+
+      return ApiResult.fail(
+        'Could not allocate a code.',
+        statusCode: response.statusCode,
+        isSetupIssue: true,
+      );
+    } catch (e) {
+      return ApiResult.fail(UserFacingError.forException(e));
+    }
+  }
+
+  /// Parties whose phone matches [phone], for the uniqueness check.
+  ///
+  /// The backend `q` filter is a substring LIKE, so this returns candidates
+  /// rather than an exact answer — callers compare [Party.phone] themselves
+  /// after normalising, which `normalisePhone` handles.
+  Future<ApiResult<List<Party>>> findPartiesByPhone(String phone) async {
+    final digits = normalisePhone(phone);
+    if (digits.length < 4) return ApiResult.ok(const <Party>[]);
+    return listParties(q: digits);
+  }
+
+  /// Markets whose phone matches [phone], for the uniqueness check.
+  Future<ApiResult<List<Market>>> findMarketsByPhone(String phone) async {
+    final digits = normalisePhone(phone);
+    if (digits.length < 4) return ApiResult.ok(const <Market>[]);
+    return listMarkets(q: digits);
+  }
+
+  /// Reduce a phone number to comparable digits.
+  ///
+  /// `01712-345678`, `+8801712345678` and `01712345678` are the same dealer, so
+  /// a uniqueness check that compared the raw strings would let one number be
+  /// registered three times. Drops a `+88` country code, then a national
+  /// leading `0`, and keeps everything else — including letters, so a name in
+  /// the phone field cannot silently become a match.
+  static String normalisePhone(String phone) {
+    var digits = phone.replaceAll(RegExp(r'[^\d+]'), '');
+    if (digits.startsWith('+88')) {
+      digits = digits.substring(3);
+    } else if (digits.startsWith('0088')) {
+      digits = digits.substring(4);
+    }
+    if (digits.startsWith('0')) {
+      digits = digits.substring(1);
+    }
+    return digits;
+  }
+
+  /// True when [a] and [b] are the same phone number after normalisation.
+  static bool samePhone(String? a, String? b) {
+    final left = normalisePhone(a ?? '');
+    final right = normalisePhone(b ?? '');
+    if (left.isEmpty || right.isEmpty) return false;
+    return left == right;
+  }
+
   Future<ApiResult<Market>> createMarket(
     Map<String, dynamic> payload,
   ) async {

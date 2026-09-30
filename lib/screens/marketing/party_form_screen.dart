@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -6,6 +7,7 @@ import 'package:image_picker/image_picker.dart';
 import '../../data/marketing_demo_masters.dart';
 import '../../models/marketing_models.dart';
 import '../../services/auth_service.dart';
+import '../../services/employee_marketing_scope_service.dart';
 import '../../services/marketing_service.dart';
 import '../../services/sales_service.dart';
 import '../../services/zone_scope_service.dart';
@@ -73,25 +75,39 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
   String _partyType = 'dealer';
   String _paymentMode = 'cash';
   String _leadStatus = 'new';
-  List<Market> _markets = const [];
 
-  /// District names per zone, keyed by lowercase zone name, so the market
-  /// picker can be narrowed to the selected zone by name.
-  Map<String, Set<String>> _zoneDistricts = const {};
+  /// Zone / company / sector / market resolved from the logged-in employee and
+  /// shown read-only. Replaces the pickers this form used to offer, so a field
+  /// officer no longer records their own territory by hand.
+  EmployeeMarketingScope _scope = const EmployeeMarketingScope.empty();
+
+  /// Server-allocated `DLR-09260001` / `FMR-09260001`. Null until the endpoint
+  /// answers, and left null on failure rather than invented locally — a code
+  /// guessed on the device can collide, which is the whole reason it is
+  /// allocated server-side.
+  String? _generatedCode;
+  bool _loadingCode = true;
+
+  /// Party already holding the typed phone, when the uniqueness check finds one.
+  Party? _phoneClash;
+
+  /// Pending debounced phone lookup, cancelled on every keystroke.
+  Timer? _phoneDebounce;
+
+  /// Long enough to skip the searches for intermediate numbers, short enough
+  /// that the verdict is there before the officer looks up from the keyboard.
+  static const _phoneCheckDelay = Duration(milliseconds: 700);
+
   List<Party> _dealers = const [];
-  List<BookingFormCompany> _companies = MarketingDemoMasters.companies;
-  List<BookingFormSector> _sectors = MarketingDemoMasters.sectors;
-  List<MarketingDemoNamed> _zones = MarketingDemoMasters.zones;
-  Market? _selectedMarket;
+
+  /// Only the product rows still offer a company picker, so this stays the demo
+  /// catalog. The party's own company comes from the employee's scope.
+  final List<BookingFormCompany> _companies = MarketingDemoMasters.companies;
   Party? _parentParty;
-  BookingFormCompany? _selectedCompany;
-  BookingFormSector? _selectedSector;
-  MarketingDemoNamed? _selectedZone;
   MarketingDemoNamed? _existingDealer;
   MarketingDemoNamed? _capacityUnit;
   double? _lat;
   double? _lng;
-  bool _loadingMarkets = true;
   bool _loadingDealers = false;
   bool _loadingMasters = true;
   bool _resolvingLocation = true;
@@ -114,12 +130,21 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
   bool get _isFarm =>
       _partyType == 'farm' || _partyType == 'farmer';
 
-  List<BookingFormSector> get _sectorsForCompany {
-    if (_selectedCompany == null) return _sectors;
-    final filtered =
-        _sectors.where((s) => s.companyId == _selectedCompany!.id).toList();
-    return filtered.isNotEmpty ? filtered : _sectors;
-  }
+  /// The two dealer-facing types the form offers. `dealer` is a new dealer and
+  /// `outlet` an existing one — both are already in the backend's party_type
+  /// enum, so no server change was needed to name them properly.
+  static const _dealerPartyTypes = [
+    (label: 'New dealer', value: 'dealer'),
+    (label: 'Existing dealer', value: 'outlet'),
+  ];
+
+  /// Code prefix per record kind.
+  String get _codePrefix => _isFarm ? 'FMR' : 'DLR';
+
+  /// A dealer is identified by its phone number, so it is required. Farms share
+  /// the same table but are not looked up by number, and the server enforces the
+  /// same split, so the field stays optional for them.
+  bool get _phoneRequired => !_isFarm;
 
   @override
   void initState() {
@@ -131,15 +156,44 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
 
   Future<void> _bootstrap() async {
     await Future.wait([
-      _loadMarkets(),
       _loadFormMasters(),
       _autoFillLocation(),
+      _loadCode(),
+      _loadScope(),
       if (_isFarm) _loadDealers(),
     ]);
   }
 
+  /// Reserves the record code from the server.
+  ///
+  /// A failure is not fatal: the code is optional server-side, and a missing one
+  /// is far better than a duplicate. The field then reads as unavailable rather
+  /// than showing an empty box the officer might assume they can type into.
+  Future<void> _loadCode() async {
+    final result = await _service.nextCode(_codePrefix);
+    if (!mounted) return;
+    setState(() {
+      _loadingCode = false;
+      _generatedCode = result.success ? result.data : null;
+    });
+  }
+
+  /// Resolves zone / company / sector / market from the logged-in employee.
+  ///
+  /// Re-runs once the GPS fix lands, because the market is chosen as the one
+  /// nearest the captured position rather than the first row in the zone.
+  Future<void> _loadScope() async {
+    final scope = await EmployeeMarketingScopeService.instance.load(
+      lat: _lat,
+      lng: _lng,
+    );
+    if (!mounted) return;
+    setState(() => _scope = scope);
+  }
+
   @override
   void dispose() {
+    _phoneDebounce?.cancel();
     _name.dispose();
     _tradeName.dispose();
     _contact.dispose();
@@ -162,78 +216,16 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
     super.dispose();
   }
 
-  Future<void> _loadMarkets() async {
-    final scope = await ZoneScopeService.instance.load();
-    _zoneDistricts = await ZoneScopeService.instance.loadZoneDistricts();
-    final result = await _service.listMarkets();
-    if (!mounted) return;
-    setState(() {
-      final markets = result.data ?? const [];
-      // Only offer markets inside the employee's zones. An untagged market
-      // still qualifies through its district.
-      _markets = scope == null || scope.isEmpty
-          ? markets
-          : markets
-              .where((m) => scope.matches(
-                    zoneId: m.zoneId,
-                    zoneName: m.zoneName,
-                    district: m.district,
-                  ))
-              .toList();
-      _loadingMarkets = false;
-    });
-  }
-
-  /// Whether a market belongs to the zone currently picked in the form. Falls
-  /// back to the market's own zone name when the zone master is unavailable, so
-  /// the picker is never left empty for lack of a lookup table.
-  bool _marketInSelectedZone(Market market) {
-    final zone = _selectedZone;
-    if (zone == null) return true;
-    final zoneName = zone.name.toLowerCase();
-    if ((market.zoneName ?? '').toLowerCase() == zoneName) return true;
-
-    final districts = _zoneDistricts[zoneName];
-    if (districts == null || districts.isEmpty) return true;
-
-    final place = market.district?.trim().toLowerCase() ?? '';
-    if (place.isEmpty) return false;
-    for (final known in districts) {
-      if (place.contains(known) || known.contains(place)) return true;
-    }
-    return false;
-  }
-
   Future<void> _loadFormMasters() async {
-    final result = await _salesService.fetchBookingFormData();
-    // Zone options come from the Sales zone master, which also carries the
-    // districts the employee's scope is built from. The demo zones remain as
-    // a fallback when that master is unreachable.
-    final zones = await ZoneScopeService.instance.loadZoneOptions();
+    // Zone, company, sector and market all arrive through the scope service now,
+    // so this only has to wait long enough for the read-only block to stop
+    // showing its "unresolved" hints while the first load is still in flight.
+    await Future.wait([
+      _salesService.fetchBookingFormData(),
+      ZoneScopeService.instance.loadZoneOptions(),
+    ]);
     if (!mounted) return;
-    setState(() {
-      _loadingMasters = false;
-      if (result.success && result.data != null) {
-        _companies = MarketingDemoMasters.companiesOr(result.data!.companies);
-        _sectors = MarketingDemoMasters.sectorsOr(result.data!.sectors);
-      }
-      _zones = zones;
-    });
-    // Default to the logged-in employee's own zone when the profile has one.
-    _prefillZoneFromProfile();
-  }
-
-  Future<void> _prefillZoneFromProfile() async {
-    if (_selectedZone != null) return;
-    final scope = await ZoneScopeService.instance.load();
-    if (!mounted || scope == null || scope.isEmpty) return;
-    // Names only — an id from one source is not an id in another.
-    for (final z in _zones) {
-      if (scope.zoneNames.contains(z.name.toLowerCase())) {
-        setState(() => _selectedZone = z);
-        return;
-      }
-    }
+    setState(() => _loadingMasters = false);
   }
 
   Future<void> _loadDealers() async {
@@ -276,6 +268,9 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
         _locationStatus =
             'Location filled — edit address if needed (${snap.latitude.toStringAsFixed(5)}, ${snap.longitude.toStringAsFixed(5)})';
       });
+      // The scope's market is the nearest one to this position, so it can only
+      // be resolved once there is one.
+      _loadScope();
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -293,13 +288,87 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
     setState(() => _photos.addAll(files));
   }
 
+  /// Checks whether the typed phone already belongs to another party.
+  ///
+  /// The backend `q` filter is a substring LIKE, so every hit is compared after
+  /// `normalisePhone` — otherwise `+8801712…` would not be recognised as the
+  /// same number as `01712…` and the duplicate would slip through.
+  Future<void> _checkPhone() async {
+    final typed = _phone.text.trim();
+    if (typed.isEmpty) {
+      if (_phoneClash != null) setState(() => _phoneClash = null);
+      return;
+    }
+
+    final result = await _service.findPartiesByPhone(typed);
+    if (!mounted) return;
+
+    if (!result.success) {
+      // A failed lookup is not a pass. The server still enforces uniqueness on
+      // submit, so this only means the early warning is unavailable.
+      setState(() => _phoneClash = null);
+      return;
+    }
+
+    Party? clash;
+    for (final party in result.data ?? const <Party>[]) {
+      if (MarketingService.samePhone(party.phone, typed)) {
+        clash = party;
+        break;
+      }
+    }
+    setState(() => _phoneClash = clash);
+  }
+
+  /// Debounces the uniqueness lookup while the number is being typed.
+  ///
+  /// Without the delay every keystroke would fire a search. [Timer] rather than
+  /// a `Future.delayed` chain so a fast typist cancels the pending check
+  /// instead of queueing one per character.
+  void _onPhoneChanged() {
+    _phoneClash = null;
+    _phoneDebounce?.cancel();
+    final typed = _phone.text.trim();
+    if (typed.isEmpty) {
+      setState(() {});
+      return;
+    }
+    _phoneDebounce = Timer(_phoneCheckDelay, _checkPhone);
+  }
+
+  String? get _phoneError {
+    if (_phoneClash != null) {
+      final code = _phoneClash!.code;
+      return 'Already linked to ${_phoneClash!.displayName}'
+          '${code != null && code.isNotEmpty ? ' ($code)' : ''}';
+    }
+    if (_phoneRequired && _phone.text.trim().isEmpty) {
+      return 'Phone is required for a dealer.';
+    }
+    return null;
+  }
+
   Future<void> _submit() async {
     if (_name.text.trim().isEmpty) {
       _snack('Name is required.');
       return;
     }
-    if (_partyType == 'dealer' && _selectedZone == null) {
-      _snack('Select a zone for this dealer.');
+    if (_phoneRequired && _phone.text.trim().isEmpty) {
+      _snack('Phone is required for a dealer.');
+      return;
+    }
+    // Re-check rather than trusting the blur-time result: the check runs on a
+    // debounce and the officer may have edited the number since.
+    await _checkPhone();
+    if (!mounted) return;
+    if (_phoneClash != null) {
+      _snack('That phone number is already linked to another dealer.');
+      return;
+    }
+    if (!_isFarm && !_scope.hasZone) {
+      _snack(
+        'Your zone could not be resolved. Ask an admin to set your zone, then retry.',
+      );
       return;
     }
     final profile = await _authService.getCurrentUserProfile();
@@ -362,7 +431,12 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
       'party_type': _partyType,
       'name': _name.text.trim(),
       if (_tradeName.text.trim().isNotEmpty) 'trade_name': _tradeName.text.trim(),
-      if (_code.text.trim().isNotEmpty) 'code': _code.text.trim(),
+      // The server-allocated code wins over anything typed: the field is
+      // read-only, and _code is only ever seeded for backwards compatibility.
+      if (_generatedCode != null && _generatedCode!.isNotEmpty)
+        'code': _generatedCode
+      else if (_code.text.trim().isNotEmpty)
+        'code': _code.text.trim(),
       if (_contact.text.trim().isNotEmpty)
         'contact_person': _contact.text.trim(),
       if (_ownerName.text.trim().isNotEmpty)
@@ -374,13 +448,16 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
       if (_tradeLicense.text.trim().isNotEmpty)
         'trade_license_no': _tradeLicense.text.trim(),
       if (_address.text.trim().isNotEmpty) 'address': _address.text.trim(),
-      if (_selectedMarket != null) 'market_id': _selectedMarket!.id,
+      // Scope ids are written only when a real one was resolved. Sending a
+      // guessed id would file the dealer under another company or zone, which is
+      // worse than leaving the column for an admin to correct.
+      if (_scope.market != null) 'market_id': _scope.market!.id,
       if (_isFarm && _parentParty != null) 'parent_party_id': _parentParty!.id,
       if (_existingDealer != null) 'existing_dealer_id': _existingDealer!.id,
-      if (_selectedCompany != null) 'company_id': _selectedCompany!.id,
-      if (_selectedSector != null) 'sector_id': _selectedSector!.id,
-      if (_selectedZone != null) 'zone_id': _selectedZone!.id,
-      if (_selectedZone != null) 'zone_name': _selectedZone!.name,
+      if (_scope.company != null) 'company_id': _scope.company!.id,
+      if (_scope.sector != null) 'sector_id': _scope.sector!.id,
+      if (_scope.zone != null) 'zone_id': _scope.zone!.id,
+      if (_scope.zone != null) 'zone_name': _scope.zone!.name,
       if (_isFarm && _farmType.text.trim().isNotEmpty)
         'farm_type': _farmType.text.trim(),
       if (_isFarm && _capacity.text.trim().isNotEmpty)
@@ -486,43 +563,40 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
                         _sectionTitle('Basic'),
-                        _label('Party type'),
-                        DropdownButtonFormField<String>(
-                          initialValue: _partyType,
-                          decoration: _decoration(),
-                          items: const [
-                            DropdownMenuItem(
-                              value: 'dealer',
-                              child: Text('Dealer'),
-                            ),
-                            DropdownMenuItem(
-                              value: 'farm',
-                              child: Text('Farm'),
-                            ),
-                            DropdownMenuItem(
-                              value: 'farmer',
-                              child: Text('Farmer'),
-                            ),
-                            DropdownMenuItem(
-                              value: 'outlet',
-                              child: Text('Outlet'),
-                            ),
-                            DropdownMenuItem(
-                              value: 'prospect',
-                              child: Text('Prospect'),
-                            ),
-                          ],
-                          onChanged: (v) {
-                            if (v == null) return;
-                            setState(() {
-                              _partyType = v;
-                              if (_isFarm && _dealers.isEmpty) {
-                                _loadDealers();
-                              }
-                              if (!_isFarm) _parentParty = null;
-                            });
-                          },
-                        ),
+                        // A farm is reached from the Farms tab, so the screen is
+                        // already farm-specific and the type is a fact rather
+                        // than a choice. Dealers get the two business-meaningful
+                        // options; the other party_type values still exist in the
+                        // data model and in existing records, they are just not
+                        // something a field officer creates here.
+                        if (_isFarm)
+                          const ReadOnlyField(
+                            label: 'Party type',
+                            icon: Icons.category_outlined,
+                            value: 'Farm',
+                          )
+                        else ...[
+                          _label('Party type'),
+                          DropdownButtonFormField<String>(
+                            initialValue: _partyType,
+                            decoration: _decoration(),
+                            items: _dealerPartyTypes
+                                .map(
+                                  (t) => DropdownMenuItem(
+                                    value: t.value,
+                                    child: Text(t.label),
+                                  ),
+                                )
+                                .toList(),
+                            onChanged: (v) {
+                              if (v == null) return;
+                              setState(() {
+                                _partyType = v;
+                                _phoneClash = null;
+                              });
+                            },
+                          ),
+                        ],
                         const SizedBox(height: 14),
                         _label('Name *'),
                         VoiceTextField(
@@ -536,10 +610,15 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
                           decoration: _decoration(hint: 'Optional'),
                         ),
                         const SizedBox(height: 14),
-                        _label('Code'),
-                        VoiceTextField(
-                          controller: _code,
-                          decoration: _decoration(hint: 'Party code'),
+                        // Allocated server-side so two officers opening this form
+                        // at the same moment cannot be handed the same code.
+                        ReadOnlyField(
+                          label: 'Code',
+                          icon: Icons.qr_code_2_outlined,
+                          value: _generatedCode,
+                          hint: _loadingCode
+                              ? 'Generating…'
+                              : 'Unavailable — will save without one',
                         ),
                         const SizedBox(height: 14),
                         SearchableSelectField<MarketingDemoNamed>(
@@ -554,47 +633,40 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
                               setState(() => _existingDealer = d),
                         ),
                         const SizedBox(height: 14),
+                        // Zone, company, sector and market all come from the
+                        // logged-in employee. A field officer should not be
+                        // recording their own territory by hand, and a wrong
+                        // choice here silently mis-files the dealer for every
+                        // list that filters on it.
                         if (_loadingMasters)
                           const LinearProgressIndicator()
                         else ...[
-                          SearchableSelectField<BookingFormCompany>(
+                          ReadOnlyField(
+                            label: _phoneRequired ? 'Zone *' : 'Zone',
+                            icon: Icons.map_outlined,
+                            value: _scope.zone?.name,
+                            hint: 'Not set — ask an admin to set your zone',
+                          ),
+                          const SizedBox(height: 14),
+                          ReadOnlyField(
                             label: 'Company',
                             icon: Icons.apartment_outlined,
-                            options: _companies,
-                            selected: _selectedCompany,
-                            displayString: (c) => c.displayName,
-                            searchText: (c) => c.displayName.toLowerCase(),
-                            onSelected: (c) => setState(() {
-                              _selectedCompany = c;
-                              if (_selectedSector != null &&
-                                  c != null &&
-                                  _selectedSector!.companyId != null &&
-                                  _selectedSector!.companyId != c.id) {
-                                _selectedSector = null;
-                              }
-                            }),
+                            value: _scope.company?.displayName,
+                            hint: 'Unresolved from your profile',
                           ),
                           const SizedBox(height: 14),
-                          SearchableSelectField<MarketingDemoNamed>(
-                            label: _partyType == 'dealer' ? 'Zone *' : 'Zone',
-                            icon: Icons.map_outlined,
-                            options: _zones,
-                            selected: _selectedZone,
-                            displayString: (z) => z.name,
-                            searchText: (z) => z.searchText,
-                            onSelected: (z) =>
-                                setState(() => _selectedZone = z),
-                          ),
-                          const SizedBox(height: 14),
-                          SearchableSelectField<BookingFormSector>(
+                          ReadOnlyField(
                             label: 'Sector',
                             icon: Icons.hub_outlined,
-                            options: _sectorsForCompany,
-                            selected: _selectedSector,
-                            displayString: (s) => s.name,
-                            searchText: (s) => s.searchText,
-                            onSelected: (s) =>
-                                setState(() => _selectedSector = s),
+                            value: _scope.sector?.name,
+                            hint: 'Unresolved from your profile',
+                          ),
+                          const SizedBox(height: 14),
+                          ReadOnlyField(
+                            label: 'Market',
+                            icon: Icons.store_mall_directory_outlined,
+                            value: _scope.market?.name,
+                            hint: 'No market found in your zone',
                           ),
                         ],
                       ],
@@ -618,11 +690,18 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
                           decoration: _decoration(hint: 'Owner / proprietor'),
                         ),
                         const SizedBox(height: 14),
-                        _label('Phone'),
+                        // A dealer is looked up by phone, so the number is
+                        // required and has to belong to exactly one dealer.
+                        // Re-checked on submit too, because the server is the
+                        // real authority and the debounce can lag an edit.
+                        _label(_phoneRequired ? 'Phone *' : 'Phone'),
                         VoiceTextField(
                           controller: _phone,
                           keyboardType: TextInputType.phone,
-                          decoration: _decoration(),
+                          onChanged: (_) => _onPhoneChanged(),
+                          decoration: _decoration().copyWith(
+                            errorText: _phoneError,
+                          ),
                         ),
                         const SizedBox(height: 14),
                         _label('Alt phone'),
@@ -767,32 +846,9 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
                           decoration: _decoration(),
                         ),
                         const SizedBox(height: 14),
-                        _label('Market'),
-                        if (_loadingMarkets)
-                          const Padding(
-                            padding: EdgeInsets.symmetric(vertical: 12),
-                            child: Center(child: CircularProgressIndicator()),
-                          )
-                        else
-                          SearchableSelectField<Market>(
-                            label: 'Market',
-                            icon: Icons.store_mall_directory_outlined,
-                            // Markets inside the chosen zone first. Matched by
-                            // name, never by id: a market may have been tagged
-                            // from a different source than the zone picker, so
-                            // the zone's own district list decides membership.
-                            options: _selectedZone == null
-                                ? _markets
-                                : _markets
-                                    .where((m) => _marketInSelectedZone(m))
-                                    .toList(),
-                            selected: _selectedMarket,
-                            displayString: (m) => m.displayName,
-                            searchText: (m) => m.displayName.toLowerCase(),
-                            onSelected: (m) =>
-                                setState(() => _selectedMarket = m),
-                          ),
-                        const SizedBox(height: 14),
+                        // The market picker moved up into the read-only scope
+                        // block: it is now derived from the employee's zone and
+                        // position rather than chosen here.
                         if (_locationStatus != null) ...[
                           Text(
                             _locationStatus!,

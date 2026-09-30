@@ -1,13 +1,14 @@
-import 'package:flutter/material.dart';
+import 'dart:async';
+import 'dart:io';
 
-import '../../data/marketing_demo_masters.dart';
+import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
+
 import '../../models/marketing_models.dart';
 import '../../services/auth_service.dart';
+import '../../services/employee_marketing_scope_service.dart';
 import '../../services/marketing_service.dart';
-import '../../services/sales_service.dart';
-import '../../services/zone_scope_service.dart';
 import '../../utils/marketing_location_helper.dart';
-import '../../widgets/searchable_select_field.dart';
 import '../../widgets/ui/ui.dart';
 import '../../widgets/voice_input_field.dart';
 
@@ -45,11 +46,10 @@ class _CompetitorRow {
 
 class _MarketFormScreenState extends State<MarketFormScreen> {
   final MarketingService _service = MarketingService();
-  final SalesService _salesService = SalesService();
   final AuthService _authService = AuthService();
 
   final _name = TextEditingController();
-  final _code = TextEditingController();
+  final _phone = TextEditingController();
   final _division = TextEditingController();
   final _district = TextEditingController();
   final _upazila = TextEditingController();
@@ -71,28 +71,41 @@ class _MarketFormScreenState extends State<MarketFormScreen> {
   List<String> _productTypes = [];
   final List<_CompetitorRow> _competitors = [];
 
-  List<BookingFormCompany> _companies = MarketingDemoMasters.companies;
-  List<BookingFormSector> _sectors = MarketingDemoMasters.sectors;
-  List<MarketingDemoNamed> _zones = MarketingDemoMasters.zones;
-  BookingFormCompany? _company;
-  BookingFormSector? _sector;
-  MarketingDemoNamed? _zone;
+  /// Zone / company / sector / market resolved from the logged-in employee and
+  /// shown read-only. On edit the market's own stored values win — a saved
+  /// record is never re-scoped to whoever happens to open it.
+  EmployeeMarketingScope _scope = const EmployeeMarketingScope.empty();
+
+  /// Server-allocated `MRK-09260001`. Null on failure rather than invented on
+  /// the device.
+  String? _generatedCode;
+  bool _loadingCode = true;
+
+  /// Market already holding the typed phone, when the check finds one.
+  Market? _phoneClash;
+  Timer? _phoneDebounce;
+
+  static const _phoneCheckDelay = Duration(milliseconds: 700);
+
+  final List<XFile> _photos = [];
   String _status = 'active';
   double? _lat;
   double? _lng;
   bool _resolvingLocation = true;
   String? _locationStatus;
   bool _submitting = false;
-  bool _loadingMasters = true;
   int? _employeeId;
 
   bool get _isEdit => widget.market != null;
 
-  List<BookingFormSector> get _sectorsForCompany {
-    if (_company == null) return _sectors;
-    final filtered =
-        _sectors.where((s) => s.companyId == _company!.id).toList();
-    return filtered.isNotEmpty ? filtered : _sectors;
+  /// The code to submit.
+  ///
+  /// A saved market keeps the code it already has — renumbering it would break
+  /// every reference to it. Only a new market takes the freshly allocated one,
+  /// and a market with neither simply sends no code, which the API allows.
+  String? get _effectiveCode {
+    if (_isEdit) return widget.market!.code ?? _generatedCode;
+    return _generatedCode;
   }
 
   @override
@@ -101,14 +114,15 @@ class _MarketFormScreenState extends State<MarketFormScreen> {
     _prefillFromMarket();
     _loadEmployee();
     _autoFillLocation();
-    _loadMasters();
+    _loadCode();
+    _loadScope();
   }
 
   void _prefillFromMarket() {
     final m = widget.market;
     if (m == null) return;
     _name.text = m.name;
-    _code.text = m.code ?? '';
+    _phone.text = m.phone ?? '';
     _division.text = m.divisionName ?? '';
     _district.text = m.district ?? '';
     _upazila.text = m.upazila ?? '';
@@ -135,13 +149,13 @@ class _MarketFormScreenState extends State<MarketFormScreen> {
       row.note.text = c.note ?? '';
       _competitors.add(row);
     }
-    // zone picker's selection is bound once masters load
   }
 
   @override
   void dispose() {
+    _phoneDebounce?.cancel();
     _name.dispose();
-    _code.dispose();
+    _phone.dispose();
     _division.dispose();
     _district.dispose();
     _upazila.dispose();
@@ -170,62 +184,28 @@ class _MarketFormScreenState extends State<MarketFormScreen> {
     setState(() => _employeeId = profile?.canonicalEmployeeId);
   }
 
-  Future<void> _loadMasters() async {
-    final result = await _salesService.fetchBookingFormData();
-    // Zone options come from the Sales zone master, which also carries the
-    // districts the employee's scope is built from. The demo zones remain as
-    // a fallback when that master is unreachable.
-    final zones = await ZoneScopeService.instance.loadZoneOptions();
+  /// Reserves the record code from the server. A failure is not fatal: the code
+  /// is optional server-side and an absent one beats a duplicate.
+  Future<void> _loadCode() async {
+    final result = await _service.nextCode('MRK');
     if (!mounted) return;
     setState(() {
-      _loadingMasters = false;
-      if (result.success && result.data != null) {
-        _companies = MarketingDemoMasters.companiesOr(result.data!.companies);
-        _sectors = MarketingDemoMasters.sectorsOr(result.data!.sectors);
-      }
-      _zones = zones;
-      _bindZoneSelection();
-      _bindCompanySectorSelection();
+      _loadingCode = false;
+      _generatedCode = result.success ? result.data : null;
     });
-    _prefillZoneFromProfile();
   }
 
-  void _bindZoneSelection() {
-    final m = widget.market;
-    if (m == null || _zone != null) return;
-    // Names only: a market may have been tagged with a zone id from a
-    // different source, and ids are never compared across systems.
-    final name = m.zoneName?.trim() ?? '';
-    if (name.isEmpty) return;
-    for (final z in _zones) {
-      if (z.name.toLowerCase() == name.toLowerCase()) {
-        _zone = z;
-        return;
-      }
-    }
-  }
-
-  /// Seeds the zone picker with the employee's first assigned zone, matching by
-  /// name. Skipped while editing so a saved market keeps its own zone.
-  Future<void> _prefillZoneFromProfile() async {
-    if (widget.market != null || _zone != null) return;
-    final scope = await ZoneScopeService.instance.load();
-    if (!mounted || scope == null || scope.isEmpty) return;
-    for (final z in _zones) {
-      if (scope.zoneNames.contains(z.name.toLowerCase())) {
-        setState(() => _zone = z);
-        return;
-      }
-    }
-  }
-
-  void _bindCompanySectorSelection() {
-    // Markets store raw company/sector ids; resolve them into the picker when
-    // the ids match a known master row.
-    final m = widget.market;
-    if (m == null) return;
-    // The market model keeps only ids; resolve against loaded masters.
-    // (Serialization keeps zone/company/sector opaque ints.)
+  /// Resolves zone / company / sector / market from the logged-in employee.
+  ///
+  /// Re-runs once the GPS fix lands, because the market is the one nearest the
+  /// captured position.
+  Future<void> _loadScope() async {
+    final scope = await EmployeeMarketingScopeService.instance.load(
+      lat: _lat,
+      lng: _lng,
+    );
+    if (!mounted) return;
+    setState(() => _scope = scope);
   }
 
   Future<void> _autoFillLocation() async {
@@ -287,6 +267,63 @@ class _MarketFormScreenState extends State<MarketFormScreen> {
     }
   }
 
+  /// Checks whether the typed phone already belongs to another market.
+  ///
+  /// The backend `q` filter is a substring LIKE, so hits are compared after
+  /// `normalisePhone` before being treated as the same number.
+  Future<void> _checkPhone() async {
+    final typed = _phone.text.trim();
+    if (typed.isEmpty) {
+      if (_phoneClash != null) setState(() => _phoneClash = null);
+      return;
+    }
+
+    final result = await _service.findMarketsByPhone(typed);
+    if (!mounted) return;
+
+    if (!result.success) {
+      // Not a pass — just no early warning. The server still enforces it.
+      setState(() => _phoneClash = null);
+      return;
+    }
+
+    Market? clash;
+    for (final market in result.data ?? const <Market>[]) {
+      if (MarketingService.samePhone(market.phone, typed)) {
+        clash = market;
+        break;
+      }
+    }
+    setState(() => _phoneClash = clash);
+  }
+
+  void _onPhoneChanged() {
+    _phoneClash = null;
+    _phoneDebounce?.cancel();
+    if (_phone.text.trim().isEmpty) {
+      setState(() {});
+      return;
+    }
+    _phoneDebounce = Timer(_phoneCheckDelay, _checkPhone);
+  }
+
+  String? get _phoneError {
+    if (_phoneClash != null) {
+      return 'Already linked to ${_phoneClash!.name}';
+    }
+    if (_phone.text.trim().isEmpty) {
+      return 'Phone is required.';
+    }
+    return null;
+  }
+
+  Future<void> _pickPhotos() async {
+    final picker = ImagePicker();
+    final files = await picker.pickMultiImage(imageQuality: 85);
+    if (files.isEmpty) return;
+    setState(() => _photos.addAll(files));
+  }
+
   Map<String, dynamic> _payload() {
     final competitors = _competitors
         .where((r) => r.name.text.trim().isNotEmpty)
@@ -303,11 +340,14 @@ class _MarketFormScreenState extends State<MarketFormScreen> {
 
     return {
       'name': _name.text.trim(),
-      if (_code.text.trim().isNotEmpty) 'code': _code.text.trim(),
-      if (_company != null && _company!.id > 0) 'company_id': _company!.id,
-      if (_sector != null && _sector!.id > 0) 'sector_id': _sector!.id,
-      if (_zone != null) 'zone_id': _zone!.id,
-      if (_zone != null) 'zone_name': _zone!.name,
+      'phone': _phone.text.trim(),
+      if (_effectiveCode != null) 'code': _effectiveCode,
+      // Scoped ids are written only when one actually resolved; a guessed id
+      // would mis-file the market for every zone-scoped list.
+      if (_scope.company != null) 'company_id': _scope.company!.id,
+      if (_scope.sector != null) 'sector_id': _scope.sector!.id,
+      if (_scope.zone != null) 'zone_id': _scope.zone!.id,
+      if (_scope.zone != null) 'zone_name': _scope.zone!.name,
       if (_division.text.trim().isNotEmpty)
         'division_name': _division.text.trim(),
       if (_district.text.trim().isNotEmpty)
@@ -349,6 +389,18 @@ class _MarketFormScreenState extends State<MarketFormScreen> {
       _snack('Market name is required.');
       return;
     }
+    if (_phone.text.trim().isEmpty) {
+      _snack('Phone is required.');
+      return;
+    }
+    // Re-check rather than trusting the debounced result: the server is the
+    // authority and the debounce can lag an edit.
+    await _checkPhone();
+    if (!mounted) return;
+    if (_phoneClash != null) {
+      _snack('That phone number is already linked to another market.');
+      return;
+    }
     if (_lat == null || _lng == null) {
       final snap = await MarketingLocationHelper.capture();
       if (snap != null) {
@@ -368,8 +420,25 @@ class _MarketFormScreenState extends State<MarketFormScreen> {
           'Could not ${_isEdit ? 'update' : 'create'} market.');
       return;
     }
+
+    final market = result.data!;
+    if (_photos.isNotEmpty && _employeeId != null) {
+      final upload = await _service.uploadAttachments(
+        attachableType: 'market',
+        attachableId: market.id,
+        employeeId: _employeeId!,
+        photos: _photos.map((x) => File(x.path)).toList(),
+      );
+      if (!upload.success) {
+        // The market row exists; the photos can be re-uploaded from the record
+        // rather than losing the whole submission.
+        _snack('Market saved, but photos failed to upload: ${upload.message}');
+      }
+    }
+
+    if (!mounted) return;
     _snack(_isEdit ? 'Market updated.' : 'Market saved.');
-    Navigator.of(context).pop(result.data);
+    Navigator.of(context).pop(market);
   }
 
   void _snack(String msg) {
@@ -475,53 +544,56 @@ class _MarketFormScreenState extends State<MarketFormScreen> {
                               _decoration(hint: 'Market name'),
                         ),
                         const SizedBox(height: 12),
-                        _label('Code'),
+                        // A market is reachable by phone from the field, and one
+                        // number belongs to one market.
+                        _label('Phone *'),
                         VoiceTextField(
-                          controller: _code,
-                          decoration: _decoration(hint: 'Optional'),
+                          controller: _phone,
+                          keyboardType: TextInputType.phone,
+                          voiceEnabled: false,
+                          onChanged: (_) => _onPhoneChanged(),
+                          decoration: _decoration().copyWith(
+                            errorText: _phoneError,
+                          ),
                         ),
                         const SizedBox(height: 12),
-                        if (_loadingMasters)
-                          const LinearProgressIndicator()
-                        else ...[
-                          SearchableSelectField<BookingFormCompany>(
-                            label: 'Company',
-                            icon: Icons.apartment_outlined,
-                            options: _companies,
-                            selected: _company,
-                            displayString: (c) => c.displayName,
-                            searchText: (c) => c.displayName.toLowerCase(),
-                            onSelected: (c) => setState(() {
-                              _company = c;
-                              if (_sector != null &&
-                                  c != null &&
-                                  _sector!.companyId != null &&
-                                  _sector!.companyId != c.id) {
-                                _sector = null;
-                              }
-                            }),
-                          ),
-                          const SizedBox(height: 12),
-                          SearchableSelectField<MarketingDemoNamed>(
-                            label: 'Zone',
-                            icon: Icons.map_outlined,
-                            options: _zones,
-                            selected: _zone,
-                            displayString: (z) => z.name,
-                            searchText: (z) => z.searchText,
-                            onSelected: (z) => setState(() => _zone = z),
-                          ),
-                          const SizedBox(height: 12),
-                          SearchableSelectField<BookingFormSector>(
-                            label: 'Sector',
-                            icon: Icons.hub_outlined,
-                            options: _sectorsForCompany,
-                            selected: _sector,
-                            displayString: (s) => s.name,
-                            searchText: (s) => s.searchText,
-                            onSelected: (s) => setState(() => _sector = s),
-                          ),
-                        ],
+                        // Allocated server-side so two officers opening this
+                        // form at the same moment cannot be handed one code.
+                        ReadOnlyField(
+                          label: 'Code',
+                          icon: Icons.qr_code_2_outlined,
+                          value: _effectiveCode,
+                          hint: _loadingCode
+                              ? 'Generating…'
+                              : 'Unavailable — will save without one',
+                        ),
+                        const SizedBox(height: 12),
+                        // Zone, company and sector come from the logged-in
+                        // employee. A market survey is filed under the officer's
+                        // own territory by definition, so making them pick it
+                        // only invited mis-filing.
+                        ReadOnlyField(
+                          label: 'Zone',
+                          icon: Icons.map_outlined,
+                          value: _isEdit
+                              ? (widget.market!.zoneName ?? 'Not set')
+                              : _scope.zone?.name,
+                          hint: 'Not set — ask an admin to set your zone',
+                        ),
+                        const SizedBox(height: 12),
+                        ReadOnlyField(
+                          label: 'Company',
+                          icon: Icons.apartment_outlined,
+                          value: _scope.company?.displayName,
+                          hint: 'Unresolved from your profile',
+                        ),
+                        const SizedBox(height: 12),
+                        ReadOnlyField(
+                          label: 'Sector',
+                          icon: Icons.hub_outlined,
+                          value: _scope.sector?.name,
+                          hint: 'Unresolved from your profile',
+                        ),
                         const SizedBox(height: 12),
                         _label('Status'),
                         DropdownButtonFormField<String>(
@@ -763,6 +835,53 @@ class _MarketFormScreenState extends State<MarketFormScreen> {
                           controller: _notes,
                           maxLines: 2,
                           decoration: _decoration(),
+                        ),
+                        const SizedBox(height: 20),
+                        _sectionTitle('Photos'),
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: [
+                            ..._photos.asMap().entries.map((e) {
+                              return Stack(
+                                children: [
+                                  ClipRRect(
+                                    borderRadius: BorderRadius.circular(10),
+                                    child: Image.file(
+                                      File(e.value.path),
+                                      width: 72,
+                                      height: 72,
+                                      fit: BoxFit.cover,
+                                    ),
+                                  ),
+                                  Positioned(
+                                    top: 0,
+                                    right: 0,
+                                    child: GestureDetector(
+                                      onTap: () =>
+                                          setState(() => _photos.removeAt(e.key)),
+                                      child: Container(
+                                        decoration: const BoxDecoration(
+                                          color: AppColors.error,
+                                          shape: BoxShape.circle,
+                                        ),
+                                        padding: const EdgeInsets.all(2),
+                                        child: const Icon(
+                                          Icons.close,
+                                          size: 14,
+                                          color: Colors.white,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              );
+                            }),
+                            OutlinedButton(
+                              onPressed: _pickPhotos,
+                              child: const Text('Add photos'),
+                            ),
+                          ],
                         ),
                         const SizedBox(height: 20),
                         SizedBox(
