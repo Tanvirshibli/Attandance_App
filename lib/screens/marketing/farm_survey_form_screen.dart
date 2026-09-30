@@ -7,6 +7,7 @@ import 'package:intl/intl.dart';
 import '../../data/marketing_demo_masters.dart';
 import '../../models/marketing_models.dart';
 import '../../services/auth_service.dart';
+import '../../services/employee_marketing_scope_service.dart';
 import '../../services/marketing_service.dart';
 import '../../utils/marketing_location_helper.dart';
 import '../../widgets/marketing_photo_widgets.dart';
@@ -60,7 +61,6 @@ class _FarmSurveyFormScreenState extends State<FarmSurveyFormScreen> {
   final _curtain = TextEditingController();
   final _floor = TextEditingController();
   final _territory = TextEditingController();
-  final _zone = TextEditingController();
   final _quantity = TextEditingController();
   final _ageDays = TextEditingController();
   final _totalMortality = TextEditingController();
@@ -92,6 +92,11 @@ class _FarmSurveyFormScreenState extends State<FarmSurveyFormScreen> {
   bool _computing = false;
   String _officerName = '';
   String _officerDesignation = '';
+
+  /// The reporting officer's zone, used as the fallback zone for a farm that
+  /// predates zone tagging. The farm's own zone takes precedence.
+  EmployeeMarketingScope _scope = const EmployeeMarketingScope.empty();
+
   double? _lat;
   double? _lng;
   bool _geoVerified = false;
@@ -117,7 +122,6 @@ class _FarmSurveyFormScreenState extends State<FarmSurveyFormScreen> {
     _curtain.dispose();
     _floor.dispose();
     _territory.dispose();
-    _zone.dispose();
     _quantity.dispose();
     _ageDays.dispose();
     _totalMortality.dispose();
@@ -144,10 +148,12 @@ class _FarmSurveyFormScreenState extends State<FarmSurveyFormScreen> {
 
   Future<void> _loadContext() async {
     final profile = await _authService.getCurrentUserProfile();
+    final scope = await EmployeeMarketingScopeService.instance.load();
     if (!mounted) return;
     setState(() {
       _officerName = profile?.name ?? '';
       _officerDesignation = profile?.designation ?? '';
+      _scope = scope;
     });
   }
 
@@ -308,7 +314,7 @@ class _FarmSurveyFormScreenState extends State<FarmSurveyFormScreen> {
       if (_textValue(_remarks) != null) 'notes': _textValue(_remarks),
       if (_textValue(_comments) != null) 'comments': _textValue(_comments),
       if (_textValue(_territory) != null) 'territory': _textValue(_territory),
-      if (_textValue(_zone) != null) 'zone': _textValue(_zone),
+      if (_resolvedZoneName != null) 'zone': _resolvedZoneName,
       if (extraData.isNotEmpty) 'extra_data': extraData,
       if (_lat != null) 'check_in_lat': _lat,
       if (_lng != null) 'check_in_lng': _lng,
@@ -373,6 +379,19 @@ class _FarmSurveyFormScreenState extends State<FarmSurveyFormScreen> {
         style: AppType.meta.copyWith(fontWeight: FontWeight.w500, color: AppColors.inkMuted),
       ),
     );
+  }
+
+  /// The zone this report is filed under.
+  ///
+  /// The farm's own zone wins when it has one — the report is about that farm,
+  /// not about the officer. The officer's scope is the fallback for a farm
+  /// created before zone tagging. Null when neither knows one, in which case
+  /// the payload simply omits the key rather than guessing.
+  String? get _resolvedZoneName {
+    final farmZone = widget.party.zoneName?.trim();
+    if (farmZone != null && farmZone.isNotEmpty) return farmZone;
+    final scopeZone = _scope.zone?.name;
+    return (scopeZone == null || scopeZone.isEmpty) ? null : scopeZone;
   }
 
   Widget _readOnly(String label, String? value) {
@@ -810,12 +829,16 @@ class _FarmSurveyFormScreenState extends State<FarmSurveyFormScreen> {
                             MarketingDemoMasters.territories,
                           ),
                         ),
-                        _suggestField(
+                        // Zone is no longer typed here. The farm's own zone wins
+                        // when it has one; otherwise the reporting officer's
+                        // scope supplies it. Either way the report is filed
+                        // under a zone the data already knows, not one retyped
+                        // from memory.
+                        ReadOnlyField(
                           label: 'Zone',
-                          controller: _zone,
-                          suggestions: _namedSuggestions(
-                            MarketingDemoMasters.zones,
-                          ),
+                          icon: Icons.map_outlined,
+                          value: _resolvedZoneName,
+                          hint: 'Not set — ask an admin to set your zone',
                         ),
                         MarketingPhotoPicker(
                           photos: _photos,
