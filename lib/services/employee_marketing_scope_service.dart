@@ -4,6 +4,7 @@ import 'dart:math' as math;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../data/marketing_demo_masters.dart';
+import '../models/marketing_context.dart';
 import '../models/marketing_models.dart';
 import 'auth_service.dart';
 import 'marketing_service.dart';
@@ -149,6 +150,36 @@ class EmployeeMarketingScopeService {
     double? lng,
   ) async {
     final zone = await _resolveZone();
+
+    // The real relation, resolved by the backend from the synced marketing org
+    // master. This replaces guessing a company by name-matching HRM's single
+    // free-text `sector` against two unrelated Sales lists — a guess that could
+    // only fail, because HRM exposes no company at all and the sector name is
+    // frequently the literal string 'N/A'.
+    final contextResult = await _marketingService.loadMarketingContext(
+      zoneName: zone?.name,
+      lat: lat,
+      lng: lng,
+    );
+    final context = contextResult.success
+        ? (contextResult.data ?? const MarketingContext.empty())
+        : const MarketingContext.empty();
+
+    if (context.zone != null || context.company != null) {
+      return EmployeeMarketingScope(
+        zone: zone ?? _zoneFromContext(context),
+        company: _companyFromContext(context),
+        sector: _sectorFromContext(context),
+        market: context.markets.isNotEmpty
+            ? Market.fromJson(_marketJson(context.markets.first))
+            : await _resolveMarket(zone, await ZoneScopeService.instance.loadZoneDistricts(), lat, lng),
+      );
+    }
+
+    // The master has nothing for this zone yet. Fall back to the old name
+    // match so a partially configured deployment still shows what it can, and
+    // an unreachable backend degrades to the zone alone rather than breaking
+    // the form.
     final districts = await ZoneScopeService.instance.loadZoneDistricts();
     final formData = await _salesService.fetchBookingFormData();
 
@@ -159,9 +190,6 @@ class EmployeeMarketingScopeService {
       formData.success ? (formData.data?.sectors ?? const []) : const [],
     );
 
-    // The HRM profile's `sector` is the only org label the app has for the
-    // employee, so it is matched against both masters. Usually one of the two
-    // matches — the sector list is named after territories, not companies.
     final needle = _normalise(profileSector);
 
     return EmployeeMarketingScope(
@@ -170,6 +198,38 @@ class EmployeeMarketingScopeService {
       sector: _match(sectors, needle, (s) => s.name, (s) => s.id),
       market: await _resolveMarket(zone, districts, lat, lng),
     );
+  }
+
+  /// The backend zone expressed as the local option shape the scope holds.
+  static MarketingDemoNamed? _zoneFromContext(MarketingContext context) {
+    final zone = context.zone;
+    if (zone == null || zone.id <= 0 || zone.name.trim().isEmpty) return null;
+    return MarketingDemoNamed(id: zone.id, name: zone.name);
+  }
+
+  static BookingFormCompany? _companyFromContext(MarketingContext context) {
+    final company = context.company;
+    if (company == null || company.id <= 0) return null;
+    return BookingFormCompany(id: company.id, nameEn: company.name);
+  }
+
+  static BookingFormSector? _sectorFromContext(MarketingContext context) {
+    final sector = context.sector;
+    if (sector == null || sector.id <= 0) return null;
+    return BookingFormSector(id: sector.id, name: sector.name);
+  }
+
+  /// The context market reshaped into the [Market] the forms already consume.
+  ///
+  /// Rebuilt field by field rather than fed through `Market.fromJson` so the
+  /// context endpoint does not have to echo the whole market payload — it only
+  /// promises the fields the scope actually needs.
+  static Map<String, dynamic> _marketJson(MarketingContextMarket market) {
+    return {
+      'id': market.id,
+      'name': market.name,
+      if (market.district != null) 'district': market.district,
+    };
   }
 
   Future<MarketingDemoNamed?> _resolveZone() async {

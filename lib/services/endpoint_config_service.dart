@@ -297,6 +297,16 @@ class EndpointConfigService {
           '/api/v1/mobile/marketing/markets',
           'zkteco',
         ),
+        'marketing.context': ep(
+          'GET',
+          '/api/v1/mobile/marketing/context',
+          'zkteco',
+        ),
+        'marketing.dealers': ep(
+          'GET',
+          '/api/v1/mobile/marketing/dealers',
+          'zkteco',
+        ),
         'marketing.market.create': ep(
           'POST',
           '/api/v1/mobile/marketing/markets',
