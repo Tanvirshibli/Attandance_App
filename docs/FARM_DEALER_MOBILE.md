@@ -130,7 +130,9 @@ Three layers, because the client cannot be the authority:
 
 1. **Debounced client check.** `GET /parties?q=<digits>` on a 700 ms debounce while typing, and again on submit (the debounce can lag an edit). The backend `q` filter is a substring `LIKE`, so **every hit is compared after normalisation** — comparing raw strings would let `01712-345678`, `+8801712345678` and `01712345678` register as three different dealers.
 2. **`MarketingService.normalisePhone` / `samePhone`.** Strips spaces, dashes and parentheses, drops a `+88` / `0088` country code, then a national leading `0`. An empty or missing phone never matches anything.
-3. **Server `unique` rule + partial unique index.** The client's early warning is a convenience; the 422 is the enforcement. A clash shows as *"Already linked to <name> (<code>)"* rather than a raw validation blob.
+3. **Server normalisation + `unique` rule + partial unique index.** The client's early warning is a convenience; the 422 is the enforcement. A clash shows as *"Already linked to <name> (<code>)"* rather than a raw validation blob.
+
+> **The server normalises on write too.** A unique index compares raw strings, so `MktParty` / `MktMarket` store the canonical national form (`+8801712345678` is stored as `01712345678`) and both controllers rewrite the input *before* validating. Without that last part a `+880` duplicate would pass validation and then trip the DB index as a 500. The stored form keeps its trunk `0` — it is displayed verbatim on the detail screens.
 
 **A failed lookup is not a pass.** It only means the early warning is unavailable — the submit still goes out and is still validated by the server.
 
