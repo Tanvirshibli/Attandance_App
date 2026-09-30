@@ -270,6 +270,9 @@ class AppIcons {
   static IconData get back => PhosphorIconsDuotone.arrowLeft;
   static IconData get chevron => PhosphorIconsDuotone.caretRight;
   static IconData get refresh => PhosphorIconsDuotone.arrowClockwise;
+
+  /// Shown wherever the fix lives in Android Settings rather than in the app.
+  static IconData get settings => PhosphorIconsDuotone.gear;
   static IconData get power => PhosphorIconsDuotone.power;
   static IconData get lock => PhosphorIconsDuotone.lockKey;
   static IconData get shield => PhosphorIconsDuotone.shieldCheck;
