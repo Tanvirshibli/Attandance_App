@@ -28,7 +28,41 @@ class _LineDraft {
 
   double get qtyValue => double.tryParse(qty.text.trim()) ?? 0;
   double get priceValue => double.tryParse(price.text.trim()) ?? 0;
-  double get lineTotal => qtyValue * priceValue;
+
+  /// Line total on the **kg** the API will store.
+  ///
+  /// The server computes `total = qty × price` against the stored kg
+  /// (`BookingPersonWiseBookingsService.php:722-733`) and price is quoted
+  /// per kg, so the total has to use the converted quantity. Using the raw
+  /// typed bag count here would make the app's total disagree with every
+  /// report the booking appears in — and it is only equal to the converted
+  /// figure in the degenerate case where a bag weighs 1 kg.
+  double get lineTotal {
+    final product = feedProduct;
+    return product != null ? product.bagsToKg(qtyValue) * priceValue : 0;
+  }
+
+  /// The unit the quantity field is labelled with for this line: `Bag` once a
+  /// bag size is known, `Kg` otherwise. Never claims a conversion it cannot
+  /// make.
+  String get qtyUnitLabel => feedProduct?.qtyUnitLabel ?? 'Kg';
+
+  /// The kg this line's typed quantity works out to, or null when the product
+  /// has no bag size (in which case the typed number is already the kg).
+  double? get qtyInKg {
+    final product = feedProduct;
+    if (product == null || !product.bagSizeIsKnown) return null;
+    return product.bagsToKg(qtyValue);
+  }
+
+  /// The quantity to put on the wire: kg for feed, raw piece count for chicks.
+  double get qtyForSubmission =>
+      feedProduct != null ? feedProduct!.bagsToKg(qtyValue) : qtyValue;
+
+  /// The unit id to send. The product's own unit when the catalog resolved one,
+  /// otherwise the kg unit the API expects. Previously hardcoded to 1 for both
+  /// modules, which mislabelled any product not sold by weight.
+  int get unitIdForSubmission => feedProduct?.unitId ?? 1;
 
   void dispose() {
     price.dispose();
@@ -99,6 +133,10 @@ class _PostBookingScreenState extends State<PostBookingScreen> {
   String? _loadError;
   BookingFormData? _formData;
   AllDealerLists? _dealerLists;
+
+  /// kg-per-bag and unit per product, from `fetchProductCatalog`. Null when the
+  /// catalog could not be loaded, in which case quantities are read as kg.
+  SalesProductCatalog? _productCatalog;
   int? _canonicalEmployeeId;
   int? _chicksBookingPersonId;
 
@@ -170,6 +208,11 @@ class _PostBookingScreenState extends State<PostBookingScreen> {
     final dealerResult = await _salesService.fetchAllDealerLists();
     final scope = await ZoneScopeService.instance.load();
     final setupResult = await _paymentService.fetchPaymentSetupData();
+    // Bag sizes, fetched after the masters so an already-picked product picks up
+    // its size without the user re-picking it. A failure here is not fatal —
+    // every product then stays bag-unaware and the qty is read as kg, which is
+    // exactly how the form behaved before this existed.
+    final catalogResult = await _salesService.fetchProductCatalog();
     if (!mounted) return;
 
     final canonical = profile?.canonicalEmployeeId;
@@ -204,10 +247,42 @@ class _PostBookingScreenState extends State<PostBookingScreen> {
               : dealerResult.data!.scopedTo(scope.zoneNames));
       _canonicalEmployeeId = canonical;
       _chicksBookingPersonId = chicksPerson;
+      _applyProductCatalog(catalogResult.data);
       if (dealerResult.success != true) {
         _loadError = dealerResult.message;
       }
     });
+  }
+
+  /// Stitches bag sizes from [catalog] onto every feed product already selected.
+  ///
+  /// Called from the same `setState` that stores the form masters, so the
+  /// selected products carry their bag size from the very first frame the user
+  /// can interact with. Products the catalog had nothing for are left as they
+  /// are — [BookingFormProductPrice.withBagSize] keeps the existing value.
+  void _applyProductCatalog(SalesProductCatalog? catalog) {
+    if (catalog == null || catalog.length == 0) {
+      return;
+    }
+    _productCatalog = catalog;
+    for (final line in _lines) {
+      line.feedProduct = _withBagSize(line.feedProduct);
+    }
+  }
+
+  /// Resolves [product]'s bag size and unit from the loaded catalog.
+  ///
+  /// Null in, null out — the dropdown also reports a cleared selection, and
+  /// that must not leave a stale bag size on a half-populated object.
+  BookingFormProductPrice? _withBagSize(BookingFormProductPrice? product) {
+    final catalog = _productCatalog;
+    if (product == null || catalog == null || catalog.length == 0) {
+      return product;
+    }
+    return product.withBagSize(
+      sizeOrWeight: catalog.sizeOrWeightFor(product.productId),
+      unitId: catalog.unitIdFor(product.productId),
+    );
   }
 
   @override
@@ -373,7 +448,8 @@ class _PostBookingScreenState extends State<PostBookingScreen> {
       }
       usedProducts.add(productId);
       if (line.qtyValue <= 0) {
-        _snack('Please set Booking Quantity (B Qty) for all items!');
+        _snack('Please set the booking quantity (${line.qtyUnitLabel}) '
+            'for all items!');
         return;
       }
       if (line.priceValue < 0) {
@@ -393,8 +469,13 @@ class _PostBookingScreenState extends State<PostBookingScreen> {
       lines.add(
         BookingLineInput(
           productId: productId,
-          unitId: 1,
-          qty: line.qtyValue,
+          // The product's own unit when the catalog resolved one; the kg unit
+          // otherwise. Previously a hardcoded 1 for both modules.
+          unitId: line.unitIdForSubmission,
+          // Bags in, kg out. The API stores kg verbatim and reports divide by
+          // the bag size to show bags again; chicks keep their piece count
+          // because qtyForSubmission is a no-op without a feed product.
+          qty: line.qtyForSubmission,
           price: line.priceValue,
           note: line.note.text.trim().isEmpty ? null : line.note.text.trim(),
           mrp: mrp,
@@ -902,7 +983,10 @@ class _PostBookingScreenState extends State<PostBookingScreen> {
                     return;
                   }
                   setState(() {
-                    line.feedProduct = p;
+                    // Resolve the bag size at selection time rather than only at
+                    // submit, so the field relabels itself to "Bag" the moment
+                    // the product is chosen instead of after a save.
+                    line.feedProduct = _withBagSize(p);
                     if (p != null) {
                       line.price.text = _fmt(p.tradePrice);
                     }
@@ -948,10 +1032,28 @@ class _PostBookingScreenState extends State<PostBookingScreen> {
                 ),
                 const SizedBox(width: 10),
                 Expanded(
-                  child: _money(line.qty, 'B Qty'),
+                  child: _money(line.qty, line.qtyUnitLabel),
                 ),
               ],
             ),
+            // The conversion the officer needs to see: they type a bag count,
+            // the API stores kg. Showing it is what keeps a 25x multiplier from
+            // looking like a silent error. Suppressed when the product has no
+            // bag size, because then the typed number already *is* the kg.
+            if (line.qtyInKg != null && line.qtyValue > 0)
+              Padding(
+                padding: const EdgeInsets.only(top: 6),
+                child: Align(
+                  alignment: Alignment.centerRight,
+                  child: Text(
+                    '= ${_fmt(line.qtyInKg!)} kg',
+                    style: AppType.meta.copyWith(
+                      color: AppColors.inkMuted,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ),
             if (!_isFeed) ...[
               const SizedBox(height: 8),
               _money(line.mrp, 'MRP', allowZero: true, required: false),

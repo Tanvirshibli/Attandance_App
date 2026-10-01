@@ -32,6 +32,7 @@ class SalesService {
   AllDealerLists? _cachedDealerLists;
   BookingFormData? _cachedBookingFormData;
   List<SalesZone>? _cachedZoneList;
+  SalesProductCatalog? _cachedProductCatalog;
 
   bool get useDemoData => AppConfig.useSalesDemoData;
 
@@ -605,5 +606,161 @@ class SalesService {
       }
     } catch (_) {}
     return null;
+  }
+
+  /// Bag size (kg per bag) and unit id for every approved product.
+  ///
+  /// The booking form's *Add Items* section is entered in **bags**, but
+  /// `POST /api/booking-person-books` stores whatever `details[].qty` holds as
+  /// **kg**, and every downstream report divides by the product's bag size to
+  /// turn kg back into bags. So the app has to know kg-per-bag to convert, and
+  /// this is where it comes from.
+  ///
+  /// Source: `GET /api/v2/getChildCateProList`
+  /// (`ProductController::getChildCateProductApproveList`). One call, no
+  /// parameters, same host and JWT as the booking endpoints — chosen over the
+  /// per-product `GET /api/v2/products/{id}` because that would cost a round
+  /// trip per selection.
+  ///
+  /// **A missing entry is normal, not an error.** Products with no
+  /// `sizeOrWeight` on file simply stay bag-unaware, and their quantity falls
+  /// back to being read as kg — see [BookingFormProductPrice.bagsToKg].
+  Future<ApiResult<SalesProductCatalog>> fetchProductCatalog({
+    bool forceRefresh = false,
+  }) async {
+    if (!forceRefresh && _cachedProductCatalog != null) {
+      return ApiResult.ok(_cachedProductCatalog!);
+    }
+
+    if (useDemoData) {
+      await Future<void>.delayed(const Duration(milliseconds: 120));
+      _cachedProductCatalog = const SalesProductCatalog.byProductId({
+        1: SalesProductEntry(sizeOrWeight: 25, unitId: 1),
+      });
+      return ApiResult.ok(_cachedProductCatalog!);
+    }
+
+    final token = await _authService.getToken();
+    if (token == null || token.isEmpty) {
+      return ApiResult.fail('Please login to continue.');
+    }
+
+    final base = await _salesApiBase();
+    final uri = Uri.parse('$base/api/v2/getChildCateProList');
+
+    try {
+      final response = await http
+          .get(
+            uri,
+            headers: {
+              'Accept': 'application/json',
+              'Authorization': 'Bearer $token',
+              'User-Agent': 'PPHLAttendance/2.2 (Android; Flutter)',
+            },
+          )
+          .timeout(const Duration(seconds: 30));
+
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        return ApiResult.fail(
+          'Could not load product bag sizes (${response.statusCode}).',
+        );
+      }
+
+      final decoded = jsonDecode(response.body);
+      final data = decoded is Map<String, dynamic> ? decoded['data'] : null;
+      if (data is! List) {
+        return ApiResult.fail('Invalid product catalog response.');
+      }
+
+      _cachedProductCatalog = SalesProductCatalog.fromApiList(data);
+      return ApiResult.ok(_cachedProductCatalog!);
+    } catch (error) {
+      return ApiResult.fail('Network error: $error');
+    }
+  }
+}
+
+/// One product's bag size and unit, as returned by the product catalog.
+class SalesProductEntry {
+  const SalesProductEntry({this.sizeOrWeight, this.unitId});
+
+  final double? sizeOrWeight;
+  final int? unitId;
+}
+
+/// Bag size and unit lookup keyed by `productId`.
+///
+/// Every getter is null-tolerant: a product absent from the catalog, or present
+/// with no `sizeOrWeight`, simply yields nulls and the caller falls back to
+/// treating its quantity as kg. That is the same direction as the pre-catalog
+/// behaviour, so a catalog outage cannot change what gets recorded.
+class SalesProductCatalog {
+  const SalesProductCatalog.byProductId(this._byProductId);
+
+  final Map<int, SalesProductEntry> _byProductId;
+
+  int get length => _byProductId.length;
+
+  /// Builds the lookup from the API's `data` array.
+  ///
+  /// Entries with neither a usable bag size nor a unit are dropped rather than
+  /// stored as empty records, so `contains` means "this product has something
+  /// to say".
+  factory SalesProductCatalog.fromApiList(List<dynamic> rows) {
+    final byProductId = <int, SalesProductEntry>{};
+
+    for (final row in rows) {
+      if (row is! Map) {
+        continue;
+      }
+
+      final productId = _asInt(row['id'] ?? row['productId']);
+      if (productId == null || productId <= 0) {
+        continue;
+      }
+
+      // `sizeOrWeight` is a decimal with no $casts on the Laravel model, so it
+      // arrives as the string "50.00" at least as often as the number 50.
+      final sizeOrWeight = _asDouble(row['sizeOrWeight']);
+      final unitId = _asInt(row['unitId'] ?? (row['unit'] is Map
+          ? (row['unit'] as Map)['id']
+          : null));
+
+      if (sizeOrWeight == null && unitId == null) {
+        continue;
+      }
+
+      byProductId[productId] = SalesProductEntry(
+        sizeOrWeight: sizeOrWeight,
+        unitId: unitId,
+      );
+    }
+
+    return SalesProductCatalog.byProductId(Map.unmodifiable(byProductId));
+  }
+
+  SalesProductEntry? entryFor(int productId) => _byProductId[productId];
+
+  /// Resolved bag size, or null when the product has none on file.
+  double? sizeOrWeightFor(int productId) =>
+      _byProductId[productId]?.sizeOrWeight;
+
+  /// Resolved unit id, or null. Callers supply their own default because the
+  /// kg unit is a deployment-specific id, not something to hardcode blindly.
+  int? unitIdFor(int productId) => _byProductId[productId]?.unitId;
+
+  static int? _asInt(Object? value) {
+    if (value is int) return value;
+    if (value is num) return value.toInt();
+    return int.tryParse(value?.toString().trim() ?? '');
+  }
+
+  static double? _asDouble(Object? value) {
+    if (value is num) return value.toDouble();
+    final parsed = double.tryParse(value?.toString().trim() ?? '');
+    if (parsed == null || parsed.isNaN || parsed.isInfinite) {
+      return null;
+    }
+    return parsed;
   }
 }

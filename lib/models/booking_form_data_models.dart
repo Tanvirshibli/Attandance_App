@@ -148,6 +148,8 @@ class BookingFormProductPrice {
     this.subCategoryId,
     this.childCategoryId,
     this.priceId,
+    this.sizeOrWeight,
+    this.unitId,
   });
 
   final int productId;
@@ -158,6 +160,37 @@ class BookingFormProductPrice {
   final int? subCategoryId;
   final int? childCategoryId;
   final int? priceId;
+
+  /// Kilograms per bag for this feed product, from `products."sizeOrWeight"`.
+  ///
+  /// **Not on the booking form-data payload.** `GET /api/booking-person-books/
+  /// form-data` does not select that column, so it arrives separately via
+  /// [SalesProductCatalog] (`GET /api/v2/getChildCateProList`) and is stitched
+  /// onto the matching product by `productId`.
+  ///
+  /// Null means "this product has no bag size on file", which is different from
+  /// zero — see [bagSizeIsKnown].
+  final double? sizeOrWeight;
+
+  /// The product's own unit id, from the same catalog. Sent as the booking
+  /// line's `unitId` so a product not measured in kg is not mislabelled.
+  final int? unitId;
+
+  /// Whether a bag size is actually usable for this product.
+  bool get bagSizeIsKnown => (sizeOrWeight ?? 0) > 0;
+
+  /// Converts a count of [bags] into the kg the API stores.
+  ///
+  /// The booking endpoint takes kg verbatim and reports divide by [sizeOrWeight]
+  /// to show bags again, so kg is what belongs on the wire. When the bag size is
+  /// unknown the count is passed through untouched rather than scaled by a
+  /// fabricated 1 or 0 — a missing master degrades to the old behaviour instead
+  /// of silently booking nothing.
+  double bagsToKg(double bags) => bagSizeIsKnown ? bags * sizeOrWeight! : bags;
+
+  /// The unit the quantity field should be labelled with. Only says "Bag" when
+  /// the conversion is genuinely available, so the label never over-promises.
+  String get qtyUnitLabel => bagSizeIsKnown ? 'Bag' : 'Kg';
 
   String get displayLabel {
     final short = shortName?.trim();
@@ -180,6 +213,32 @@ class BookingFormProductPrice {
       subCategoryId: _asInt(json['subCategoryId'] ?? json['sub_category_id']),
       childCategoryId: _asInt(json['childCategoryId'] ?? json['child_category_id']),
       priceId: _asInt(json['priceId'] ?? json['price_id']),
+      // `sizeOrWeight` is a decimal with no $casts on the Laravel model, so it
+      // serialises as the string "50.00" as often as the number 50.
+      sizeOrWeight: _asDouble(json['sizeOrWeight'] ?? json['size_or_weight']),
+      unitId: _asInt(json['unitId'] ?? json['unit_id']),
+    );
+  }
+
+  /// A copy carrying the bag size resolved from the product catalog.
+  ///
+  /// Null arguments keep whatever the instance already had, so a product the
+  /// catalog had nothing for is returned untouched instead of being blanked.
+  BookingFormProductPrice withBagSize({
+    double? sizeOrWeight,
+    int? unitId,
+  }) {
+    return BookingFormProductPrice(
+      productId: productId,
+      productName: productName,
+      tradePrice: tradePrice,
+      shortName: shortName,
+      categoryId: categoryId,
+      subCategoryId: subCategoryId,
+      childCategoryId: childCategoryId,
+      priceId: priceId,
+      sizeOrWeight: sizeOrWeight ?? this.sizeOrWeight,
+      unitId: unitId ?? this.unitId,
     );
   }
 
