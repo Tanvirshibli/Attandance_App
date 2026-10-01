@@ -164,6 +164,20 @@ same grant means the same thing in both apps.
 | Not yet fetched | **Denies** | Same, so a tile cannot flash into view and vanish. |
 | `isAdmin` / `isSuperAdmin` | **Bypass everything** | Mirrors the web client. |
 
+### Super admin sees everything — always
+
+`isAdmin` or `isSuperAdmin` set to `"1"` grants **every module and every action**,
+whether or not any permission string is present. A super admin whose role carries
+all the individual permissions *disabled* still gets full access.
+
+This is asserted leaf-by-leaf: the test walks
+`AppPermissions.moduleReadPermissions`, `moduleCreatePermissions` and
+`AppPermissions.all` and checks each one, so a module added later is covered
+automatically rather than silently going untested.
+
+`test/manual_login_permissions_test.dart` →
+*"a super admin sees every tile on the very first fetch"*.
+
 ### The admin-flag trap
 
 `pphl_erp` sends `isAdmin` and `isSuperAdmin` as the **strings** `"1"` / `"0"`, and the web client
@@ -212,7 +226,8 @@ Tracked as a backend follow-up in [PERMISSION_ACCESS_CONTROL.md §8](./PERMISSIO
 | Test | Covers |
 |---|---|
 | `test/app_permission_catalogue_test.dart` (32) | Profile parsing, admin-flag strings, fail-closed, case-insensitivity, `canAny`/`canAll`, the module map, `clear()` / listener behaviour, and that all 25 catalogue strings are unique and well-formed. |
+| `test/manual_login_permissions_test.dart` (7) | Drives the **real** `AuthService.getCurrentUserProfile()` with a stubbed response. Proves permissions reach the service on a *manual* sign-in, that a super admin sees **every** module and every grant on the first fetch, that an empty list still denies, and that a second user's grants replace the first's. **All 7 fail if the `update()` call is removed** — that was the reported bug. |
 | `test/widget_test.dart` (9) | Hub tile visibility with no grants, with grants, and for an admin; a tile appearing when permissions land after the first build. |
 | `test/stage2_screen_build_test.dart` (+2) | A markets-only grant shows one tab, not three; no grants shows the empty state. |
 
-Suite: **222 passing, 0 failing** at the time of writing (195 before the booking change, +27 new).
+Suite: **237 passing, 0 failing** at the time of writing.

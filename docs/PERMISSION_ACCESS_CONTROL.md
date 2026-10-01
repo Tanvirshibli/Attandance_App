@@ -52,9 +52,8 @@ was discarding it.
 
 ### Why permissions cost zero latency
 
-`AppBootstrap._warmAuthenticatedSession()` (`lib/screens/app_bootstrap.dart:119-134`) already fetches
-the profile **unawaited**, deliberately, so the first frame is never blocked behind a 45 s request.
-`PermissionService.update()` is called on that same result.
+The profile is fetched **unawaited**, deliberately, so the first frame is never blocked behind a 45 s
+request. `PermissionService.update()` is called on that same result.
 
 ```
 cold start ──> first frame (shell renders immediately)
@@ -65,6 +64,33 @@ cold start ──> first frame (shell renders immediately)
 There is no extra request and nothing new blocks startup. Widgets watch the service and rebuild once
 when the list lands. Between the first frame and the list arriving, gated tiles are **hidden** rather
 than shown and then removed.
+
+### ⚠️ The call belongs in `getCurrentUserProfile()`, never in a screen
+
+`update()` is invoked from **`AuthService.getCurrentUserProfile()`** — the single point where a profile
+is parsed — not from a caller.
+
+It originally lived in `AppBootstrap._warmAuthenticatedSession()`, which covers **auto-login only**.
+`LoginScreen` fetches the profile from its own `_hydrateProfileInBackground()`, so after a **manual**
+sign-in nothing ever populated the service. It stayed empty, failed closed, and hid every gated module
+until the user closed and reopened the app — reported as *"permissions hide the tiles on first login,
+but everything is back after a restart"*.
+
+It was never the permission logic. It was **who** called `update()`.
+
+| Moment | Call | Why |
+|---|---|---|
+| Any profile fetch | `getCurrentUserProfile()` → `update(profile)` | The one place a profile is parsed. |
+| Login | `login()` → `clear()` | Drop the previous user's grants before the new profile lands. |
+| Logout | `logout()` → `clear()` | A shared device must not carry modules across accounts. |
+
+Adding a second `update()` to `LoginScreen` would have fixed that one screen and left the next
+profile consumer to break identically. `test/manual_login_permissions_test.dart` guards it: 7 cases
+driven through the real `getCurrentUserProfile()` with a stubbed response, **all 7 fail if the call is
+removed.**
+
+`AppBootstrap` keeps its call as redundant-but-idempotent, so its dependency on the profile stays
+visible rather than incidental.
 
 ---
 
@@ -208,8 +234,8 @@ test group.
 | `lib/models/app_permissions.dart` | The catalogue and the module→permission maps. The only place a permission string is written. |
 | `lib/services/permission_service.dart` | The engine. A `ChangeNotifier` singleton; `can` / `canAny` / `canAll`, admin bypass, `update()`, `clear()`. |
 | `lib/models/auth_user_profile.dart` | Parses `permissions`, `roles`, `isAdmin`, `isSuperAdmin` from `get-my-info`. |
-| `lib/screens/app_bootstrap.dart` | Feeds the service from the background profile fetch. |
-| `lib/services/auth_service.dart` | Calls `clear()` on logout. |
+| `lib/screens/app_bootstrap.dart` | Redundant-but-idempotent `update()` on the background fetch. |
+| `lib/services/auth_service.dart` | **Adopts permissions** in `getCurrentUserProfile()`; calls `clear()` on login and logout. |
 | `lib/screens/employee_services_hub_screen.dart` | Filters the services-hub tiles. |
 | `lib/screens/marketing/marketing_hub_screen.dart` | Filters tabs; locks the per-tab create pills. |
 | `lib/widgets/ui/app_pill_button.dart` | The `enabled` state — greyed pill + lock glyph, still tappable. |
