@@ -5,10 +5,12 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../../data/marketing_demo_masters.dart';
-import '../../models/marketing_context.dart';
+import '../../models/booking_form_data_models.dart';
+import '../../models/marketing_dealer.dart';
 import '../../models/marketing_models.dart';
+import '../../models/zone_scope.dart';
 import '../../services/auth_service.dart';
-import '../../services/employee_marketing_scope_service.dart';
+import '../../services/marketing_master_service.dart';
 import '../../services/marketing_service.dart';
 import '../../services/sales_service.dart';
 import '../../services/zone_scope_service.dart';
@@ -77,10 +79,20 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
   String _paymentMode = 'cash';
   String _leadStatus = 'new';
 
-  /// Zone / company / sector / market resolved from the logged-in employee and
-  /// shown read-only. Replaces the pickers this form used to offer, so a field
-  /// officer no longer records their own territory by hand.
-  EmployeeMarketingScope _scope = const EmployeeMarketingScope.empty();
+  /// The employee's own zone, resolved from their HRM profile and shown
+  /// read-only. It is a fact about who is filing the record, not a filter on
+  /// the choices below.
+  MarketingDemoNamed? _employeeZone;
+
+  /// Company → sector → market, each chosen by the officer. The sector list
+  /// narrows to the selected company and the market list to the selected
+  /// sector; changing an upstream pick clears everything below it.
+  BookingFormCompany? _selectedCompany;
+  BookingFormSector? _selectedSector;
+  Market? _selectedMarket;
+  List<BookingFormCompany> _companies = const [];
+  List<BookingFormSector> _sectors = const [];
+  List<Market> _markets = const [];
 
   /// Server-allocated `DLR-09260001` / `FMR-09260001`. Null until the endpoint
   /// answers, and left null on failure rather than invented locally — a code
@@ -102,8 +114,9 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
   List<Party> _dealers = const [];
 
   /// Only the product rows still offer a company picker, so this stays the demo
-  /// catalog. The party's own company comes from the employee's scope.
-  final List<BookingFormCompany> _companies = MarketingDemoMasters.companies;
+  /// catalog. The party's own company comes from the officer's selection.
+  final List<BookingFormCompany> _productCompanies =
+      MarketingDemoMasters.companies;
   Party? _parentParty;
   MarketingDemoNamed? _capacityUnit;
 
@@ -136,8 +149,7 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
   static const _paymentModes = ['cash', 'credit', 'mixed', 'other'];
   static const _leadStatuses = ['new', 'warm', 'hot', 'converted', 'lost'];
 
-  bool get _isFarm =>
-      _partyType == 'farm' || _partyType == 'farmer';
+  bool get _isFarm => _partyType == 'farm' || _partyType == 'farmer';
 
   /// The two dealer-facing types the form offers. `dealer` is a new dealer and
   /// `outlet` an existing one — both are already in the backend's party_type
@@ -175,7 +187,7 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
       _loadFormMasters(),
       _autoFillLocation(),
       _loadCode(),
-      _loadScope(),
+      _loadOrgMasters(),
       if (_isFarm) _loadDealers(),
     ]);
   }
@@ -194,37 +206,91 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
     });
   }
 
-  /// Resolves zone / company / sector / market from the logged-in employee.
+  /// Resolves the employee's zone from their HRM profile.
   ///
-  /// Re-runs once the GPS fix lands, because the market is chosen as the one
-  /// nearest the captured position rather than the first row in the zone.
-  Future<void> _loadScope() async {
-    final scope = await EmployeeMarketingScopeService.instance.load(
-      lat: _lat,
-      lng: _lng,
-    );
+  /// The zone is shown read-only on the form; it no longer decides which
+  /// company, sector or market the officer may pick.
+  Future<void> _loadZone() async {
+    final scope = await ZoneScopeService.instance.load();
+    if (!mounted || scope == null) return;
+    final option = await _zoneOptionFor(scope);
     if (!mounted) return;
-    setState(() => _scope = scope);
-    // The dealer list is scoped by the same zone, so it can only be fetched
-    // once the zone is known.
-    if (_partyType == 'outlet') _loadExistingDealers();
+    setState(() => _employeeZone = option);
   }
 
-  /// Loads the existing-dealer list, narrowed to the employee's zone.
+  /// The profile's zone expressed as a picker option, matched by name.
+  ///
+  /// The option carries the Sales zone id rather than anything this app owns,
+  /// which is the id the record is filed under.
+  static Future<MarketingDemoNamed?> _zoneOptionFor(ZoneScope scope) async {
+    final options = await ZoneScopeService.instance.loadZoneOptions();
+
+    for (final option in options) {
+      if (scope.zoneNames.contains(option.name.toLowerCase())) return option;
+    }
+    return null;
+  }
+
+  /// Loads the company list and, until one is chosen, the full sector list.
+  Future<void> _loadOrgMasters() async {
+    final companies = await MarketingMasterService.instance.companies();
+    final sectors = await MarketingMasterService.instance.sectorsForCompany(
+      _selectedCompany?.id,
+    );
+    if (!mounted) return;
+    setState(() {
+      _companies = companies;
+      _sectors = sectors;
+    });
+  }
+
+  /// The sector list narrows to the chosen company.
+  Future<void> _onCompanySelected(BookingFormCompany? company) async {
+    setState(() {
+      _selectedCompany = company;
+      // Everything below the company is now invalid: a sector from the old
+      // company would file the record under a pairing that cannot exist.
+      _selectedSector = null;
+      _selectedMarket = null;
+    });
+
+    final sectors = await MarketingMasterService.instance.sectorsForCompany(
+      company?.id,
+    );
+    if (!mounted) return;
+    setState(() => _sectors = sectors);
+  }
+
+  /// The market list narrows to the chosen sector.
+  Future<void> _onSectorSelected(BookingFormSector? sector) async {
+    setState(() {
+      _selectedSector = sector;
+      _selectedMarket = null;
+    });
+
+    final markets = await MarketingMasterService.instance.marketsForSector(
+      sector?.id,
+    );
+    if (!mounted) return;
+    setState(() => _markets = markets);
+  }
+
+  /// Loads the existing-dealer list.
   ///
   /// Only ever called while the party type is an existing dealer — the picker
   /// is not rendered otherwise, so fetching for a new dealer or a farm would be
   /// a request nobody can use.
   ///
+  /// Unfiltered: the Sales dealer master carries no company or sector edge, so
+  /// there is nothing to narrow it by, and narrowing by the employee's zone
+  /// would hide dealers they legitimately trade with. The picker is searchable.
+  ///
   /// A failure is not fatal: the picker then offers nothing and the officer can
-  /// still register the dealer by hand. The Sales master is behind a public
+  /// still register the dealer by hand. The Sales master sits behind a public
   /// endpoint that can 500 on unrelated data, so this has to be a soft failure.
   Future<void> _loadExistingDealers() async {
     setState(() => _loadingExistingDealers = true);
-    final result = await _service.listExistingDealers(
-      zoneName: _scope.zone?.name,
-      limit: 200,
-    );
+    final result = await _service.listExistingDealers(limit: 200);
     if (!mounted) return;
     setState(() {
       _loadingExistingDealers = false;
@@ -289,10 +355,11 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
   }
 
   Future<void> _loadFormMasters() async {
-    // Zone, company, sector and market all arrive through the scope service now,
-    // so this only has to wait long enough for the read-only block to stop
-    // showing its "unresolved" hints while the first load is still in flight.
+    // The zone comes from the employee's profile and the org pickers from the
+    // Sales master. This only has to wait long enough for the pickers to stop
+    // showing a spinner while the first load is still in flight.
     await Future.wait([
+      _loadZone(),
       _salesService.fetchBookingFormData(),
       ZoneScopeService.instance.loadZoneOptions(),
     ]);
@@ -303,9 +370,7 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
   Future<void> _loadDealers() async {
     setState(() => _loadingDealers = true);
     // Parent dealer picker is company-wide (omit employee_id).
-    final result = await _service.listParties(
-      partyType: 'dealer',
-    );
+    final result = await _service.listParties(partyType: 'dealer');
     if (!mounted) return;
     setState(() {
       _dealers = result.data ?? const [];
@@ -340,9 +405,6 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
         _locationStatus =
             'Location filled — edit address if needed (${snap.latitude.toStringAsFixed(5)}, ${snap.longitude.toStringAsFixed(5)})';
       });
-      // The scope's market is the nearest one to this position, so it can only
-      // be resolved once there is one.
-      _loadScope();
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -446,12 +508,21 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
       );
       return;
     }
-    // Every party is scoped to the employee's zone, farm included — the zone
+    // Every party is filed under the employee's zone, farm included — the zone
     // is what every marketing list and report filters on, so an untagged farm
     // is as unreachable as an untagged dealer.
-    if (!_scope.hasZone) {
+    if (_employeeZone == null) {
       _snack(
         'Your zone could not be resolved. Ask an admin to set your zone, then retry.',
+      );
+      return;
+    }
+    // The officer files under a company, so one is required. Sector and market
+    // stay optional: they narrow the record further, but a dealer registered
+    // against the right company is still findable without them.
+    if (_selectedCompany == null) {
+      _snack(
+        'Choose the company this ${_isFarm ? 'farm' : 'dealer'} belongs to.',
       );
       return;
     }
@@ -514,7 +585,8 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
       'employee_id': employeeId,
       'party_type': _partyType,
       'name': _name.text.trim(),
-      if (_tradeName.text.trim().isNotEmpty) 'trade_name': _tradeName.text.trim(),
+      if (_tradeName.text.trim().isNotEmpty)
+        'trade_name': _tradeName.text.trim(),
       // The server-allocated code wins over anything typed: the field is
       // read-only, and _code is only ever seeded for backwards compatibility.
       if (_generatedCode != null && _generatedCode!.isNotEmpty)
@@ -532,17 +604,20 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
       if (_tradeLicense.text.trim().isNotEmpty)
         'trade_license_no': _tradeLicense.text.trim(),
       if (_address.text.trim().isNotEmpty) 'address': _address.text.trim(),
-      // Scope ids are written only when a real one was resolved. Sending a
-      // guessed id would file the dealer under another company or zone, which is
-      // worse than leaving the column for an admin to correct.
-      if (_scope.market != null) 'market_id': _scope.market!.id,
+      // The zone is the employee's own and is filed as-is. Company, sector and
+      // market are the officer's picks, sent with both the id and the name so
+      // the webapp reports can read them without a master to join against.
+      if (_selectedMarket != null) 'market_id': _selectedMarket!.id,
       if (_isFarm && _parentParty != null) 'parent_party_id': _parentParty!.id,
       if (_selectedExistingDealer != null)
         'existing_dealer_id': _selectedExistingDealer!.sourceId,
-      if (_scope.company != null) 'company_id': _scope.company!.id,
-      if (_scope.sector != null) 'sector_id': _scope.sector!.id,
-      if (_scope.zone != null) 'zone_id': _scope.zone!.id,
-      if (_scope.zone != null) 'zone_name': _scope.zone!.name,
+      if (_selectedCompany != null) 'company_id': _selectedCompany!.id,
+      if (_selectedCompany != null)
+        'company_name': _selectedCompany!.displayName,
+      if (_selectedSector != null) 'sector_id': _selectedSector!.id,
+      if (_selectedSector != null) 'sector_name': _selectedSector!.name,
+      if (_employeeZone != null) 'zone_id': _employeeZone!.id,
+      if (_employeeZone != null) 'zone_name': _employeeZone!.name,
       if (_isFarm && _farmType.text.trim().isNotEmpty)
         'farm_type': _farmType.text.trim(),
       if (_isFarm && _capacity.text.trim().isNotEmpty)
@@ -612,7 +687,10 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
       padding: const EdgeInsets.only(bottom: 8),
       child: Text(
         text,
-        style: AppType.meta.copyWith(fontWeight: FontWeight.w500, color: AppColors.inkMuted),
+        style: AppType.meta.copyWith(
+          fontWeight: FontWeight.w500,
+          color: AppColors.inkMuted,
+        ),
       ),
     );
   }
@@ -622,7 +700,10 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
       padding: const EdgeInsets.only(bottom: 12),
       child: Text(
         text,
-        style: AppType.body.copyWith(fontWeight: FontWeight.w600, color: AppColors.ink),
+        style: AppType.body.copyWith(
+          fontWeight: FontWeight.w600,
+          color: AppColors.ink,
+        ),
       ),
     );
   }
@@ -640,7 +721,12 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
           ),
           Expanded(
             child: SingleChildScrollView(
-              padding: const EdgeInsets.fromLTRB(AppSpace.gutter, AppSpace.md, AppSpace.gutter, AppSpace.xl),
+              padding: const EdgeInsets.fromLTRB(
+                AppSpace.gutter,
+                AppSpace.md,
+                AppSpace.gutter,
+                AppSpace.xl,
+              ),
               child: Column(
                 children: [
                   AppCard(
@@ -737,41 +823,64 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
                             ),
                           const SizedBox(height: 14),
                         ],
-                        // Zone, company, sector and market all come from the
-                        // logged-in employee. A field officer should not be
-                        // recording their own territory by hand, and a wrong
-                        // choice here silently mis-files the dealer for every
-                        // list that filters on it.
+                        // The zone is the officer's own territory and stays
+                        // read-only. Company, sector and market are theirs to
+                        // pick, cascading downwards: the zone deliberately does
+                        // not narrow any of them, because an officer who trades
+                        // across a neighbouring zone still has to be able to
+                        // record it.
                         if (_loadingMasters)
                           const LinearProgressIndicator()
                         else ...[
                           ReadOnlyField(
                             label: 'Zone *',
                             icon: Icons.map_outlined,
-                            value: _scope.zone?.name,
+                            value: _employeeZone?.name,
                             hint: 'Not set — ask an admin to set your zone',
                           ),
                           const SizedBox(height: 14),
-                          ReadOnlyField(
-                            label: 'Company',
+                          SearchableSelectField<BookingFormCompany>(
+                            label: 'Company *',
                             icon: Icons.apartment_outlined,
-                            value: _scope.company?.displayName,
-                            hint: 'Unresolved from your profile',
+                            options: _companies,
+                            selected: _selectedCompany,
+                            displayString: (c) => c.displayName,
+                            searchText: (c) => c.displayName.toLowerCase(),
+                            onSelected: _onCompanySelected,
                           ),
                           const SizedBox(height: 14),
-                          ReadOnlyField(
+                          SearchableSelectField<BookingFormSector>(
                             label: 'Sector',
                             icon: Icons.hub_outlined,
-                            value: _scope.sector?.name,
-                            hint: 'Unresolved from your profile',
+                            options: _sectors,
+                            selected: _selectedSector,
+                            enabled: _selectedCompany != null,
+                            hintText: _selectedCompany == null
+                                ? 'Pick a company first'
+                                : 'Tap to pick or type…',
+                            displayString: (s) => s.name,
+                            searchText: (s) => s.searchText,
+                            onSelected: _onSectorSelected,
                           ),
                           const SizedBox(height: 14),
-                          ReadOnlyField(
+                          SearchableSelectField<Market>(
                             label: 'Market',
                             icon: Icons.store_mall_directory_outlined,
-                            value: _scope.market?.name,
-                            hint: 'No market found in your zone',
+                            options: _markets,
+                            selected: _selectedMarket,
+                            enabled: _selectedSector != null,
+                            hintText: _selectedSector == null
+                                ? 'Pick a sector first'
+                                : 'Tap to pick or type…',
+                            displayString: (m) => m.displayName,
+                            searchText: (m) =>
+                                '${m.name} ${m.locationLine}'.toLowerCase(),
+                            subtitleFor: (m) =>
+                                m.locationLine.isEmpty ? null : m.locationLine,
+                            onSelected: (m) =>
+                                setState(() => _selectedMarket = m),
                           ),
+                          const SizedBox(height: 14),
                         ],
                       ],
                     ),
@@ -864,8 +973,9 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
                           _label('Farm type'),
                           VoiceTextField(
                             controller: _farmType,
-                            decoration:
-                                _decoration(hint: 'e.g. Broiler, Layer'),
+                            decoration: _decoration(
+                              hint: 'e.g. Broiler, Layer',
+                            ),
                           ),
                           const SizedBox(height: 14),
                           _label('Capacity'),
@@ -907,10 +1017,8 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
                           decoration: _decoration(),
                           items: _paymentModes
                               .map(
-                                (p) => DropdownMenuItem(
-                                  value: p,
-                                  child: Text(p),
-                                ),
+                                (p) =>
+                                    DropdownMenuItem(value: p, child: Text(p)),
                               )
                               .toList(),
                           onChanged: (v) {
@@ -924,10 +1032,8 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
                           decoration: _decoration(),
                           items: _leadStatuses
                               .map(
-                                (p) => DropdownMenuItem(
-                                  value: p,
-                                  child: Text(p),
-                                ),
+                                (p) =>
+                                    DropdownMenuItem(value: p, child: Text(p)),
                               )
                               .toList(),
                           onChanged: (v) {
@@ -1021,16 +1127,16 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
                                           row.isOurProduct = p.ourProduct;
                                           row.category =
                                               MarketingDemoMasters.byId(
-                                            MarketingDemoMasters.categories,
-                                            p.categoryId,
-                                            (c) => c.id,
-                                          );
+                                                MarketingDemoMasters.categories,
+                                                p.categoryId,
+                                                (c) => c.id,
+                                              );
                                           row.company =
                                               MarketingDemoMasters.byId(
-                                            _companies,
-                                            p.companyId,
-                                            (c) => c.id,
-                                          );
+                                                _productCompanies,
+                                                p.companyId,
+                                                (c) => c.id,
+                                              );
                                         }
                                       });
                                     },
@@ -1045,8 +1151,9 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
                                   const SizedBox(height: 8),
                                   DropdownButtonFormField<String>(
                                     initialValue: row.relationType,
-                                    decoration:
-                                        _decoration(hint: 'Relation type'),
+                                    decoration: _decoration(
+                                      hint: 'Relation type',
+                                    ),
                                     items: _relationTypes
                                         .map(
                                           (t) => DropdownMenuItem(
@@ -1087,7 +1194,7 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
                                   SearchableSelectField<BookingFormCompany>(
                                     label: 'Product company',
                                     icon: Icons.apartment_outlined,
-                                    options: _companies,
+                                    options: _productCompanies,
                                     selected: row.company,
                                     displayString: (c) => c.displayName,
                                     searchText: (c) =>
@@ -1098,8 +1205,7 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
                                   const SizedBox(height: 8),
                                   VoiceTextField(
                                     controller: row.brand,
-                                    decoration:
-                                        _decoration(hint: 'Brand name'),
+                                    decoration: _decoration(hint: 'Brand name'),
                                   ),
                                   const SizedBox(height: 8),
                                   Row(
@@ -1118,8 +1224,9 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
                                         child: VoiceTextField(
                                           controller: row.stock,
                                           keyboardType: TextInputType.number,
-                                          decoration:
-                                              _decoration(hint: 'Stock'),
+                                          decoration: _decoration(
+                                            hint: 'Stock',
+                                          ),
                                         ),
                                       ),
                                     ],
@@ -1128,8 +1235,7 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
                                   VoiceTextField(
                                     controller: row.unitPrice,
                                     keyboardType: TextInputType.number,
-                                    decoration:
-                                        _decoration(hint: 'Unit price'),
+                                    decoration: _decoration(hint: 'Unit price'),
                                   ),
                                   const SizedBox(height: 8),
                                   VoiceTextField(
@@ -1151,8 +1257,9 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
                                   ),
                                   VoiceTextField(
                                     controller: row.notes,
-                                    decoration:
-                                        _decoration(hint: 'Product notes'),
+                                    decoration: _decoration(
+                                      hint: 'Product notes',
+                                    ),
                                   ),
                                   if (_products.length > 1)
                                     Align(
@@ -1252,7 +1359,10 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
                                   )
                                 : Text(
                                     'Submit',
-                                    style: AppType.body.copyWith(fontWeight: FontWeight.w600, color: Colors.white),
+                                    style: AppType.body.copyWith(
+                                      fontWeight: FontWeight.w600,
+                                      color: Colors.white,
+                                    ),
                                   ),
                           ),
                         ),
