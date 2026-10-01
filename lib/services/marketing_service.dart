@@ -5,7 +5,7 @@ import 'package:http/http.dart' as http;
 
 import '../config/app_config.dart';
 import '../models/api_result.dart';
-import '../models/marketing_context.dart';
+import '../models/marketing_dealer.dart';
 import '../models/marketing_models.dart';
 import '../utils/user_facing_error.dart';
 import 'endpoint_config_service.dart';
@@ -13,7 +13,7 @@ import 'image_upload_service.dart';
 
 class MarketingService {
   MarketingService({EndpointConfigService? configService})
-      : _configService = configService ?? EndpointConfigService.instance;
+    : _configService = configService ?? EndpointConfigService.instance;
 
   final EndpointConfigService _configService;
 
@@ -29,7 +29,10 @@ class MarketingService {
   Future<String> _url(String key, String fallbackPath) async {
     final resolved = await _configService.resolveUrl(key);
     if (resolved != null && resolved.isNotEmpty) return resolved;
-    final base = AppConfig.attendanceApiBaseUrl.trim().replaceAll(RegExp(r'/+$'), '');
+    final base = AppConfig.attendanceApiBaseUrl.trim().replaceAll(
+      RegExp(r'/+$'),
+      '',
+    );
     return '$base$fallbackPath';
   }
 
@@ -55,87 +58,40 @@ class MarketingService {
     return _getList(uri, Market.fromJson);
   }
 
-  /// The zone / company / sector / market context for a zone.
-///
-/// The backend resolves this from the synced marketing org master, so the app
-/// no longer has to guess a company by name-matching the HRM profile's
-/// free-text `sector` — the guess that rendered "Unresolved from your
-/// profile" whenever that string was `N/A` or spelled differently.
-///
-/// [zoneName] is the join key, not [zoneId]: the app holds a Sales zone id from
-/// `get-zone`, which means nothing against the backend's own `mkt_zones` rows.
-/// Either may be passed and the backend resolves by id first, then by name.
-///
-/// A failure is returned as a failed [ApiResult] rather than an empty context,
-/// so a caller can tell "nothing configured" from "could not ask".
-Future<ApiResult<MarketingContext>> loadMarketingContext({
-  int? zoneId,
-  String? zoneName,
-  double? lat,
-  double? lng,
-}) async {
-  if (!await isMarketingEnabled()) {
-    return ApiResult.fail('feature_disabled');
+  /// Dealers from the Sales master.
+  ///
+  /// Backed by the backend's proxy rather than by the app calling Sales directly,
+  /// so the cached master is read in one place. Deliberately unfiltered: a Sales
+  /// dealer row carries no company or sector edge, and narrowing the picker by the
+  /// officer's zone would hide dealers they legitimately trade with. The picker is
+  /// searchable instead.
+  ///
+  /// Returns an empty list when the Sales master is unreachable: an unavailable
+  /// master is not an error the officer can act on, and the picker simply offers
+  /// nothing.
+  Future<ApiResult<List<MarketingDealer>>> listExistingDealers({
+    String? query,
+    int? limit,
+  }) async {
+    if (!await isMarketingEnabled()) {
+      return ApiResult.fail('feature_disabled');
+    }
+
+    final base = await _url(
+      'marketing.dealers',
+      '/api/v1/mobile/marketing/dealers',
+    );
+    final uri = Uri.parse(base).replace(
+      queryParameters: {
+        if (query != null && query.trim().isNotEmpty) 'q': query.trim(),
+        if (limit != null && limit > 0) 'limit': '$limit',
+      },
+    );
+
+    return _getList(uri, (json) => MarketingDealer.fromJson(json));
   }
 
-  final base = await _url(
-    'marketing.context',
-    '/api/v1/mobile/marketing/context',
-  );
-  final uri = Uri.parse(base).replace(
-    queryParameters: {
-      if (zoneId != null && zoneId > 0) 'zone_id': '$zoneId',
-      if (zoneName != null && zoneName.trim().isNotEmpty)
-        'zone_name': zoneName.trim(),
-      if (lat != null) 'lat': '$lat',
-      if (lng != null) 'lng': '$lng',
-    },
-  );
-
-  return _getObject(uri, (json) => MarketingContext.fromJson(json));
-}
-
-/// Dealers from the Sales master, narrowed to [zoneName].
-///
-/// Backed by the backend's proxy rather than by the app calling Sales directly,
-/// so the zone filter is applied where the master is already cached. Dealers
-/// with no zone are kept — they are real dealers the officer may still trade
-/// with, they simply cannot be attributed to a territory.
-///
-/// Returns an empty list when the Sales master is unreachable: an unavailable
-/// master is not an error the officer can act on, and the picker simply offers
-/// nothing.
-Future<ApiResult<List<MarketingDealer>>> listExistingDealers({
-  int? zoneId,
-  String? zoneName,
-  String? query,
-  int? limit,
-}) async {
-  if (!await isMarketingEnabled()) {
-    return ApiResult.fail('feature_disabled');
-  }
-
-  final base = await _url(
-    'marketing.dealers',
-    '/api/v1/mobile/marketing/dealers',
-  );
-  final uri = Uri.parse(base).replace(
-    queryParameters: {
-      if (zoneId != null && zoneId > 0) 'zone_id': '$zoneId',
-      if (zoneName != null && zoneName.trim().isNotEmpty)
-        'zone_name': zoneName.trim(),
-      if (query != null && query.trim().isNotEmpty) 'q': query.trim(),
-      if (limit != null && limit > 0) 'limit': '$limit',
-    },
-  );
-
-  return _getList(
-    uri,
-    (json) => MarketingDealer.fromJson(json),
-  );
-}
-
-/// The next record code to submit with, e.g. `DLR-09260007`.
+  /// The next record code to submit with, e.g. `DLR-09260007`.
   ///
   /// [prefix] is one of the server's whitelisted values (`DLR` dealer, `FMR`
   /// farm, `MRK` market); anything else is rejected with 422.
@@ -154,9 +110,9 @@ Future<ApiResult<List<MarketingDealer>>> listExistingDealers({
       'marketing.parties',
       '/api/v1/mobile/marketing/parties',
     );
-    final uri = Uri.parse('$base/next-code').replace(
-      queryParameters: {'prefix': prefix},
-    );
+    final uri = Uri.parse(
+      '$base/next-code',
+    ).replace(queryParameters: {'prefix': prefix});
 
     try {
       final response = await http
@@ -229,9 +185,7 @@ Future<ApiResult<List<MarketingDealer>>> listExistingDealers({
     return left == right;
   }
 
-  Future<ApiResult<Market>> createMarket(
-    Map<String, dynamic> payload,
-  ) async {
+  Future<ApiResult<Market>> createMarket(Map<String, dynamic> payload) async {
     if (!await isMarketingEnabled()) {
       return ApiResult.fail('feature_disabled');
     }
@@ -327,7 +281,11 @@ Future<ApiResult<List<MarketingDealer>>> listExistingDealers({
       'marketing.party.create',
       '/api/v1/mobile/marketing/parties',
     );
-    return _postObject(uri: Uri.parse(url), body: payload, parse: Party.fromJson);
+    return _postObject(
+      uri: Uri.parse(url),
+      body: payload,
+      parse: Party.fromJson,
+    );
   }
 
   Future<ApiResult<Party>> updateParty(
@@ -436,10 +394,7 @@ Future<ApiResult<List<MarketingDealer>>> listExistingDealers({
     );
     return _postObject(
       uri: Uri.parse('$base/$visitId/check-in'),
-      body: {
-        'check_in_lat': ?lat,
-        'check_in_lng': ?lng,
-      },
+      body: {'check_in_lat': ?lat, 'check_in_lng': ?lng},
       parse: Visit.fromJson,
     );
   }
@@ -460,11 +415,7 @@ Future<ApiResult<List<MarketingDealer>>> listExistingDealers({
     );
     return _postObject(
       uri: Uri.parse('$base/$visitId/check-out'),
-      body: {
-        'check_out_lat': ?lat,
-        'check_out_lng': ?lng,
-        ...?extra,
-      },
+      body: {'check_out_lat': ?lat, 'check_out_lng': ?lng, ...?extra},
       parse: Visit.fromJson,
     );
   }
@@ -635,7 +586,9 @@ Future<ApiResult<List<MarketingDealer>>> listExistingDealers({
 
       request.files.addAll(await imageService.imageParts(webpFiles));
 
-      final streamed = await request.send().timeout(const Duration(seconds: 90));
+      final streamed = await request.send().timeout(
+        const Duration(seconds: 90),
+      );
       final response = await http.Response.fromStream(streamed);
       if (response.statusCode < 200 || response.statusCode >= 300) {
         return ApiResult.fail(
@@ -707,10 +660,7 @@ Future<ApiResult<List<MarketingDealer>>> listExistingDealers({
       final response = await http
           .post(
             uri,
-            headers: {
-              ..._headers,
-              'Content-Type': 'application/json',
-            },
+            headers: {..._headers, 'Content-Type': 'application/json'},
             body: jsonEncode(body),
           )
           .timeout(const Duration(seconds: 45));
@@ -729,10 +679,7 @@ Future<ApiResult<List<MarketingDealer>>> listExistingDealers({
       final response = await http
           .put(
             uri,
-            headers: {
-              ..._headers,
-              'Content-Type': 'application/json',
-            },
+            headers: {..._headers, 'Content-Type': 'application/json'},
             body: jsonEncode(body),
           )
           .timeout(const Duration(seconds: 45));

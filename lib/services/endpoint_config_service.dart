@@ -144,7 +144,9 @@ class EndpointConfigService {
 
   Future<int> geoIntervalMinutes() async {
     final config = await getConfig();
-    return config?.geoIntervalMinutes(fallback: AppConfig.geoTrackingIntervalMinutes) ??
+    return config?.geoIntervalMinutes(
+          fallback: AppConfig.geoTrackingIntervalMinutes,
+        ) ??
         AppConfig.geoTrackingIntervalMinutes;
   }
 
@@ -171,9 +173,14 @@ class EndpointConfigService {
       );
     }
 
-    final sales = AppConfig.salesApiBaseUrl.trim().replaceAll(RegExp(r'/+$'), '');
-    final transport =
-        AppConfig.transportApiBaseUrl.trim().replaceAll(RegExp(r'/+$'), '');
+    final sales = AppConfig.salesApiBaseUrl.trim().replaceAll(
+      RegExp(r'/+$'),
+      '',
+    );
+    final transport = AppConfig.transportApiBaseUrl.trim().replaceAll(
+      RegExp(r'/+$'),
+      '',
+    );
 
     return EndpointConfig(
       version: 0,
@@ -196,11 +203,31 @@ class EndpointConfigService {
         'auth.logout': ep('GET', '/api/v1/logout', 'hrm'),
         'auth.profile': ep('GET', '/api/v1/get-my-info', 'hrm'),
         'auth.refresh': ep('POST', '/api/v1/refresh', 'hrm'),
-        'face.registration': ep('POST', '/api/v1/mobile/face-registration', 'hrm'),
-        'face.registration.get': ep('GET', '/api/v1/mobile/face-registration', 'hrm'),
-        'attendance.list': ep('GET', '/api/v1/mobile/attendance-requests', 'zkteco'),
-        'attendance.punch': ep('POST', '/api/v1/mobile/attendance-requests', 'zkteco'),
-        'attendance.summary': ep('GET', '/api/v1/single-employee-attendance-details', 'hrm'),
+        'face.registration': ep(
+          'POST',
+          '/api/v1/mobile/face-registration',
+          'hrm',
+        ),
+        'face.registration.get': ep(
+          'GET',
+          '/api/v1/mobile/face-registration',
+          'hrm',
+        ),
+        'attendance.list': ep(
+          'GET',
+          '/api/v1/mobile/attendance-requests',
+          'zkteco',
+        ),
+        'attendance.punch': ep(
+          'POST',
+          '/api/v1/mobile/attendance-requests',
+          'zkteco',
+        ),
+        'attendance.summary': ep(
+          'GET',
+          '/api/v1/single-employee-attendance-details',
+          'hrm',
+        ),
         'leave.balance': ep('GET', '/api/v1/new-leave-stocks', 'hrm'),
         'leave.history': ep('GET', '/api/v1/leaves', 'hrm'),
         'leave.types': ep('GET', '/api/v1/leavetypes', 'hrm'),
@@ -295,11 +322,6 @@ class EndpointConfigService {
         'marketing.markets': ep(
           'GET',
           '/api/v1/mobile/marketing/markets',
-          'zkteco',
-        ),
-        'marketing.context': ep(
-          'GET',
-          '/api/v1/mobile/marketing/context',
           'zkteco',
         ),
         'marketing.dealers': ep(

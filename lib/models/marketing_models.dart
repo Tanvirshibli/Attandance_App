@@ -34,10 +34,7 @@ String? marketingNonEmpty(Object? v) {
 
 List<Map<String, dynamic>> marketingMapList(Object? raw) {
   if (raw is! List) return const [];
-  return raw
-      .whereType<Map>()
-      .map((e) => Map<String, dynamic>.from(e))
-      .toList();
+  return raw.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList();
 }
 
 /// Extract list payload from common API envelopes.
@@ -90,10 +87,10 @@ class MarketCompetitor {
   }
 
   Map<String, dynamic> toJson() => {
-        'name': name,
-        if (sharePercent != null) 'share_percent': sharePercent,
-        if (note != null && note!.isNotEmpty) 'note': note,
-      };
+    'name': name,
+    if (sharePercent != null) 'share_percent': sharePercent,
+    if (note != null && note!.isNotEmpty) 'note': note,
+  };
 }
 
 class Market {
@@ -114,6 +111,10 @@ class Market {
     this.notes,
     this.zoneId,
     this.zoneName,
+    this.companyId,
+    this.companyName,
+    this.sectorId,
+    this.sectorName,
     this.feedSharePercent,
     this.chicksSharePercent,
     this.productTypes = const [],
@@ -146,6 +147,14 @@ class Market {
   final String? notes;
   final int? zoneId;
   final String? zoneName;
+
+  /// The company the officer picked for this market, and the sector that
+  /// cascaded from it. `sectorId` is what the market picker filters on.
+  final int? companyId;
+  final String? companyName;
+  final int? sectorId;
+  final String? sectorName;
+
   final double? feedSharePercent;
   final double? chicksSharePercent;
   final List<String> productTypes;
@@ -197,6 +206,12 @@ class Market {
       notes: marketingNonEmpty(json['notes']),
       zoneId: marketingParseInt(json['zoneId'] ?? json['zone_id']),
       zoneName: marketingNonEmpty(json['zoneName'] ?? json['zone_name']),
+      companyId: marketingParseInt(json['companyId'] ?? json['company_id']),
+      companyName: marketingNonEmpty(
+        json['companyName'] ?? json['company_name'],
+      ),
+      sectorId: marketingParseInt(json['sectorId'] ?? json['sector_id']),
+      sectorName: marketingNonEmpty(json['sectorName'] ?? json['sector_name']),
       feedSharePercent: marketingParseDouble(
         json['feedSharePercent'] ?? json['feed_share_percent'],
       ),
@@ -224,10 +239,9 @@ class Market {
       cockFarmCount: marketingParseInt(
         json['cockFarmCount'] ?? json['cock_farm_count'],
       ),
-      competitorCompanies:
-          marketingMapList(json['competitorCompanies'] ?? json['competitor_companies'])
-              .map(MarketCompetitor.fromJson)
-              .toList(),
+      competitorCompanies: marketingMapList(
+        json['competitorCompanies'] ?? json['competitor_companies'],
+      ).map(MarketCompetitor.fromJson).toList(),
       updatedByEmployeeId: marketingParseInt(
         json['updatedByEmployeeId'] ?? json['updated_by_employee_id'],
       ),
@@ -296,17 +310,15 @@ class PartyProduct {
     return PartyProduct(
       id: marketingParseInt(json['id']),
       productId: marketingParseInt(json['productId'] ?? json['product_id']),
-      productName:
-          (json['productName'] ?? json['product_name'] ?? '').toString(),
+      productName: (json['productName'] ?? json['product_name'] ?? '')
+          .toString(),
       categoryName: marketingNonEmpty(
         json['categoryName'] ?? json['category_name'],
       ),
       brand: marketingNonEmpty(json['brand']),
       brandName: marketingNonEmpty(json['brandName'] ?? json['brand_name']),
       unit: marketingNonEmpty(json['unit']),
-      demandQty: marketingParseDouble(
-        json['demandQty'] ?? json['demand_qty'],
-      ),
+      demandQty: marketingParseDouble(json['demandQty'] ?? json['demand_qty']),
       stockQty: marketingParseDouble(json['stockQty'] ?? json['stock_qty']),
       competitorPrice: marketingParseDouble(
         json['competitorPrice'] ?? json['competitor_price'],
@@ -386,7 +398,9 @@ class Party {
     this.parentPartyId,
     this.existingDealerId,
     this.companyId,
+    this.companyName,
     this.sectorId,
+    this.sectorName,
     this.ownerEmployeeId,
     this.createdByEmployeeId,
     this.lat,
@@ -428,7 +442,9 @@ class Party {
   final int? parentPartyId;
   final int? existingDealerId;
   final int? companyId;
+  final String? companyName;
   final int? sectorId;
+  final String? sectorName;
   final int? ownerEmployeeId;
   final int? createdByEmployeeId;
   final double? lat;
@@ -445,8 +461,7 @@ class Party {
   final String? parentPartyAddress;
 
   bool get isFarm =>
-      partyType.toLowerCase() == 'farm' ||
-      partyType.toLowerCase() == 'farmer';
+      partyType.toLowerCase() == 'farm' || partyType.toLowerCase() == 'farmer';
 
   String get displayName {
     final t = tradeName?.trim();
@@ -515,12 +530,18 @@ class Party {
       notes: marketingNonEmpty(json['notes']),
       zoneId: marketingParseInt(json['zoneId'] ?? json['zone_id']),
       zoneName: marketingNonEmpty(json['zoneName'] ?? json['zone_name']),
-      products:
-          marketingMapList(json['products']).map(PartyProduct.fromJson).toList(),
-      attachments: marketingMapList(json['attachments'])
-          .map(Attachment.fromJson)
-          .toList(),
-      marketName: marketName ??
+      companyName: marketingNonEmpty(
+        json['companyName'] ?? json['company_name'],
+      ),
+      sectorName: marketingNonEmpty(json['sectorName'] ?? json['sector_name']),
+      products: marketingMapList(
+        json['products'],
+      ).map(PartyProduct.fromJson).toList(),
+      attachments: marketingMapList(
+        json['attachments'],
+      ).map(Attachment.fromJson).toList(),
+      marketName:
+          marketName ??
           marketingNonEmpty(json['marketName'] ?? json['market_name']),
       parentPartyName: marketingNonEmpty(
         json['parentPartyName'] ?? json['parent_party_name'],
@@ -584,8 +605,8 @@ class VisitProduct {
     return VisitProduct(
       id: marketingParseInt(json['id']),
       productId: marketingParseInt(json['productId'] ?? json['product_id']),
-      productName:
-          (json['productName'] ?? json['product_name'] ?? '').toString(),
+      productName: (json['productName'] ?? json['product_name'] ?? '')
+          .toString(),
       unit: marketingNonEmpty(json['unit']),
       observedStock: marketingParseDouble(
         json['observedStock'] ?? json['observed_stock'],
@@ -716,9 +737,9 @@ class Visit {
     final party = json['party'];
     String? partyName;
     if (party is Map) {
-      partyName = marketingNonEmpty(party['tradeName'] ??
-          party['trade_name'] ??
-          party['name']);
+      partyName = marketingNonEmpty(
+        party['tradeName'] ?? party['trade_name'] ?? party['name'],
+      );
     }
     return Visit(
       id: marketingParseInt(json['id']) ?? 0,
@@ -775,12 +796,14 @@ class Visit {
       chicksFindings: marketingNonEmpty(
         json['chicksFindings'] ?? json['chicks_findings'],
       ),
-      products:
-          marketingMapList(json['products']).map(VisitProduct.fromJson).toList(),
-      attachments: marketingMapList(json['attachments'])
-          .map(Attachment.fromJson)
-          .toList(),
-      partyName: partyName ??
+      products: marketingMapList(
+        json['products'],
+      ).map(VisitProduct.fromJson).toList(),
+      attachments: marketingMapList(
+        json['attachments'],
+      ).map(Attachment.fromJson).toList(),
+      partyName:
+          partyName ??
           marketingNonEmpty(json['partyName'] ?? json['party_name']),
     );
   }
@@ -823,12 +846,13 @@ class SurveyMetric {
 
   factory SurveyMetric.fromJson(Map<String, dynamic> json) {
     return SurveyMetric(
-      metricKey: (json['metricKey'] ??
-              json['metric_key'] ??
-              json['metricCode'] ??
-              json['metric_code'] ??
-              '')
-          .toString(),
+      metricKey:
+          (json['metricKey'] ??
+                  json['metric_key'] ??
+                  json['metricCode'] ??
+                  json['metric_code'] ??
+                  '')
+              .toString(),
       metricLabel: marketingNonEmpty(
         json['metricLabel'] ?? json['metric_label'],
       ),
@@ -1135,14 +1159,14 @@ class FarmSurvey {
       zone: marketingNonEmpty(json['zone']),
       status: marketingNonEmpty(json['status']),
       metrics: marketingMapList(values).map(SurveyMetric.fromJson).toList(),
-      attachments: marketingMapList(json['attachments'])
-          .map(Attachment.fromJson)
-          .toList(),
+      attachments: marketingMapList(
+        json['attachments'],
+      ).map(Attachment.fromJson).toList(),
       extraData: json['extraData'] is Map
           ? Map<String, dynamic>.from(json['extraData'] as Map)
           : json['extra_data'] is Map
-              ? Map<String, dynamic>.from(json['extra_data'] as Map)
-              : null,
+          ? Map<String, dynamic>.from(json['extra_data'] as Map)
+          : null,
     );
   }
 }
@@ -1192,9 +1216,9 @@ class Followup {
     final party = json['party'];
     String? partyName;
     if (party is Map) {
-      partyName = marketingNonEmpty(party['tradeName'] ??
-          party['trade_name'] ??
-          party['name']);
+      partyName = marketingNonEmpty(
+        party['tradeName'] ?? party['trade_name'] ?? party['name'],
+      );
     }
     return Followup(
       id: marketingParseInt(json['id']) ?? 0,
@@ -1218,7 +1242,8 @@ class Followup {
       completedAt: marketingNonEmpty(
         json['completedAt'] ?? json['completed_at'],
       ),
-      partyName: partyName ??
+      partyName:
+          partyName ??
           marketingNonEmpty(json['partyName'] ?? json['party_name']),
     );
   }
@@ -1251,13 +1276,19 @@ class Attachment {
     final u = url?.trim();
     if (u != null && u.isNotEmpty) {
       if (u.startsWith('http://') || u.startsWith('https://')) return u;
-      final base = AppConfig.attendanceApiBaseUrl.trim().replaceAll(RegExp(r'/+$'), '');
+      final base = AppConfig.attendanceApiBaseUrl.trim().replaceAll(
+        RegExp(r'/+$'),
+        '',
+      );
       if (u.startsWith('/')) return '$base$u';
       return '$base/$u';
     }
     final p = path?.trim();
     if (p != null && p.isNotEmpty) {
-      final base = AppConfig.attendanceApiBaseUrl.trim().replaceAll(RegExp(r'/+$'), '');
+      final base = AppConfig.attendanceApiBaseUrl.trim().replaceAll(
+        RegExp(r'/+$'),
+        '',
+      );
       if (p.startsWith('http://') || p.startsWith('https://')) return p;
       if (p.startsWith('/storage/')) return '$base$p';
       if (p.startsWith('storage/')) return '$base/$p';
