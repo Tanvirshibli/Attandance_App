@@ -1,5 +1,8 @@
+import 'package:employee_attendance/models/app_permissions.dart';
+import 'package:employee_attendance/models/auth_user_profile.dart';
 import 'package:employee_attendance/screens/attendance_report_screen.dart';
 import 'package:employee_attendance/screens/marketing/marketing_hub_screen.dart';
+import 'package:employee_attendance/services/permission_service.dart';
 import 'package:employee_attendance/widgets/ui/ui.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -75,9 +78,35 @@ void main() {
   //
   // The hub gates its tabs behind an async feature check that reads the remote
   // endpoint config, so prefs are mocked and pumped until that resolves.
+  //
+  // The tabs themselves are additionally permission-gated: with no grants the
+  // hub renders its "nothing to show" state and there are no pills to lay out.
+  // These are layout guards, so they grant the read and create permissions that
+  // put the hub in the fully-populated state they were written to check.
+  void grantFullMarketingAccess() {
+    PermissionService.instance.update(
+      AuthUserProfile.fromJson(<String, dynamic>{
+        'name': 'Stage 2 Tester',
+        'email': 'stage2@example.com',
+        'permissions': <String>[
+          AppPermissions.farmsRead,
+          AppPermissions.farmsCreate,
+          AppPermissions.dealerRead,
+          AppPermissions.dealerCreate,
+          AppPermissions.marketsRead,
+          AppPermissions.marketsCreate,
+        ],
+      }),
+    );
+  }
+
+  setUp(PermissionService.instance.clear);
+  tearDown(PermissionService.instance.clear);
+
   testWidgets('MarketingHubScreen builds its tabs without throwing', (tester) async {
     await usePhoneViewport(tester);
     SharedPreferences.setMockInitialValues({});
+    grantFullMarketingAccess();
 
     await tester.pumpWidget(const MaterialApp(home: MarketingHubScreen()));
     await tester.pump();
@@ -97,6 +126,7 @@ void main() {
   testWidgets('the marketing hub tabs switch to the dealer module', (tester) async {
     await usePhoneViewport(tester);
     SharedPreferences.setMockInitialValues({});
+    grantFullMarketingAccess();
 
     await tester.pumpWidget(const MaterialApp(home: MarketingHubScreen()));
     await tester.pump();
@@ -113,6 +143,52 @@ void main() {
     expect(tester.takeException(), isNull);
     expect(find.text('Add dealer'), findsOneWidget);
     expect(find.text('All dealers'), findsOneWidget);
+    expect(find.text('Add farm'), findsNothing);
+  });
+
+  testWidgets('a markets-only grant shows one tab, not three', (tester) async {
+    // Regression guard for the tab/filter pairing. Filtering the tab labels
+    // without resizing the TabController renders a third tab the user has no
+    // permission for, and indexing the action bar by the filtered list against
+    // an unfiltered controller throws on out-of-range.
+    await usePhoneViewport(tester);
+    SharedPreferences.setMockInitialValues({});
+    PermissionService.instance.update(
+      AuthUserProfile.fromJson(<String, dynamic>{
+        'name': 'Markets Only',
+        'email': 'markets@example.com',
+        'permissions': <String>[AppPermissions.marketsRead],
+      }),
+    );
+
+    await tester.pumpWidget(const MaterialApp(home: MarketingHubScreen()));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 600));
+
+    expect(tester.takeException(), isNull);
+    expect(find.text('Markets'), findsOneWidget);
+    expect(find.text('Farms'), findsNothing);
+    expect(find.text('Dealers'), findsNothing);
+    // The lone tab's actions are labelled for markets, not for farms.
+    expect(find.text('Add market'), findsOneWidget);
+    expect(find.text('Add farm'), findsNothing);
+  });
+
+  testWidgets('without any marketing grant the hub renders its empty state',
+      (tester) async {
+    // Failing closed: no grants means no tabs and no create pills, rather than
+    // three tabs the user should not have.
+    await usePhoneViewport(tester);
+    SharedPreferences.setMockInitialValues({});
+
+    await tester.pumpWidget(const MaterialApp(home: MarketingHubScreen()));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 600));
+
+    expect(tester.takeException(), isNull);
+    expect(find.text('Farms'), findsNothing);
+    expect(find.text('Dealers'), findsNothing);
+    expect(find.text('Markets'), findsNothing);
     expect(find.text('Add farm'), findsNothing);
   });
 }
