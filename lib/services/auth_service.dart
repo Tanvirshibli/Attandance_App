@@ -68,6 +68,13 @@ class AuthService {
 
   final EndpointConfigService _configService = EndpointConfigService.instance;
 
+  AuthService({http.Client? httpClient})
+      : _httpClient = httpClient ?? http.Client();
+
+  /// Injectable for tests, matching the `HrmApiClient` seam the other services
+  /// already expose. Production always uses a real client.
+  final http.Client _httpClient;
+
   static Completer<bool>? _refreshCompleter;
   static AuthUserProfile? _cachedProfile;
   static DateTime? _cachedProfileAt;
@@ -196,8 +203,12 @@ class AuthService {
           );
 
           AuthService.clearProfileCache();
-          // Zones belong to the user who just signed in; drop any scope left
-          // over from a previous session.
+          // Zones and permissions belong to the user who just signed in; drop
+          // anything left over from a previous session. Without the permission
+          // clear, a user who signs out and another who signs in on the same
+          // process would briefly see the first user's modules until this
+          // account's profile landed.
+          PermissionService.instance.clear();
           try {
             await ZoneScopeService.instance.clear();
           } catch (_) {}
@@ -442,6 +453,17 @@ class AuthService {
               AuthUserProfile.fromJson(data['user'] as Map<String, dynamic>);
           _cachedProfile = profile;
           _cachedProfileAt = DateTime.now();
+          // Permissions are adopted here, at the single point where a profile
+          // is parsed, rather than at each call site.
+          //
+          // It used to be called from AppBootstrap._warmAuthenticatedSession,
+          // which covers auto-login only. LoginScreen fetches the profile from
+          // its own hydration instead, so after a manual sign-in nothing ever
+          // populated PermissionService: it stayed empty, failed closed, and
+          // hid every gated module until the user closed and reopened the app.
+          // Routing it through here fixes both paths, and any future one,
+          // without each caller having to remember.
+          PermissionService.instance.update(profile);
           return profile;
         }
       } on TimeoutException {
@@ -575,7 +597,7 @@ class AuthService {
     required String url,
     required String token,
   }) {
-    return http.get(
+    return _httpClient.get(
       Uri.parse(url),
       headers: {
         'Accept': 'application/json',

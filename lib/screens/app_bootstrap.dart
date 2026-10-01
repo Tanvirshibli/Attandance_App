@@ -121,8 +121,10 @@ class _AppBootstrapState extends State<AppBootstrap>
     try {
       final profile = await _authService.getCurrentUserProfile();
       _faceRecognitionService.hydrateRegistration(profile?.faceRegistration);
-      // Permissions ride along inside the same get-my-info payload, so gating
-      // costs no extra request and the first frame still waits on nothing.
+      // Redundant since PermissionService.update() moved into
+      // AuthService.getCurrentUserProfile(), which this await already calls.
+      // Kept deliberately: it is idempotent, and it makes the bootstrap's
+      // dependency on the profile explicit rather than incidental.
       PermissionService.instance.update(profile);
     } catch (_) {
       // The dashboard loads the profile itself and falls back.
