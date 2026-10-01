@@ -11,6 +11,7 @@ import '../../models/zone_scope.dart';
 import '../../services/auth_service.dart';
 import '../../services/marketing_master_service.dart';
 import '../../services/marketing_service.dart';
+import '../../services/permission_service.dart';
 import '../../services/zone_scope_service.dart';
 import '../../utils/marketing_location_helper.dart';
 import '../../widgets/searchable_select_field.dart';
@@ -435,6 +436,15 @@ class _MarketFormScreenState extends State<MarketFormScreen> {
   }
 
   Future<void> _submit() async {
+    // Defence in depth: the create pill on the hub is already gated, so a user
+    // without `markets.create` cannot reach this form by tapping. Re-checked
+    // here because a stale navigation stack or a future deep link could land on
+    // it. An edit is left alone — correcting an existing record is not the
+    // same act as filing a new one.
+    if (!_isEdit && !PermissionService.instance.canCreateIn('market')) {
+      _snack(PermissionService.instance.denialMessage('market'));
+      return;
+    }
     if (_name.text.trim().isEmpty) {
       _snack('Market name is required.');
       return;

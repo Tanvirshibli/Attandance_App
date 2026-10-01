@@ -12,6 +12,7 @@ import '../../models/zone_scope.dart';
 import '../../services/auth_service.dart';
 import '../../services/marketing_master_service.dart';
 import '../../services/marketing_service.dart';
+import '../../services/permission_service.dart';
 import '../../services/sales_service.dart';
 import '../../services/zone_scope_service.dart';
 import '../../utils/marketing_location_helper.dart';
@@ -488,6 +489,15 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
   }
 
   Future<void> _submit() async {
+    // Defence in depth: the create pill on the hub is already gated, so a user
+    // without `farms.create` / `dealer.create` cannot reach this form by
+    // tapping. Re-checked here because a stale navigation stack or a future
+    // deep link could still land on it.
+    final moduleKey = _isFarm ? 'farm' : 'dealer';
+    if (!PermissionService.instance.canCreateIn(moduleKey)) {
+      _snack(PermissionService.instance.denialMessage(moduleKey));
+      return;
+    }
     if (_name.text.trim().isEmpty) {
       _snack('Name is required.');
       return;
