@@ -44,141 +44,178 @@ class _AppUpdateScreenState extends State<AppUpdateScreen> {
       child: Scaffold(
         backgroundColor: AppColors.background,
         body: SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                const SizedBox(height: 24),
-                Icon(Icons.system_update_alt, size: 56, color: AppColors.primary),
-                const SizedBox(height: 20),
-                Text(
-                  'Update required',
-                  textAlign: TextAlign.center,
-                  style: GoogleFonts.poppins(
-                    fontSize: 22,
-                    fontWeight: FontWeight.w700,
+          // Scrolling content and the action bar are two slots, not one Column.
+          //
+          // This used to be a single Column holding the changelog, a Spacer and
+          // the button. A Column does not clip its children, it overflows them,
+          // so once the release notes outgrew the remaining height the button
+          // was pushed past the bottom edge where nothing could scroll to it or
+          // tap it. On a force_update build that button is the only way forward,
+          // so the overflow left a user stuck. The notes now scroll and the
+          // action area is a sibling that always sits at the bottom.
+          child: Column(
+            children: [
+              Expanded(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.fromLTRB(24, 24, 24, 8),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Icon(
+                        Icons.system_update_alt,
+                        size: 56,
+                        color: AppColors.primary,
+                      ),
+                      const SizedBox(height: 20),
+                      Text(
+                        'Update required',
+                        textAlign: TextAlign.center,
+                        style: GoogleFonts.poppins(
+                          fontSize: 22,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        'v${widget.manifest.versionName} (build ${widget.manifest.versionCode}) is available.\n'
+                        'You are on build ${widget.installedVersionCode}.',
+                        textAlign: TextAlign.center,
+                        style: GoogleFonts.poppins(
+                          fontSize: 13,
+                          color: AppColors.textSecondary,
+                          height: 1.4,
+                        ),
+                      ),
+                      if (widget.manifest.releaseNotes.isNotEmpty) ...[
+                        const SizedBox(height: 20),
+                        Container(
+                          padding: const EdgeInsets.all(14),
+                          decoration: BoxDecoration(
+                            color: AppColors.surface,
+                            borderRadius: BorderRadius.circular(14),
+                            border: Border.all(
+                              color:
+                                  AppColors.shadow.withValues(alpha: 0.08),
+                            ),
+                          ),
+                          child: Text(
+                            widget.manifest.releaseNotes,
+                            style: GoogleFonts.poppins(
+                              fontSize: 13,
+                              height: 1.45,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
                   ),
                 ),
-                const SizedBox(height: 8),
-                Text(
-                  'v${widget.manifest.versionName} (build ${widget.manifest.versionCode}) is available.\n'
-                  'You are on build ${widget.installedVersionCode}.',
-                  textAlign: TextAlign.center,
-                  style: GoogleFonts.poppins(
-                    fontSize: 13,
-                    color: AppColors.textSecondary,
-                    height: 1.4,
-                  ),
-                ),
-                if (widget.manifest.releaseNotes.isNotEmpty) ...[
-                  const SizedBox(height: 20),
-                  Container(
-                    padding: const EdgeInsets.all(14),
-                    decoration: BoxDecoration(
-                      color: AppColors.surface,
-                      borderRadius: BorderRadius.circular(14),
-                      border: Border.all(
-                        color: AppColors.shadow.withValues(alpha: 0.08),
-                      ),
-                    ),
-                    child: Text(
-                      widget.manifest.releaseNotes,
-                      style: GoogleFonts.poppins(
-                        fontSize: 13,
-                        height: 1.45,
-                      ),
-                    ),
-                  ),
-                ],
-                const Spacer(),
-                if (_phase == AppUpdateUiPhase.downloading) ...[
-                  LinearProgressIndicator(
-                    value: _total > 0 ? _received / _total : null,
-                    minHeight: 8,
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  const SizedBox(height: 12),
-                  Text(
-                    '${formatBytes(_received)} / ${formatBytes(_total)}  (${downloadPercent(_received, _total)}%)',
-                    textAlign: TextAlign.center,
-                    style: GoogleFonts.poppins(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Downloading update…',
-                    textAlign: TextAlign.center,
-                    style: GoogleFonts.poppins(
-                      fontSize: 12,
-                      color: AppColors.textSecondary,
-                    ),
-                  ),
-                ] else if (_phase == AppUpdateUiPhase.verifying) ...[
-                  const Center(child: CircularProgressIndicator()),
-                  const SizedBox(height: 12),
-                  Text(
-                    'Verifying download…',
-                    textAlign: TextAlign.center,
-                    style: GoogleFonts.poppins(fontSize: 13),
-                  ),
-                ] else if (_phase == AppUpdateUiPhase.installing) ...[
-                  const Center(child: CircularProgressIndicator()),
-                  const SizedBox(height: 12),
-                  Text(
-                    'Opening installer…\nTap Install on the system dialog.',
-                    textAlign: TextAlign.center,
-                    style: GoogleFonts.poppins(
-                      fontSize: 13,
-                      height: 1.4,
-                    ),
-                  ),
-                ] else if (_phase == AppUpdateUiPhase.error) ...[
-                  Text(
-                    _errorMessage ?? 'Update failed.',
-                    textAlign: TextAlign.center,
-                    style: GoogleFonts.poppins(
-                      fontSize: 13,
-                      color: AppColors.error,
-                      height: 1.4,
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  FilledButton(
-                    onPressed: _startDownload,
-                    child: Text(
-                      'Retry download',
-                      style: GoogleFonts.poppins(fontWeight: FontWeight.w600),
-                    ),
-                  ),
-                ] else ...[
-                  FilledButton(
-                    onPressed: _startDownload,
-                    style: FilledButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                    ),
-                    child: Text(
-                      'Download update',
-                      style: GoogleFonts.poppins(fontWeight: FontWeight.w600),
-                    ),
-                  ),
-                ],
-                const SizedBox(height: 12),
-                if (widget.manifest.forceUpdate)
-                  Text(
-                    'You must install this update to continue using the app.',
-                    textAlign: TextAlign.center,
-                    style: GoogleFonts.poppins(
-                      fontSize: 11,
-                      color: AppColors.textSecondary,
-                    ),
-                  ),
-              ],
-            ),
+              ),
+              _buildActionArea(),
+            ],
           ),
         ),
+      ),
+    );
+  }
+
+  /// The pinned bottom area: the download / progress / error control plus the
+  /// force-update caption.
+  ///
+  /// Deliberately a sibling of the scroll view rather than its last child. That
+  /// is what keeps it reachable at any changelog length — a `Spacer()` inside
+  /// the scrolling `Column` was what let the button drift off the bottom.
+  Widget _buildActionArea() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (_phase == AppUpdateUiPhase.downloading) ...[
+            LinearProgressIndicator(
+              value: _total > 0 ? _received / _total : null,
+              minHeight: 8,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              '${formatBytes(_received)} / ${formatBytes(_total)}  (${downloadPercent(_received, _total)}%)',
+              textAlign: TextAlign.center,
+              style: GoogleFonts.poppins(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Downloading update…',
+              textAlign: TextAlign.center,
+              style: GoogleFonts.poppins(
+                fontSize: 12,
+                color: AppColors.textSecondary,
+              ),
+            ),
+          ] else if (_phase == AppUpdateUiPhase.verifying) ...[
+            const Center(child: CircularProgressIndicator()),
+            const SizedBox(height: 12),
+            Text(
+              'Verifying download…',
+              textAlign: TextAlign.center,
+              style: GoogleFonts.poppins(fontSize: 13),
+            ),
+          ] else if (_phase == AppUpdateUiPhase.installing) ...[
+            const Center(child: CircularProgressIndicator()),
+            const SizedBox(height: 12),
+            Text(
+              'Opening installer…\nTap Install on the system dialog.',
+              textAlign: TextAlign.center,
+              style: GoogleFonts.poppins(
+                fontSize: 13,
+                height: 1.4,
+              ),
+            ),
+          ] else if (_phase == AppUpdateUiPhase.error) ...[
+            Text(
+              _errorMessage ?? 'Update failed.',
+              textAlign: TextAlign.center,
+              style: GoogleFonts.poppins(
+                fontSize: 13,
+                color: AppColors.error,
+                height: 1.4,
+              ),
+            ),
+            const SizedBox(height: 16),
+            FilledButton(
+              onPressed: _startDownload,
+              child: Text(
+                'Retry download',
+                style: GoogleFonts.poppins(fontWeight: FontWeight.w600),
+              ),
+            ),
+          ] else ...[
+            FilledButton(
+              onPressed: _startDownload,
+              style: FilledButton.styleFrom(
+                padding: const EdgeInsets.symmetric(vertical: 14),
+              ),
+              child: Text(
+                'Download update',
+                style: GoogleFonts.poppins(fontWeight: FontWeight.w600),
+              ),
+            ),
+          ],
+          const SizedBox(height: 12),
+          if (widget.manifest.forceUpdate)
+            Text(
+              'You must install this update to continue using the app.',
+              textAlign: TextAlign.center,
+              style: GoogleFonts.poppins(
+                fontSize: 11,
+                color: AppColors.textSecondary,
+              ),
+            ),
+        ],
       ),
     );
   }

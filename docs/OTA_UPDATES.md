@@ -108,6 +108,32 @@ If manifest fetch fails: **Retry** or **Continue offline** (user choice).
 
 Interrupted downloads are **discarded**; next cold start restarts download from zero.
 
+### Update screen layout
+
+`AppUpdateScreen` splits its `Scaffold` body into two slots: an `Expanded` +
+`SingleChildScrollView` holding the header and the changelog, and a
+`_buildActionArea()` sibling that always sits at the bottom with the download /
+progress / retry control and the force-update caption.
+
+**Keep it that way.** The screen previously used one `Column` with a `Spacer()`
+before the button. A `Column` does not clip its children, it overflows them, so
+a release note taller than the remaining height pushed the button past the
+bottom edge where nothing could scroll to it or tap it. On a `force_update: true`
+build the user cannot leave the screen, so that overflow stranded them on the
+screen with no way forward.
+
+Two consequences worth remembering:
+
+- **Any control that is the only way forward must be outside the scroll view.**
+  Not in its last slot — outside it.
+- **Do not reintroduce a `Spacer()`** inside the scrolling `Column`. It expands
+  to fill the leftover space and undoes the pinning.
+
+`test/app_update_screen_layout_test.dart` guards this: with ~40 paragraphs of
+notes on a short viewport it asserts the button is found, is tappable, and that
+no `RenderFlex` overflow occurs. 6 of its 8 cases fail against the old
+single-`Column` layout.
+
 ---
 
 ## Manifest format (`ota/manifest.json`)
