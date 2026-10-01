@@ -4,11 +4,14 @@ Last updated: September 30, 2026 — **v2.5.0+97**
 
 Field data collection for **markets**, **dealers**, and **farms** in Attandance_App, backed by ZKTeco `/api/v1/mobile/marketing/*` (no JWT — same pattern as geo). Employee identity uses profile `canonicalEmployeeId` (`employees.id`).
 
+**v2.5.2+99: Manual company → sector → market selection.**
+The org master is retired. Zone stays read-only, but company, sector and market are the officer's own picks and cascade downwards; the zone no longer narrows any of them, nor the ERP dealer picker. See [Organisational selection](#organisational-selection).
+
 **v2.5.0+97: Relational org master, required farm phone, live dealer picker.**
-Company and sector no longer render "Unresolved from your profile". The relation now lives in the ZKTeco backend as a real org master (`mkt_zones` / `mkt_companies` / `mkt_sectors` / `mkt_zone_sectors`), synced from Sales by `marketing:sync-masters`, and the app asks one endpoint instead of guessing. A farm's phone number is now **required and unique among farms** — the old "farms are exempt" rule is gone. The ERP dealer field is removed from the farm form and the existing-dealer picker is now a live Sales-backed list, shown only for an existing dealer, which autofills what the ERP record actually holds. See [Relational org scope](#relational-org-scope), [Phone uniqueness](#phone-uniqueness), [Existing dealer picker](#existing-dealer-picker).
+Company and sector no longer render "Unresolved from your profile". The relation now lives in the ZKTeco backend as a real org master (`mkt_zones` / `mkt_companies` / `mkt_sectors` / `mkt_zone_sectors`), synced from Sales by `marketing:sync-masters`, and the app asks one endpoint instead of guessing. A farm's phone number is now **required and unique among farms** — the old "farms are exempt" rule is gone. The ERP dealer field is removed from the farm form and the existing-dealer picker is now a live Sales-backed list, shown only for an existing dealer, which autofills what the ERP record actually holds. See [Phone uniqueness](#phone-uniqueness), [Existing dealer picker](#existing-dealer-picker).
 
 **v2.4.0+94: Full-screen grids, employee-scoped read-only fields, generated codes.**
-The hub's three module cards are replaced by one full-height grid per tab with a pinned action bar. Zone / company / sector / market on all three forms are derived from the logged-in employee and shown read-only. Dealer / farm / market codes are allocated server-side (`DLR-09260001`). See [Hub layout](#hub-layout), [Relational org scope](#relational-org-scope), [Record codes](#record-codes).
+The hub's three module cards are replaced by one full-height grid per tab with a pinned action bar. Dealer / farm / market codes are allocated server-side (`DLR-09260001`). See [Hub layout](#hub-layout), [Organisational selection](#organisational-selection), [Record codes](#record-codes).
 
 **v2.3.0+93: Tabbed hub + labelled pill actions.** The hub is three **tabs** (Farms / Dealers / Markets) instead of three stacked cards, and the icon-only Create / View-all buttons are **icon + text pills**. Party detail's "Post a visit" and "New follow-up" are pills too. See [Hub layout](#hub-layout).
 
@@ -61,65 +64,62 @@ The hub is a **three-tab page**: Farms, Dealers, Markets. Farms is selected on o
 
 ---
 
-## Relational org scope
+## Organisational selection
 
-**v2.5.0+97.** The dealer, farm and market forms used to ask a field officer to pick their own **zone, company, sector and market**. Nothing stopped them choosing a neighbouring one, and every marketing list filters on those columns — so a wrong pick silently filed the record where the officer would not expect to find it. All four are now derived from the logged-in employee.
+**v2.5.2+99.** The dealer, farm and market forms show the logged-in officer's **zone read-only**, and let the officer pick their own **company**, then **sector**, then **market**. The zone does not narrow any of them.
 
-### Why company and sector used to be unresolved
+### Why
 
-`EmployeeMarketingScopeService` (`lib/services/employee_marketing_scope_service.dart`) used to take HRM's single free-text `sector` **name** and fuzzy-match it against *both* the Sales company list and the Sales sector list. Three failures stacked:
+Company and sector used to be derived from the employee's HRM profile. That could not work: `pphl_erp`'s `get-my-info` exposes a single free-text `sector` **name** and **no company at all**, and that name is frequently the literal `'N/A'`. The backend org master was then built to bridge the gap, resolving zone → sector → company through a synced table set.
 
-1. **HRM exposes no company at all.** `pphl_erp`'s `get-my-info` returns `user.sector` as a bare name from `EmployeeFacility`, and there is no company field anywhere in the payload. A company was being *derived* from a sector name by prefix match.
-2. **The sector name is frequently `'N/A'`.** `lib/models/auth_user_profile.dart` hardcodes `'N/A'` when an employee has no approved facility, and `_match()` bails on it outright.
-3. **The real relation was thrown away.** Sales already ships each sector's **`companyId`** (`BookingPersonWiseBookingsService::getChicksSectorList`), and `BookingFormData.sectorsForCompany()` already existed to follow it. The app ignored both and guessed the company a second time.
+That whole mechanism is now retired. Mirroring zones, companies and sectors from another application to answer a question this app could ask the master directly was the wrong shape: it needed a scheduler, four tables, a resolver, an admin sync button, and it still could not fill in a company for a zone with no sector link.
 
-So the field rendered *"Unresolved from your profile"* on all three forms whenever the officer's sector name was missing or spelled differently from the company master.
+### What the forms do now
 
-### What replaced it
+| Field | Source | Behaviour |
+|---|---|---|
+| Zone | HRM profile `zoneId` → Sales `get-zone` | Read-only. A fact about who is filing the record. |
+| Company | Sales `form-data` company list | **Required.** The officer picks it. |
+| Sector | Sales `form-data` sectors, filtered by the chosen company's `companyId` | Optional on a party, required on a market. |
+| Market | `mkt_markets`, filtered by the chosen sector's `sectorId` | Optional. |
 
-The relation now lives in the **ZKTeco backend**, which had no org master of any kind — its local `sectors` table was dropped in `2026_06_17_100000_drop_local_settings_tables`, so `zone_id` / `company_id` / `sector_id` on `mkt_*` were bare unvalidated integers with nothing to resolve a name from.
+Each picker clears everything below it: changing the company drops the sector and market, because a sector from the previous company would file the record under a pairing that cannot exist.
 
-| Table | Holds |
-|---|---|
-| `mkt_zones` | Sales zone, `name` unique, `source_id` = Sales `zones.id` |
-| `mkt_companies` | Sales company, `name` unique, `source_id` = Sales `companies.id` |
-| `mkt_sectors` | Sales sector with a **real FK** `company_id -> mkt_companies.id` |
-| `mkt_zone_sectors` | the **zone → sector** edge, composite PK |
+The sector list follows the **real** `companyId` edge Sales ships on every sector row (`BookingPersonWiseBookingsService::getChicksSectorList`, `getFeedSalesPointList`). The app never guesses a company from a name — that was the old bug.
 
-`marketing:sync-masters` populates them from Sales (`/api/get-zone`, `form-data`), daily on the scheduler. Zone → sector is matched by **district containment**: sector names are named after territories, and each zone publishes its districts, so a sector belongs to the zone whose districts its name contains. Bidirectional, because the two systems spell the same place differently (`Bogura`/`Bogra`). A sector matching no district is left unattached rather than guessed — `marketing:sync-masters` reports how many, because that count is exactly why a form can still show unresolved.
+`MarketingMasterService` (`lib/services/marketing_master_service.dart`) holds the company, sector and market lists, cached for 24 h. `filterSectorsForCompany` and `filterMarketsForSector` are static and pure so the cascade is unit-tested without a network round-trip.
 
-The app now asks one endpoint:
+### Why the zone stopped filtering
 
-| Endpoint | Returns |
-|---|---|
-| `GET /marketing/context?zone_id=&zone_name=&lat=&lng=` | `{ zone, company, sector, sectors[], markets[] }` |
-| `GET /marketing/dealers?zone_id=&zone_name=&q=` | Sales dealer master, narrowed to the zone |
+Narrowing the pickers by zone hid options an officer legitimately needed. A dealer who trades across a neighbouring zone could not file it; a sector belonging to the officer's company but a different territory was invisible. Zone remains read-only and still files with the record, because every marketing list and report keys off it.
 
-`EmployeeMarketingScopeService._resolve()` calls `context` first and only falls back to the old name match when the master has nothing for that zone — so a partially configured deployment still shows what it can.
+### The existing ERP dealer picker is unfiltered
 
-> **Never send a guessed id.** A wrong `company_id` files a dealer under another company — a silent data error an admin has to find and undo. An empty column is visible and correctable, so unresolved means omitted, never defaulted.
+`GET /marketing/dealers` returns the whole Sales dealer master. A Sales dealer row is `tradeName`, `dealerCode`, `contactPerson`, `phone`, `alterPhone`, `address` and a zone — **there is no company or sector edge on it**, and `pphl_account-laravel`'s `dealers` table has no `company_id` column. Narrowing the picker by company is therefore not implementable without changing that application. It is offered searchable instead.
+
+### Names travel with the ids
+
+The app posts `company_name` and `sector_name` alongside the ids. The webapp reports read the names straight off the row — it has no org master to resolve a name from, and `zone_name` was already stored this way.
+
+> **Still never guessed.** Every id sent is one the officer picked from a real master list. A wrong `company_id` files a dealer under another company, a silent data error an admin has to find and undo.
 
 ### Graceful degradation
 
 | Condition | Result |
 |---|---|
-| A field resolves | Value shown, id written to the payload |
-| A field does not resolve | *"Unresolved from your profile"*, and **the key is omitted** |
-| Any party with **no** resolvable zone | Submit blocked with a clear message — never saved untagged |
-| Org master unreachable | Everything resolves to null; the form still works, just unscoped |
-| Org master has the zone but no sector | Zone shows, company/sector show unresolved — `hasZoneWithoutCompany` distinguishes this from an empty scope |
-
-### Ids are translated on write, not rejected
-
-Every app build in the field sends **Sales** zone ids (the scope service resolves the employee's zone from `get-zone`), so `exists:mkt_zones,id` validation would have 422'd every save from an installed client. `MarketingOrgResolver` instead **resolves** the incoming id — local PK first, then `source_id`, then `zone_name` — and rewrites it onto the local row before the write. An id that matches nothing is left exactly as it was: losing the value is worse than storing an unresolved one.
+| Zone resolves | Shown read-only, filed with the record |
+| Zone does not resolve | *"Not set — ask an admin to set your zone"*, and submit is blocked |
+| Company not picked | Submit blocked with a clear message |
+| Sector / market not picked | Key omitted from the payload |
+| Org master unreachable | Empty picker rather than a hung form |
 
 ### Rendering
 
-`ReadOnlyField` (`lib/widgets/ui/read_only_field.dart`): a sunk `AppColors.surfaceSunk` box, `AppColors.inkFaint` text, **no mic**, **no tap handler**, and a small `Icons.lock_outline` suffix. A `SearchableSelectField` with `enabled: false` would still render as a field you could tap; this renders as a settled fact.
+`ReadOnlyField` (`lib/widgets/ui/read_only_field.dart`) still renders the **Zone**, the server-allocated **Code**, and a farm's **Party type**: a sunk `AppColors.surfaceSunk` box, `AppColors.inkFaint` text, **no mic**, **no tap handler**, and a small `Icons.lock_outline` suffix. A `SearchableSelectField` with `enabled: false` would still render as something tappable; this renders as a settled fact.
 
-The farm visit report's **Zone** is read-only on the same terms, with one difference: **the farm's own zone wins** when it has one (the report is about that farm, not the officer), falling back to the officer's scope for a farm created before zone tagging.
+Company, sector and market are `SearchableSelectField`s. Sector stays disabled with the hint *"Pick a company first"* until a company is chosen, and market stays disabled with *"Pick a sector first"* until a sector is — so the cascade is visible before the officer touches anything.
 
-**Still editable:** parent dealer on a farm, the market on an *edit* form, and every contact / credit / location / product field. A farm's dealer relationship is field knowledge, not an HRM attribute — deriving it from the employee's territory would be a guess.
+The farm visit report's **Zone** is read-only on the same terms, with one difference: **the farm's own zone wins** when it has one (the report is about that farm, not the officer), falling back to the officer's zone for a farm created before zone tagging.
 
 ---
 
@@ -197,7 +197,7 @@ The demo rows carried only an `id` and a `name`, so selecting one could never au
 
 - The picker's selection is written as `existing_dealer_id`, which is a **Sales** id, not an `mkt_parties` id. It is kept for traceability only.
 - The list is fetched lazily, on first render as an existing dealer and again when the party type is switched to it. A new dealer or a farm never issues the request.
-- Dealers with **no** zone are kept, not dropped: they are real dealers, they simply cannot be attributed to a territory.
+- **Unfiltered** as of v2.5.2+99 — see [Organisational selection](#organisational-selection). The Sales dealer master carries no company or sector edge, so the picker cannot be narrowed by either, and narrowing by the employee's zone would hide dealers they legitimately trade with. It is offered searchable by name, code, contact person or phone instead.
 
 ---
 
@@ -268,8 +268,7 @@ All marketing paths resolve via `EndpointConfigService` (ZKTeco base). Fallbacks
 | Key | Method | Path |
 |-----|--------|------|
 | `marketing.markets` | GET/POST | `/api/v1/mobile/marketing/markets` |
-| `marketing.context` | GET | `/api/v1/mobile/marketing/context?zone_id=&zone_name=&lat=&lng=` |
-| `marketing.dealers` | GET | `/api/v1/mobile/marketing/dealers?zone_id=&zone_name=&q=&limit=` |
+| `marketing.dealers` | GET | `/api/v1/mobile/marketing/dealers?q=&limit=` |
 | `marketing.market.create` | POST | `/api/v1/mobile/marketing/markets` |
 | `marketing.market.nextCode` | GET | `/api/v1/mobile/marketing/markets/next-code?prefix=MRK` |
 | `marketing.parties` | GET | `/api/v1/mobile/marketing/parties` |
@@ -329,7 +328,7 @@ Searchable company, **zone**, and sector (all **read-only from the employee's sc
 4. **Code** is allocated server-side and read-only — see [Record codes](#record-codes). `_code` is only kept as a fallback for a hand-seeded value.
 5. Scalars: `owner_name` (separate from contact person), `business_years`, `capacity_unit_id`, `existing_dealer_id` (existing dealers only).
 6. Searchable: live parent dealer (farms), live Sales ERP dealer (existing dealers only — see [Existing dealer picker](#existing-dealer-picker)), product / category / unit / company per product row.
-7. **Zone / company / sector / market are read-only** from the employee's scope — see [Relational org scope](#relational-org-scope). **Phone** is required for every party and unique within its pool — see [Phone uniqueness](#phone-uniqueness).
+7. **Zone is read-only** from the employee's profile; **company, sector and market are the officer's own picks**, cascading company → sector → market — see [Organisational selection](#organisational-selection). **Phone** is required for every party and unique within its pool — see [Phone uniqueness](#phone-uniqueness).
 8. Extra fields: email, alt phone, NID, trade license, `farm_type`, `capacity`, `credit_limit`, `payment_mode`, `lead_status`.
 9. Product rows: relation types include `business`; searchable product (fills `product_name` + `product_id`); category, unit, company; `brand_name`, `monthly_quantity` / `current_stock`, `unit_price`, `competitor_company`, `is_our_product`, notes. A row is sent only when `product_name` is present.
 10. Auto location on open → `lat`/`lng` + address prefill (editable). No Capture GPS button.
@@ -412,10 +411,10 @@ Selecting a product fills `product_name` and related category/company when those
 | `lib/models/zone_models.dart` | `SalesZone` / `ZoneDistrict` wire models for `get-zone` |
 | `lib/models/zone_scope.dart` | `ZoneScope` — the resolved zone set and the `matches` predicate |
 | `lib/widgets/ui/app_pill_button.dart` | `AppPillButton` — icon + label action used across the hub and party detail |
-| `lib/widgets/ui/read_only_field.dart` | `ReadOnlyField` — a value the app derived, shown locked |
-| `lib/services/employee_marketing_scope_service.dart` | Resolves zone / company / sector / market from the employee; 24 h cache |
-| `lib/services/marketing_service.dart` | HTTP client (`loadMarketingContext`, `listExistingDealers`, `nextCode`, `findPartiesByPhone`, `findMarketsByPhone`, `normalisePhone`, `samePhone`, check-in/out, market update) |
-| `lib/models/marketing_context.dart` | `MarketingContext` / `MarketingDealer` wire models |
+| `lib/widgets/ui/read_only_field.dart` | `ReadOnlyField` — a settled fact (zone, code, party type), shown locked |
+| `lib/services/marketing_master_service.dart` | Company / sector / market lists for the cascading pickers; 24 h cache |
+| `lib/services/marketing_service.dart` | HTTP client (`listExistingDealers`, `nextCode`, `findPartiesByPhone`, `findMarketsByPhone`, `normalisePhone`, `samePhone`, check-in/out, market update) |
+| `lib/models/marketing_dealer.dart` | `MarketingDealer` wire model for the ERP dealer picker |
 | `lib/services/zone_scope_service.dart` | Resolves the profile's zone ids against the master; 24 h cache |
 | `lib/widgets/searchable_select_field.dart` | Type-to-search dropdown (shared with Post booking) |
 | `lib/widgets/voice_input_field.dart` | `VoiceTextField` + `VoiceMicButton` (mic on typed fields) |
@@ -480,11 +479,11 @@ Parties carry no district of their own, so they inherit the district of the mark
 | Marketing hub previews | Farms, dealers and markets, each the union of every assigned zone. A strip above them names the zones and lists their districts. |
 | Markets / Parties list screens | Full lists, filtered. An empty result names the zones rather than looking like a loading bug. |
 | Visits list | Filtered by zone id and name (no district available). |
-| Market + Party create forms | Zone picker options come from `get-zone`; pre-seeded to the employee's first assigned zone, matched **by name**. |
-| Party form market picker | Offers only markets inside the selected zone (name-matched, using that zone's district list). |
+| Market + Party create forms | **Zone is read-only**, resolved from the profile and matched **by name** to the `get-zone` master. Company / sector / market are the officer's own picks and are **not** zone-scoped — see [Organisational selection](#organisational-selection). |
+| Party form market picker | Offers only the markets belonging to the **chosen sector**, not the employee's zone. |
 | Post sale / Post booking / Receive payment | Dealer dropdowns scoped to the employee's zones **by zone name**. Dealers with no zone are kept — the payload cannot say which zone they belong to. |
 
-The market form previously had **no** profile prefill while the party form did; both now prefill by name.
+The market form previously had **no** profile prefill while the party form did; both now prefill the zone by name.
 
 ### Graceful degradation
 
