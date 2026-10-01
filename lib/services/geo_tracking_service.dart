@@ -16,6 +16,7 @@ import 'endpoint_config_service.dart';
 import 'fcm_wake_handler.dart';
 import 'geo_background_worker.dart';
 import 'geo_notification_service.dart';
+import 'permission_service.dart';
 
 const String _enabledKey = 'geo_tracking_enabled';
 const String _lastPingKey = 'geo_last_ping_json';
@@ -98,8 +99,22 @@ class GeoTrackingService {
     return prefs.getBool(_enabledKey) ?? false;
   }
 
-  Future<bool> isGeoFeatureEnabled() =>
-      _configService.isFeatureEnabled('geo.tracking.enabled', defaultValue: true);
+  /// Geo tracking is reachable when the deployment enables the feature **and**
+  /// the signed-in user holds `tracking.read`.
+  ///
+  /// The flag is deployment-wide; the permission is per-user. Gating here rather
+  /// than only on the Geo Tracking screen matters because
+  /// [ensureEnabledIfAllowed] runs at bootstrap and on resume — without the
+  /// permission check here, a user who may not see the module would still have
+  /// the app silently uploading their location in the background.
+  Future<bool> isGeoFeatureEnabled() async {
+    final enabled = await _configService.isFeatureEnabled(
+      'geo.tracking.enabled',
+      defaultValue: true,
+    );
+    return enabled &&
+        PermissionService.instance.canViewModule('tracking');
+  }
 
   /// Turn tracking on when the feature flag is on and background location is granted.
   /// Safe to call after the permissions gate, on login, or when opening Geo Tracking.

@@ -15,6 +15,7 @@ class AppPillButton extends StatelessWidget {
     this.color = AppColors.primary,
     this.filled = true,
     this.dense = false,
+    this.enabled = true,
   });
 
   final IconData icon;
@@ -31,10 +32,22 @@ class AppPillButton extends StatelessWidget {
   /// Tightens the horizontal padding, for rows that already hold two pills.
   final bool dense;
 
+  /// A disabled pill stays visible and stays tappable — [onTap] is still
+  /// called, so the caller can explain *why* it is locked rather than leaving
+  /// the user tapping a dead control. The appearance carries the state: the
+  /// module colour drops to a muted grey and the icon becomes a lock, so the
+  /// restriction is legible without a long press to discover.
+  final bool enabled;
+
   @override
   Widget build(BuildContext context) {
-    final foreground = filled ? Colors.white : color;
-    final background = filled ? color : color.withValues(alpha: 0.10);
+    final foreground = !enabled
+        ? AppColors.inkMuted
+        : (filled ? Colors.white : color);
+    final background = !enabled
+        ? AppColors.line.withValues(alpha: 0.35)
+        : (filled ? color : color.withValues(alpha: 0.10));
+    final shownIcon = enabled ? icon : _lockGlyph;
 
     return Material(
       color: background,
@@ -59,7 +72,7 @@ class AppPillButton extends StatelessWidget {
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(icon, size: dense ? 16 : 18, color: foreground),
+              Icon(shownIcon, size: dense ? 16 : 18, color: foreground),
               const SizedBox(width: 6),
               // Flexible so a long label ellipsises inside whatever width the
               // pill is given. Without this the Row is sized to the text and
@@ -83,3 +96,8 @@ class AppPillButton extends StatelessWidget {
     );
   }
 }
+
+/// Stands in for the action's own icon while a pill is locked, so the reason
+/// the control cannot be used is visible on the control itself. `Icons.lock`
+/// is a Material constant — the app's `AppIcons` set has no lock glyph.
+const IconData _lockGlyph = Icons.lock_outline;

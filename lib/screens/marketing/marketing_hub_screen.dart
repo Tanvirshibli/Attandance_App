@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 
+import '../../models/app_permissions.dart';
 import '../../models/marketing_models.dart';
 import '../../models/zone_scope.dart';
 import '../../services/marketing_service.dart';
+import '../../services/permission_service.dart';
 import '../../services/zone_scope_service.dart';
 import '../../widgets/ui/ui.dart';
 import 'followup_form_screen.dart';
@@ -27,7 +30,7 @@ class MarketingHubScreen extends StatefulWidget {
 }
 
 class _MarketingHubScreenState extends State<MarketingHubScreen>
-    with SingleTickerProviderStateMixin {
+    with TickerProviderStateMixin {
   final MarketingService _service = MarketingService();
 
   /// The API caps `limit` at 500 and defaults to 100. A grid is only worth
@@ -36,11 +39,13 @@ class _MarketingHubScreenState extends State<MarketingHubScreen>
   /// the visible rows, not just the page size.
   static const int _listLimit = 200;
 
-  // Built in initState rather than as a `late final` field initializer. A lazy
+  // Assigned in initState rather than as a lazy field initializer: a lazy
   // controller would be constructed for the first time inside dispose() when a
   // screen is torn down before its first build, and the mixin would then look
-  // up a TickerMode on an already deactivated element.
-  late final TabController _tabController;
+  // up a TickerMode on an already deactivated element. Deliberately *not*
+  // `late final` — [PermissionService] can shrink the visible tab set after
+  // this screen is built, and [_syncTabController] has to replace it.
+  late TabController _tabController;
 
   bool _loadingFeature = true;
   bool _enabled = true;
@@ -58,25 +63,130 @@ class _MarketingHubScreenState extends State<MarketingHubScreen>
   String? _dealersError;
   String? _marketsError;
 
-  /// Create / View-all labels and colours, indexed by tab position. The action
-  /// bar reads the entry for whichever tab is selected.
-  static final _tabActions = <_TabAction>[
-    const _TabAction('Add farm', 'All farms', AppColors.accent),
-    const _TabAction('Add dealer', 'All dealers', AppColors.primary),
-    const _TabAction('Add market', 'All markets', AppColors.secondary),
+  /// The three record tabs and everything that varies between them, so a tab
+  /// cannot be hidden without its grid, action bar and controller staying in
+  /// step. See [_visibleTabs] for the permission filter.
+  ///
+  /// `final`, not `const`: `AppIcons.*` are getters, so an icon cannot be a
+  /// compile-time constant.
+  static final _tabs = <_TabAction>[
+    _TabAction(
+      key: 'farm',
+      label: 'Farms',
+      icon: AppIcons.farms,
+      create: 'Add farm',
+      view: 'All farms',
+      color: AppColors.accent,
+    ),
+    _TabAction(
+      key: 'dealer',
+      label: 'Dealers',
+      icon: AppIcons.store,
+      create: 'Add dealer',
+      view: 'All dealers',
+      color: AppColors.primary,
+    ),
+    _TabAction(
+      key: 'market',
+      label: 'Markets',
+      icon: AppIcons.store,
+      create: 'Add market',
+      view: 'All markets',
+      color: AppColors.secondary,
+    ),
   ];
+
+  /// Tabs the user may see, in catalogue order.
+  ///
+  /// `markets.read` alone should surface Markets and not the Farms tab, so the
+  /// whole tab set is derived rather than a fixed list of three.
+  List<_TabAction> _visibleTabs(PermissionService permissions) =>
+      _tabs
+          .where((tab) => permissions.canAny(
+                AppPermissions.marketingReadPermissions(tab.key),
+              ))
+          .toList();
 
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 3, vsync: this);
+    // Seeded with the full set; [didChangeDependencies] resizes it to the tabs
+    // this user may actually see before the first build.
+    _tabController = TabController(length: _tabs.length, vsync: this);
+    // The permission list lands with the background profile fetch, so it can
+    // arrive after this screen has already rendered once. Listening here — and
+    // on the service itself, not inside the AnimatedBuilder — is what lets the
+    // tab set be resized *outside* the build phase, which is the only safe
+    // place to swap a TabController.
+    PermissionService.instance.addListener(_onPermissionsChanged);
     _init();
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _syncTabController(_visibleTabs(PermissionService.instance));
+  }
+
+  @override
   void dispose() {
+    PermissionService.instance.removeListener(_onPermissionsChanged);
     _tabController.dispose();
     super.dispose();
+  }
+
+  void _onPermissionsChanged() {
+    if (!mounted) {
+      return;
+    }
+    // Resize first, then rebuild. Doing it in the other order would build a
+    // TabBar whose controller length disagrees with its tab count.
+    _syncTabController(_visibleTabs(PermissionService.instance));
+    setState(() {});
+  }
+
+  /// Resizes the controller to [tabs] when the visible set has changed.
+  ///
+  /// **Must not run inside `build`, and must not dispose the old controller
+  /// immediately.** Creating a `TabController` allocates an `AnimationController`
+  /// through this state, and disposing the previous one while a `TabBar` or
+  /// `TabBarView` from the tree being rebuilt still holds it throws "A
+  /// TabController was used after being disposed". So the swap happens here, in
+  /// the frame *before* the build that needs it, and the retired controller is
+  /// released after that frame has been laid out.
+  ///
+  /// This is why the mixin is `TickerProviderStateMixin` rather than
+  /// `SingleTickerProviderStateMixin`: during the frame between the swap and the
+  /// deferred dispose, two controllers are alive, and the single-ticker mixin
+  /// asserts on exactly that.
+  void _syncTabController(List<_TabAction> tabs) {
+    // `TabController(length: 0)` is a hard error, so an empty visible set keeps
+    // the current controller and the build renders the "nothing to show" state
+    // instead of a tab bar. The field is never left uninitialised, which is
+    // what would otherwise turn this into a LateInitializationError.
+    final wanted = tabs.isEmpty ? _tabController.length : tabs.length;
+    if (_tabController.length == wanted) {
+      return;
+    }
+    final selected = _tabController.index;
+    final outgoing = _tabController;
+    final replacement = TabController(length: wanted, vsync: this);
+    replacement.index = selected < wanted ? selected : 0;
+    _tabController = replacement;
+
+    final frame = SchedulerBinding.instance.currentFrameTimeStamp;
+    final readyAt =
+        frame == Duration.zero ? Duration.zero : frame + const Duration(milliseconds: 1);
+    SchedulerBinding.instance.addPostFrameCallback((_) {
+      if (SchedulerBinding.instance.currentFrameTimeStamp >= readyAt) {
+        outgoing.dispose();
+      } else {
+        // The callback landed in the same frame it was registered, before the
+        // tree that still referenced [outgoing] was rebuilt.
+        SchedulerBinding.instance
+            .addPostFrameCallback((_) => outgoing.dispose());
+      }
+    });
   }
 
   Future<void> _init() async {
@@ -188,10 +298,10 @@ class _MarketingHubScreenState extends State<MarketingHubScreen>
   }
 
   void _createFor(int index) {
-    switch (index) {
-      case 0:
+    switch (_tabs[index].key) {
+      case 'farm':
         _open(const PartyFormScreen(initialPartyType: 'farm'));
-      case 1:
+      case 'dealer':
         _open(const PartyFormScreen(initialPartyType: 'dealer'));
       default:
         _open(const MarketFormScreen());
@@ -199,18 +309,46 @@ class _MarketingHubScreenState extends State<MarketingHubScreen>
   }
 
   void _viewAllFor(int index) {
-    switch (index) {
-      case 0:
+    switch (_tabs[index].key) {
+      case 'farm':
         _open(const PartyListScreen(initialPartyType: 'farm'));
-      case 1:
+      case 'dealer':
         _open(const PartyListScreen(initialPartyType: 'dealer'));
       default:
         _open(const MarketListScreen());
     }
   }
 
+  /// Explains a locked action rather than silently swallowing the tap — the
+  /// feature stays visible so the user can see it exists and ask for it.
+  void _explainDenied(String tabKey) {
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(
+            PermissionService.instance.denialMessage(tabKey),
+          ),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+  }
+
   @override
   Widget build(BuildContext context) {
+    // The permission list arrives with the background profile fetch, after this
+    // screen's first build, so the tab set is recomputed on every rebuild and
+    // the controller is resized to match.
+    return AnimatedBuilder(
+      animation: PermissionService.instance,
+      builder: (context, _) => _buildHub(PermissionService.instance),
+    );
+  }
+
+  Widget _buildHub(PermissionService permissions) {
+    final tabs = _visibleTabs(permissions);
+    final controller = _tabController;
+
     return Scaffold(
       backgroundColor: AppColors.canvas,
       body: Column(
@@ -238,6 +376,20 @@ class _MarketingHubScreenState extends State<MarketingHubScreen>
                 ),
               ),
             )
+          else if (tabs.isEmpty)
+            Expanded(
+              child: Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(20),
+                  child: AppEmptyState(
+                    icon: AppIcons.farms,
+                    title: 'Nothing to show yet',
+                    subtitle:
+                        'You do not have permission to view farms, dealers or markets.',
+                  ),
+                ),
+              ),
+            )
           else ...[
             if (_scope != null && !_scope!.isEmpty)
               Padding(
@@ -248,7 +400,7 @@ class _MarketingHubScreenState extends State<MarketingHubScreen>
             Container(
               color: AppColors.canvas,
               child: TabBar(
-                controller: _tabController,
+                controller: controller,
                 indicatorSize: TabBarIndicatorSize.tab,
                 indicatorWeight: 3,
                 dividerColor: AppColors.line,
@@ -258,9 +410,7 @@ class _MarketingHubScreenState extends State<MarketingHubScreen>
                 labelColor: AppColors.ink,
                 unselectedLabelColor: AppColors.inkMuted,
                 tabs: [
-                  Tab(icon: Icon(AppIcons.farms), text: 'Farms'),
-                  Tab(icon: Icon(AppIcons.store), text: 'Dealers'),
-                  Tab(icon: Icon(AppIcons.store), text: 'Markets'),
+                  for (final tab in tabs) Tab(icon: Icon(tab.icon), text: tab.label),
                 ],
               ),
             ),
@@ -268,83 +418,110 @@ class _MarketingHubScreenState extends State<MarketingHubScreen>
             // scrolls on its own. Tabs are still built lazily.
             Expanded(
               child: TabBarView(
-                controller: _tabController,
+                controller: controller,
                 children: [
-                  _RecordGrid<Party>(
-                    color: AppColors.accent,
-                    icon: AppIcons.farms,
-                    emptyLabel: 'No farms in your zones yet',
-                    loading: _loadingRecords,
-                    error: _farmsError,
-                    scope: _scope,
-                    onRetry: _loadRecords,
-                    items: _farms,
-                    itemBuilder: (party) => _PartyGridTile(
-                      party: party,
-                      color: AppColors.accent,
-                      statusColor: _statusColor,
-                    ),
-                    onTap: (party) => _open(
-                      PartyDetailScreen(partyId: party.id, initialParty: party),
-                    ),
-                  ),
-                  _RecordGrid<Party>(
-                    color: AppColors.primary,
-                    icon: AppIcons.store,
-                    emptyLabel: 'No dealers in your zones yet',
-                    loading: _loadingRecords,
-                    error: _dealersError,
-                    scope: _scope,
-                    onRetry: _loadRecords,
-                    items: _dealers,
-                    itemBuilder: (party) => _PartyGridTile(
-                      party: party,
-                      color: AppColors.primary,
-                      statusColor: _statusColor,
-                    ),
-                    onTap: (party) => _open(
-                      PartyDetailScreen(partyId: party.id, initialParty: party),
-                    ),
-                  ),
-                  _RecordGrid<Market>(
-                    color: AppColors.secondary,
-                    icon: AppIcons.store,
-                    emptyLabel: 'No markets in your zones yet',
-                    loading: _loadingRecords,
-                    error: _marketsError,
-                    scope: _scope,
-                    onRetry: _loadRecords,
-                    items: _markets,
-                    itemBuilder: (market) => _MarketGridTile(
-                      market: market,
-                      color: AppColors.secondary,
-                    ),
-                    onTap: (market) =>
-                        _open(MarketDetailScreen(market: market)),
-                  ),
+                  for (final tab in tabs) _gridFor(tab),
                 ],
               ),
             ),
           ],
         ],
       ),
-      bottomNavigationBar: _enabled
+      bottomNavigationBar: _enabled && tabs.isNotEmpty
           ? _HubActionBar(
-              controller: _tabController,
-              labels: _tabActions,
+              controller: controller,
+              labels: tabs,
+              permissions: permissions,
               onCreate: _createFor,
               onViewAll: _viewAllFor,
+              onDenied: _explainDenied,
               onFollowUps: () =>
                   _open(const FollowupFormScreen(showListMode: true)),
             )
           : null,
     );
   }
+
+  /// The grid for one tab. Kept as a lookup on [tab.key] rather than a positional
+  /// list so filtering the tabs cannot leave a grid paired with the wrong tab —
+  /// the failure that a `TabController(length: 3)` with two tabs would hide
+  /// until someone swiped.
+  Widget _gridFor(_TabAction tab) {
+    switch (tab.key) {
+      case 'farm':
+        return _RecordGrid<Party>(
+          color: tab.color,
+          icon: tab.icon,
+          emptyLabel: 'No farms in your zones yet',
+          loading: _loadingRecords,
+          error: _farmsError,
+          scope: _scope,
+          onRetry: _loadRecords,
+          items: _farms,
+          itemBuilder: (party) => _PartyGridTile(
+            party: party,
+            color: tab.color,
+            statusColor: _statusColor,
+          ),
+          onTap: (party) => _open(
+            PartyDetailScreen(partyId: party.id, initialParty: party),
+          ),
+        );
+      case 'dealer':
+        return _RecordGrid<Party>(
+          color: tab.color,
+          icon: tab.icon,
+          emptyLabel: 'No dealers in your zones yet',
+          loading: _loadingRecords,
+          error: _dealersError,
+          scope: _scope,
+          onRetry: _loadRecords,
+          items: _dealers,
+          itemBuilder: (party) => _PartyGridTile(
+            party: party,
+            color: tab.color,
+            statusColor: _statusColor,
+          ),
+          onTap: (party) => _open(
+            PartyDetailScreen(partyId: party.id, initialParty: party),
+          ),
+        );
+      default:
+        return _RecordGrid<Market>(
+          color: tab.color,
+          icon: tab.icon,
+          emptyLabel: 'No markets in your zones yet',
+          loading: _loadingRecords,
+          error: _marketsError,
+          scope: _scope,
+          onRetry: _loadRecords,
+          items: _markets,
+          itemBuilder: (market) => _MarketGridTile(
+            market: market,
+            color: tab.color,
+          ),
+          onTap: (market) => _open(MarketDetailScreen(market: market)),
+        );
+    }
+  }
 }
 
 class _TabAction {
-  const _TabAction(this.create, this.view, this.color);
+  _TabAction({
+    required this.key,
+    required this.label,
+    required this.icon,
+    required this.create,
+    required this.view,
+    required this.color,
+  });
 
+  /// Matches [AppPermissions.marketingReadPermissions] and
+  /// [AppPermissions.moduleCreatePermissions], so the tab, its grid and its
+  /// create button all resolve from the same key.
+  final String key;
+  final String label;
+  final IconData icon;
   final String create;
   final String view;
   final Color color;
@@ -413,15 +590,19 @@ class _HubActionBar extends StatelessWidget {
   const _HubActionBar({
     required this.controller,
     required this.labels,
+    required this.permissions,
     required this.onCreate,
     required this.onViewAll,
+    required this.onDenied,
     required this.onFollowUps,
   });
 
   final TabController controller;
   final List<_TabAction> labels;
+  final PermissionService permissions;
   final void Function(int index) onCreate;
   final void Function(int index) onViewAll;
+  final void Function(String tabKey) onDenied;
   final VoidCallback onFollowUps;
 
   @override
@@ -433,6 +614,10 @@ class _HubActionBar extends StatelessWidget {
       builder: (context, _) {
         final index = controller.index.clamp(0, labels.length - 1);
         final label = labels[index];
+        // A missing `*.create` disables the pill rather than removing it: the
+        // user can see the feature exists, and tapping tells them who to ask.
+        // Removing it would make the app look like it simply lacks the feature.
+        final canCreate = permissions.canCreateIn(label.key);
 
         return Container(
           decoration: BoxDecoration(
@@ -451,8 +636,11 @@ class _HubActionBar extends StatelessWidget {
                     child: AppPillButton(
                       icon: Icons.add_rounded,
                       label: label.create,
-                      onTap: () => onCreate(index),
+                      onTap: canCreate
+                          ? () => onCreate(index)
+                          : () => onDenied(label.key),
                       color: label.color,
+                      enabled: canCreate,
                       dense: true,
                     ),
                   ),

@@ -1,6 +1,7 @@
 import 'package:animate_do/animate_do.dart';
 import 'package:flutter/material.dart';
 
+import '../services/permission_service.dart';
 import '../widgets/ui/ui.dart';
 import 'attendance_report_screen.dart';
 import 'geo_tracking_screen.dart';
@@ -17,9 +18,16 @@ class EmployeeServicesHubScreen extends StatelessWidget {
   /// When true, hub is shown as a footer tab (no back button, title "Services").
   final bool showAsTabRoot;
 
-  @override
-  Widget build(BuildContext context) {
-    final tiles = [
+  /// Every module the signed-in user may reach.
+  ///
+  /// [AppPermissions.moduleReadPermissions] decides visibility: a module absent
+  /// from that map is unconditional, so Attendance, Leave, Payments and Sales
+  /// info — the employee's own records rather than admin-managed modules —
+  /// always show. A module keyed there appears only once
+  /// [PermissionService] holds that user's grants.
+  static List<_ServiceTileData> _visibleTiles() {
+    final permissions = PermissionService.instance;
+    final all = <_ServiceTileData>[
       _ServiceTileData(
         icon: AppIcons.attendance,
         label: 'Attendance report',
@@ -43,6 +51,7 @@ class EmployeeServicesHubScreen extends StatelessWidget {
         label: 'HR benefits',
         color: AppColors.mHr,
         screen: const HrBenefitsHubScreen(),
+        moduleKey: 'benefits',
       ),
       _ServiceTileData(
         icon: AppIcons.sales,
@@ -55,20 +64,40 @@ class EmployeeServicesHubScreen extends StatelessWidget {
         label: 'Vehicles',
         color: AppColors.mVehicles,
         screen: const VehicleListScreen(),
+        moduleKey: 'vehicles',
       ),
       _ServiceTileData(
         icon: AppIcons.farms,
         label: 'Farms & dealers',
         color: AppColors.mFarms,
         screen: const MarketingHubScreen(),
+        moduleKey: 'marketing',
       ),
       _ServiceTileData(
         icon: AppIcons.geo,
         label: 'Geo tracking',
         color: AppColors.mGeo,
         screen: const GeoTrackingScreen(),
+        moduleKey: 'tracking',
       ),
     ];
+
+    return all.where((tile) => permissions.canViewModule(tile.moduleKey)).toList();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // The permission list lands with the background profile fetch, after this
+    // screen has already built once. Rebuilding on notify lets a tile appear
+    // without waiting for the user to navigate away and back.
+    return AnimatedBuilder(
+      animation: PermissionService.instance,
+      builder: (context, _) => _buildHub(PermissionService.instance),
+    );
+  }
+
+  Widget _buildHub(PermissionService permissions) {
+    final tiles = _visibleTiles();
 
     return Scaffold(
       backgroundColor: AppColors.canvas,
@@ -100,6 +129,8 @@ class EmployeeServicesHubScreen extends StatelessWidget {
                 (context, index) {
                   final tile = tiles[index];
                   return FadeInUp(
+                    // Stagger follows the *filtered* index, so hiding a tile
+                    // does not leave the remaining ones animating out of step.
                     delay: Duration(milliseconds: 60 * index),
                     child: _ServiceTile(tile: tile),
                   );
@@ -120,6 +151,7 @@ class _ServiceTileData {
     required this.label,
     required this.color,
     required this.screen,
+    this.moduleKey,
   });
 
   final IconData icon;
@@ -129,6 +161,10 @@ class _ServiceTileData {
   /// Pre-built so the route stays an untyped
   /// `MaterialPageRoute(builder: (_) => screen)`, exactly as before.
   final Widget screen;
+
+  /// Key into [AppPermissions.moduleReadPermissions]. Null means the module is
+  /// ungated — the employee's own records, always available.
+  final String? moduleKey;
 }
 
 class _ServiceTile extends StatelessWidget {

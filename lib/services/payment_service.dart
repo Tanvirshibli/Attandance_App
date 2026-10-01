@@ -15,6 +15,7 @@ import '../models/payment_report_failure.dart';
 import '../utils/multipart_form.dart';
 import '../utils/user_facing_error.dart';
 import 'endpoint_config_service.dart';
+import 'permission_service.dart';
 import 'hrm_api_client.dart';
 import 'image_upload_service.dart';
 
@@ -30,8 +31,21 @@ class PaymentService {
 
   bool get useDemoData => AppConfig.usePaymentDemoData;
 
-  Future<bool> isPaymentEnabled() =>
-      _configService.isFeatureEnabled('payment.enabled', defaultValue: true);
+  /// Payments are reachable when the deployment enables the feature **and** the
+  /// signed-in user holds `benefits.read`.
+  ///
+  /// Payments and HR benefits are the same module in this app — [PaymentHubScreen]
+  /// is what the benefits tile opens — so they share one permission rather than
+  /// gating the tile one way and the screen another. The flag stays a
+  /// deployment-wide switch; the permission is per-user.
+  Future<bool> isPaymentEnabled() async {
+    final enabled = await _configService.isFeatureEnabled(
+      'payment.enabled',
+      defaultValue: true,
+    );
+    return enabled &&
+        PermissionService.instance.canViewModule('benefits');
+  }
 
   Future<String> _salesApiBase() async {
     final fromPersonSales = await _configService.resolveUrl('sales.personSales');

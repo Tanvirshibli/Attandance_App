@@ -9,6 +9,7 @@ import '../models/marketing_dealer.dart';
 import '../models/marketing_models.dart';
 import '../utils/user_facing_error.dart';
 import 'endpoint_config_service.dart';
+import 'permission_service.dart';
 import 'image_upload_service.dart';
 
 class MarketingService {
@@ -23,8 +24,28 @@ class MarketingService {
     'User-Agent': _userAgent,
   };
 
-  Future<bool> isMarketingEnabled() =>
-      _configService.isFeatureEnabled('marketing.enabled', defaultValue: true);
+  /// Marketing is reachable when the deployment enables the feature **and** the
+  /// signed-in user holds at least one of the marketing read permissions.
+  ///
+  /// Two independent axes, both required. The flag is a deployment-wide switch
+  /// from `app-config`; the permission is a per-user grant from HRM. Because
+  /// this wrapper is what all 27-odd marketing call sites check, composing them
+  /// here means a screen reached by a stale navigation stack or a deep link
+  /// still fails closed.
+  Future<bool> isMarketingEnabled() async {
+    final enabled = await _configService.isFeatureEnabled(
+      'marketing.enabled',
+      defaultValue: true,
+    );
+    return enabled &&
+        PermissionService.instance.canViewModule('marketing');
+  }
+
+  /// Whether the user may file new farms, dealers or markets. Separate from
+  /// [isMarketingEnabled] on purpose: an officer may read markets without being
+  /// able to add one.
+  bool canCreate(String recordType) =>
+      PermissionService.instance.canCreateIn(recordType);
 
   Future<String> _url(String key, String fallbackPath) async {
     final resolved = await _configService.resolveUrl(key);

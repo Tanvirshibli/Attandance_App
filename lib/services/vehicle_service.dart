@@ -6,6 +6,7 @@ import '../config/app_config.dart';
 import '../models/api_result.dart';
 import '../models/vehicle_models.dart';
 import 'endpoint_config_service.dart';
+import 'permission_service.dart';
 
 class VehicleService {
   VehicleService({EndpointConfigService? configService})
@@ -13,8 +14,18 @@ class VehicleService {
 
   final EndpointConfigService _configService;
 
-  Future<bool> isVehicleEnabled() =>
-      _configService.isFeatureEnabled('vehicle.enabled', defaultValue: true);
+  /// Vehicles are reachable when the deployment enables the feature **and** the
+  /// signed-in user holds `vehicles.read`. The flag is deployment-wide; the
+  /// permission is per-user. Every vehicle call site checks this wrapper, so a
+  /// screen reached another way still fails closed.
+  Future<bool> isVehicleEnabled() async {
+    final enabled = await _configService.isFeatureEnabled(
+      'vehicle.enabled',
+      defaultValue: true,
+    );
+    return enabled &&
+        PermissionService.instance.canViewModule('vehicles');
+  }
 
   Future<ApiResult<List<VehicleSummary>>> getActiveVehicles() async {
     if (!await isVehicleEnabled()) {
