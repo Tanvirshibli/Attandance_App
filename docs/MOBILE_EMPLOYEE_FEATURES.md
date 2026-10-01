@@ -333,6 +333,7 @@ Full reference: [OTA_UPDATES.md](OTA_UPDATES.md)
 - First launch: **Server Bootstrap** — enter ZKTeco base URL only
 - Admin maps APIs in ZKTeco: **Settings → Mobile App API**
 - Feature flags: `sales.enabled`, `payment.enabled`, `vehicle.enabled`, `geo.tracking.enabled`, `marketing.enabled`
+- Per-user HRM role permissions also gate modules and actions — see [PERMISSION_ACCESS_CONTROL.md](./PERMISSION_ACCESS_CONTROL.md). The two compose: a module needs **both** its flag on **and** the permission granted.
 - Sales reporting defaults live; Payments remain demo until dart-define flip
 
 ---

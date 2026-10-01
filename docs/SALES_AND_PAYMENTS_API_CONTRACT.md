@@ -211,8 +211,32 @@ When `USE_SALES_DEMO_DATA=true`, Post Sale stays on-device demo only.
 | `advanceAmount`, `totalAmount` | numbers; advance only when booking money is on |
 | `bookingDate`, `invoiceDate` | `YYYY-MM-DD` (invoice ≥ booking) |
 | `note` | optional header note |
-| `details[i][productId]`, `unitId`, `qty`, `price`, `note` | one or more lines (`unitId` defaults to `1`) |
+| `details[i][productId]`, `unitId`, `qty`, `price`, `note` | one or more lines (`unitId` from the product catalog, falling back to `1`) |
 | **Chicks only** | required `cZoneId`, `isMultiDelivery` (`0`/`1`); optional `deliveryDetails[i][name|phone|roadNo|address|productDetails]`; line `mrp` (defaults to sale price) |
+
+#### ⚠️ `details[i][qty]` is **kg**, not bags — for feed
+
+The Add Items section is entered in **bags**, but the API stores `qty` **verbatim as kg** and every
+downstream report divides by the product's `sizeOrWeight` to show bags again
+(`DealerOverviewService.php:1819-1841`). The app therefore converts on submit:
+
+```
+qtySent = bagsTyped × products."sizeOrWeight"
+```
+
+Bag size comes from `GET /api/v2/getChildCateProList` (see [A.2d](#a2d-product-catalog--bag-size)) —
+**it is not on the form-data payload**. If a product has no `sizeOrWeight` on file, the typed number is
+sent unchanged and the field reads `Kg` rather than `Bag`, so the app never claims a conversion it
+cannot make. `unitId` comes from the same catalog.
+
+Line totals are computed on the **converted kg**, because the server computes
+`total = qty × price` (`BookingPersonWiseBookingsService.php:722-733`) and `tradePrice` is quoted per kg.
+
+**Chicks are unaffected** — qty is a piece count, with no bag size and no conversion.
+
+**Historic data:** bookings created before this fix stored a bag count in the kg field, so they read
+lower than they should when divided back out. There is no backfill; compare old and new rows with
+that in mind.
 
 **Success (example):**
 
@@ -247,6 +271,37 @@ The app now parses the full payload (not only companies/sectors used by Farm cre
 
 Subcategory rows have no parent category id — products are filtered using ids on `productDailyPriceList`. Chicks create UI has no category cascade; the POST still requires `categoryId` / `subCategoryId` / `childCategoryId`, which the app auto-fills from form-data (prefer a category named like Chicks). Chicks **Zone** is not taken from this endpoint — see `data.zoneList` on `GET /api/all-dealer-lists` (section C.3). Product pick and submit stay blocked until a zone is selected (`Please select Zone first!`).
 
+### A.2d Product catalog — bag size
+
+`GET {SALES_API_BASE_URL}/api/v2/getChildCateProList`
+→ `ProductController::getChildCateProductApproveList()`.
+
+**JWT required** (401 without a token). One call, **no parameters** — every approved product with
+`id`, `productName`, `sizeOrWeight`, `shortName`, `unitId` and the unit name flattened to `name`.
+
+Fetched by `SalesService.fetchProductCatalog()` and **cached for the session**. It is the only
+endpoint the app uses for `sizeOrWeight` (kg per bag) and for a product's `unitId`; the booking
+form-data payload carries neither — verified against production, where `productDailyPriceList`
+returns 74 products with keys `priceId, productId, productName, shortName, categoryId, categoryName,
+subCategoryId, subCategoryName, childCategoryId, childCategoryName, tradePrice, updatedAt` and no
+`sizeOrWeight` at all.
+
+**Parsing gotchas**
+
+| Gotcha | Handling |
+| --- | --- |
+| `sizeOrWeight` is a `decimal(12,2)` and `Product` declares **no `$casts`**, so it serialises as the **string** `"50.00"` as often as the number `50`. | `_asDouble` parses both forms. |
+| `sizeOrWeight` is **nullable** — a product may have no bag size on file. | Treated as "quantity is kg": the typed number passes through unchanged and the field label reads `Kg`, not `Bag`. |
+| `unitId` can be null. | Falls back to `1` (kg). |
+| The endpoint is **public on some deployments** — `form-data` answered `200` unauthenticated while this one answered `401`. | Treated as authenticated; a 401 is a normal `ApiResult.fail`, not a crash. |
+
+A failure here is deliberately **non-fatal**: the booking form still opens, every product falls back
+to the pre-catalog kg behaviour, and nothing is recorded wrongly.
+
+The alternative, `GET /api/v2/products/{id}` (`ProductResource` also exposes `sizeOrWeight` and
+`unit:{id,name}`), returns the same data but costs one round trip per product selection, so it is not
+used.
+
 ### A.3 Errors
 
 ```json
@@ -264,6 +319,7 @@ Subcategory rows have no parent category id — products are filtered using ids 
 | `sales.create`      | POST   | `{salesBase}/api/sales-person-sales` (form-data; egg, fertilizer, liveBird, cullBird) |
 | `sales.booking.create` | POST | `{salesBase}/api/booking-person-books` (form-data; feed & chicks) |
 | `sales.booking.formData` | GET | `{salesBase}/api/booking-person-books/form-data` |
+| *(no key)* | GET | `{salesBase}/api/v2/getChildCateProList` — bag size + unit, compiled-in fallback path (see A.2d) |
 | `sales.allDealers` | GET | `{salesBase}/api/all-dealer-lists` |
 
 Enable `feature.sales.enabled` (default true in app fallback).
