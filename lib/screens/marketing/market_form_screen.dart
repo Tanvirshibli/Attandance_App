@@ -4,11 +4,16 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
+import '../../data/marketing_demo_masters.dart';
+import '../../models/booking_form_data_models.dart';
 import '../../models/marketing_models.dart';
+import '../../models/zone_scope.dart';
 import '../../services/auth_service.dart';
-import '../../services/employee_marketing_scope_service.dart';
+import '../../services/marketing_master_service.dart';
 import '../../services/marketing_service.dart';
+import '../../services/zone_scope_service.dart';
 import '../../utils/marketing_location_helper.dart';
+import '../../widgets/searchable_select_field.dart';
 import '../../widgets/ui/ui.dart';
 import '../../widgets/voice_input_field.dart';
 
@@ -29,9 +34,9 @@ class MarketFormScreen extends StatefulWidget {
 
 class _CompetitorRow {
   _CompetitorRow()
-      : name = TextEditingController(),
-        sharePercent = TextEditingController(),
-        note = TextEditingController();
+    : name = TextEditingController(),
+      sharePercent = TextEditingController(),
+      note = TextEditingController();
 
   final TextEditingController name;
   final TextEditingController sharePercent;
@@ -71,10 +76,17 @@ class _MarketFormScreenState extends State<MarketFormScreen> {
   List<String> _productTypes = [];
   final List<_CompetitorRow> _competitors = [];
 
-  /// Zone / company / sector / market resolved from the logged-in employee and
-  /// shown read-only. On edit the market's own stored values win — a saved
-  /// record is never re-scoped to whoever happens to open it.
-  EmployeeMarketingScope _scope = const EmployeeMarketingScope.empty();
+  /// The employee's zone, shown read-only. On edit the market's own stored zone
+  /// wins — a saved record is never re-scoped to whoever opens it.
+  MarketingDemoNamed? _employeeZone;
+
+  /// Company and sector are the officer's own picks, with the sector list
+  /// narrowing to the chosen company. A market belongs to exactly one of each,
+  /// so both are required here.
+  BookingFormCompany? _selectedCompany;
+  BookingFormSector? _selectedSector;
+  List<BookingFormCompany> _companies = const [];
+  List<BookingFormSector> _sectors = const [];
 
   /// Server-allocated `MRK-09260001`. Null on failure rather than invented on
   /// the device.
@@ -115,7 +127,8 @@ class _MarketFormScreenState extends State<MarketFormScreen> {
     _loadEmployee();
     _autoFillLocation();
     _loadCode();
-    _loadScope();
+    _loadOrgMasters();
+    _loadZone();
   }
 
   void _prefillFromMarket() {
@@ -195,17 +208,56 @@ class _MarketFormScreenState extends State<MarketFormScreen> {
     });
   }
 
-  /// Resolves zone / company / sector / market from the logged-in employee.
+  /// Resolves the employee's zone from their HRM profile.
   ///
-  /// Re-runs once the GPS fix lands, because the market is the one nearest the
-  /// captured position.
-  Future<void> _loadScope() async {
-    final scope = await EmployeeMarketingScopeService.instance.load(
-      lat: _lat,
-      lng: _lng,
+  /// The zone is shown read-only; it no longer decides which company or sector
+  /// the officer may pick.
+  Future<void> _loadZone() async {
+    final scope = await ZoneScopeService.instance.load();
+    if (!mounted || scope == null) return;
+    final option = await _zoneOptionFor(scope);
+    if (!mounted) return;
+    setState(() => _employeeZone = option);
+  }
+
+  /// The profile's zone expressed as a picker option, matched by name. The
+  /// option carries the Sales zone id, which is the id the record is filed under.
+  static Future<MarketingDemoNamed?> _zoneOptionFor(ZoneScope scope) async {
+    final options = await ZoneScopeService.instance.loadZoneOptions();
+
+    for (final option in options) {
+      if (scope.zoneNames.contains(option.name.toLowerCase())) return option;
+    }
+    return null;
+  }
+
+  /// Loads the company list and, until one is chosen, the full sector list.
+  Future<void> _loadOrgMasters() async {
+    final companies = await MarketingMasterService.instance.companies();
+    final sectors = await MarketingMasterService.instance.sectorsForCompany(
+      null,
     );
     if (!mounted) return;
-    setState(() => _scope = scope);
+    setState(() {
+      _companies = companies;
+      _sectors = sectors;
+    });
+  }
+
+  /// The sector list narrows to the chosen company.
+  Future<void> _onCompanySelected(BookingFormCompany? company) async {
+    setState(() {
+      _selectedCompany = company;
+      // A sector from the previous company would file the market under a
+      // pairing that cannot exist.
+      _selectedSector = null;
+    });
+
+    final sectors = await MarketingMasterService.instance.sectorsForCompany(
+      company?.id,
+    );
+    if (!mounted) return;
+    setState(() => _sectors = sectors);
   }
 
   Future<void> _autoFillLocation() async {
@@ -227,8 +279,7 @@ class _MarketFormScreenState extends State<MarketFormScreen> {
       if (snap == null) {
         setState(() {
           _resolvingLocation = false;
-          _locationStatus =
-              'Location unavailable — fill geo fields manually.';
+          _locationStatus = 'Location unavailable — fill geo fields manually.';
         });
         return;
       }
@@ -331,8 +382,7 @@ class _MarketFormScreenState extends State<MarketFormScreen> {
           (r) => {
             'name': r.name.text.trim(),
             if (double.tryParse(r.sharePercent.text.trim()) != null)
-              'share_percent':
-                  double.tryParse(r.sharePercent.text.trim()),
+              'share_percent': double.tryParse(r.sharePercent.text.trim()),
             if (r.note.text.trim().isNotEmpty) 'note': r.note.text.trim(),
           },
         )
@@ -344,18 +394,19 @@ class _MarketFormScreenState extends State<MarketFormScreen> {
       if (_effectiveCode != null) 'code': _effectiveCode,
       // Scoped ids are written only when one actually resolved; a guessed id
       // would mis-file the market for every zone-scoped list.
-      if (_scope.company != null) 'company_id': _scope.company!.id,
-      if (_scope.sector != null) 'sector_id': _scope.sector!.id,
-      if (_scope.zone != null) 'zone_id': _scope.zone!.id,
-      if (_scope.zone != null) 'zone_name': _scope.zone!.name,
+      if (_selectedCompany != null) 'company_id': _selectedCompany!.id,
+      if (_selectedCompany != null)
+        'company_name': _selectedCompany!.displayName,
+      if (_selectedSector != null) 'sector_id': _selectedSector!.id,
+      if (_selectedSector != null) 'sector_name': _selectedSector!.name,
+      if (_employeeZone != null) 'zone_id': _employeeZone!.id,
+      if (_employeeZone != null) 'zone_name': _employeeZone!.name,
       if (_division.text.trim().isNotEmpty)
         'division_name': _division.text.trim(),
-      if (_district.text.trim().isNotEmpty)
-        'district': _district.text.trim(),
+      if (_district.text.trim().isNotEmpty) 'district': _district.text.trim(),
       if (_upazila.text.trim().isNotEmpty) 'upazila': _upazila.text.trim(),
       if (_union.text.trim().isNotEmpty) 'union_name': _union.text.trim(),
-      if (_village.text.trim().isNotEmpty)
-        'village_name': _village.text.trim(),
+      if (_village.text.trim().isNotEmpty) 'village_name': _village.text.trim(),
       if (_address.text.trim().isNotEmpty) 'address': _address.text.trim(),
       'lat': ?_lat,
       'lng': ?_lng,
@@ -379,8 +430,7 @@ class _MarketFormScreenState extends State<MarketFormScreen> {
       if (int.tryParse(_cockFarms.text.trim()) != null)
         'cock_farm_count': int.parse(_cockFarms.text.trim()),
       'competitor_companies': competitors,
-      if (_employeeId != null && _employeeId! > 0)
-        'employee_id': _employeeId,
+      if (_employeeId != null && _employeeId! > 0) 'employee_id': _employeeId,
     };
   }
 
@@ -405,12 +455,23 @@ class _MarketFormScreenState extends State<MarketFormScreen> {
     // off it — so an untagged market is invisible to the officer who filed it.
     // An edit keeps the zone the saved market already carries, so correcting a
     // survey is never blocked by a scope that has since changed.
-    final effectiveZoneName =
-        _isEdit ? widget.market!.zoneName : _scope.zone?.name;
+    final effectiveZoneName = _isEdit
+        ? widget.market!.zoneName
+        : _employeeZone?.name;
     if (effectiveZoneName == null || effectiveZoneName.trim().isEmpty) {
       _snack(
         'Your zone could not be resolved. Ask an admin to set your zone, then retry.',
       );
+      return;
+    }
+    // A market sits under exactly one company and one sector, so both are
+    // required here — unlike a dealer, where the sector only narrows further.
+    if (_selectedCompany == null) {
+      _snack('Choose the company this market belongs to.');
+      return;
+    }
+    if (_selectedSector == null) {
+      _snack('Choose the sector this market belongs to.');
       return;
     }
     if (_lat == null || _lng == null) {
@@ -428,8 +489,9 @@ class _MarketFormScreenState extends State<MarketFormScreen> {
     if (!mounted) return;
     setState(() => _submitting = false);
     if (!result.success || result.data == null) {
-      _snack(result.message ??
-          'Could not ${_isEdit ? 'update' : 'create'} market.');
+      _snack(
+        result.message ?? 'Could not ${_isEdit ? 'update' : 'create'} market.',
+      );
       return;
     }
 
@@ -474,7 +536,10 @@ class _MarketFormScreenState extends State<MarketFormScreen> {
       padding: const EdgeInsets.only(bottom: 6),
       child: Text(
         text,
-        style: AppType.bodySm.copyWith(fontWeight: FontWeight.w500, color: AppColors.inkMuted),
+        style: AppType.bodySm.copyWith(
+          fontWeight: FontWeight.w500,
+          color: AppColors.inkMuted,
+        ),
       ),
     );
   }
@@ -484,21 +549,27 @@ class _MarketFormScreenState extends State<MarketFormScreen> {
       padding: const EdgeInsets.only(bottom: 12),
       child: Text(
         text,
-        style: AppType.h3.copyWith(fontWeight: FontWeight.w600, color: AppColors.ink),
+        style: AppType.h3.copyWith(
+          fontWeight: FontWeight.w600,
+          color: AppColors.ink,
+        ),
       ),
     );
   }
 
-  Widget _numberField(String label, TextEditingController c,
-      {String? hint, bool decimal = false}) {
+  Widget _numberField(
+    String label,
+    TextEditingController c, {
+    String? hint,
+    bool decimal = false,
+  }) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         _label(label),
         VoiceTextField(
           controller: c,
-          keyboardType:
-              TextInputType.numberWithOptions(decimal: decimal),
+          keyboardType: TextInputType.numberWithOptions(decimal: decimal),
           decoration: _decoration(hint: hint),
         ),
       ],
@@ -509,8 +580,7 @@ class _MarketFormScreenState extends State<MarketFormScreen> {
     final value = _productTypeInput.text.trim();
     if (value.isEmpty) return;
     setState(() {
-      if (!_productTypes
-          .any((t) => t.toLowerCase() == value.toLowerCase())) {
+      if (!_productTypes.any((t) => t.toLowerCase() == value.toLowerCase())) {
         _productTypes.add(value);
       }
       _productTypeInput.clear();
@@ -541,7 +611,12 @@ class _MarketFormScreenState extends State<MarketFormScreen> {
           ),
           Expanded(
             child: SingleChildScrollView(
-              padding: const EdgeInsets.fromLTRB(AppSpace.md, AppSpace.md, AppSpace.md, AppSpace.xl),
+              padding: const EdgeInsets.fromLTRB(
+                AppSpace.md,
+                AppSpace.md,
+                AppSpace.md,
+                AppSpace.xl,
+              ),
               child: Column(
                 children: [
                   AppCard(
@@ -552,8 +627,7 @@ class _MarketFormScreenState extends State<MarketFormScreen> {
                         _label('Name *'),
                         VoiceTextField(
                           controller: _name,
-                          decoration:
-                              _decoration(hint: 'Market name'),
+                          decoration: _decoration(hint: 'Market name'),
                         ),
                         const SizedBox(height: 12),
                         // A market is reachable by phone from the field, and one
@@ -580,31 +654,42 @@ class _MarketFormScreenState extends State<MarketFormScreen> {
                               : 'Unavailable — will save without one',
                         ),
                         const SizedBox(height: 12),
-                        // Zone, company and sector come from the logged-in
-                        // employee. A market survey is filed under the officer's
-                        // own territory by definition, so making them pick it
-                        // only invited mis-filing.
+                        // The zone is the officer's own territory and stays
+                        // read-only. Company and sector are theirs to pick, the
+                        // sector narrowing to the company — a market belongs to
+                        // exactly one of each, so both are required.
                         ReadOnlyField(
                           label: 'Zone',
                           icon: Icons.map_outlined,
                           value: _isEdit
                               ? (widget.market!.zoneName ?? 'Not set')
-                              : _scope.zone?.name,
+                              : _employeeZone?.name,
                           hint: 'Not set — ask an admin to set your zone',
                         ),
                         const SizedBox(height: 12),
-                        ReadOnlyField(
-                          label: 'Company',
+                        SearchableSelectField<BookingFormCompany>(
+                          label: 'Company *',
                           icon: Icons.apartment_outlined,
-                          value: _scope.company?.displayName,
-                          hint: 'Unresolved from your profile',
+                          options: _companies,
+                          selected: _selectedCompany,
+                          displayString: (c) => c.displayName,
+                          searchText: (c) => c.displayName.toLowerCase(),
+                          onSelected: _onCompanySelected,
                         ),
                         const SizedBox(height: 12),
-                        ReadOnlyField(
-                          label: 'Sector',
+                        SearchableSelectField<BookingFormSector>(
+                          label: 'Sector *',
                           icon: Icons.hub_outlined,
-                          value: _scope.sector?.name,
-                          hint: 'Unresolved from your profile',
+                          options: _sectors,
+                          selected: _selectedSector,
+                          enabled: _selectedCompany != null,
+                          hintText: _selectedCompany == null
+                              ? 'Pick a company first'
+                              : 'Tap to pick or type…',
+                          displayString: (s) => s.name,
+                          searchText: (s) => s.searchText,
+                          onSelected: (s) =>
+                              setState(() => _selectedSector = s),
                         ),
                         const SizedBox(height: 12),
                         _label('Status'),
@@ -660,8 +745,9 @@ class _MarketFormScreenState extends State<MarketFormScreen> {
                             Expanded(
                               child: VoiceTextField(
                                 controller: _productTypeInput,
-                                decoration:
-                                    _decoration(hint: 'e.g. Feed, Chicks'),
+                                decoration: _decoration(
+                                  hint: 'e.g. Feed, Chicks',
+                                ),
                                 onChanged: (_) {},
                               ),
                             ),
@@ -684,13 +770,9 @@ class _MarketFormScreenState extends State<MarketFormScreen> {
                             children: _productTypes
                                 .map(
                                   (t) => Chip(
-                                    label: Text(
-                                      t,
-                                      style: AppType.meta,
-                                    ),
-                                    onDeleted: () => setState(
-                                      () => _productTypes.remove(t),
-                                    ),
+                                    label: Text(t, style: AppType.meta),
+                                    onDeleted: () =>
+                                        setState(() => _productTypes.remove(t)),
                                     deleteIconColor: AppColors.error,
                                   ),
                                 )
@@ -723,21 +805,15 @@ class _MarketFormScreenState extends State<MarketFormScreen> {
                               child: _numberField('Broiler', _broilerFarms),
                             ),
                             const SizedBox(width: 8),
-                            Expanded(
-                              child: _numberField('Layer', _layerFarms),
-                            ),
+                            Expanded(child: _numberField('Layer', _layerFarms)),
                           ],
                         ),
                         const SizedBox(height: 8),
                         Row(
                           children: [
-                            Expanded(
-                              child: _numberField('Color', _colorFarms),
-                            ),
+                            Expanded(child: _numberField('Color', _colorFarms)),
                             const SizedBox(width: 8),
-                            Expanded(
-                              child: _numberField('Cock', _cockFarms),
-                            ),
+                            Expanded(child: _numberField('Cock', _cockFarms)),
                           ],
                         ),
                       ],
@@ -749,31 +825,26 @@ class _MarketFormScreenState extends State<MarketFormScreen> {
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
                         Row(
-                          mainAxisAlignment:
-                              MainAxisAlignment.spaceBetween,
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
                             _sectionTitle('Competitor companies'),
                             TextButton.icon(
                               onPressed: _addCompetitorRow,
                               icon: const Icon(Icons.add_rounded, size: 18),
-                              label: Text(
-                                'Add',
-                                style: AppType.bodySm,
-                              ),
+                              label: Text('Add', style: AppType.bodySm),
                             ),
                           ],
                         ),
                         if (_competitors.isEmpty)
                           Text(
                             'No competitors added yet.',
-                            style: AppType.meta.copyWith(color: AppColors.inkFaint),
+                            style: AppType.meta.copyWith(
+                              color: AppColors.inkFaint,
+                            ),
                           ),
                         ..._competitors.asMap().entries.map(
-                              (entry) => _competitorCard(
-                                entry.key,
-                                entry.value,
-                              ),
-                            ),
+                          (entry) => _competitorCard(entry.key, entry.value),
+                        ),
                       ],
                     ),
                   ),
@@ -870,8 +941,9 @@ class _MarketFormScreenState extends State<MarketFormScreen> {
                                     top: 0,
                                     right: 0,
                                     child: GestureDetector(
-                                      onTap: () =>
-                                          setState(() => _photos.removeAt(e.key)),
+                                      onTap: () => setState(
+                                        () => _photos.removeAt(e.key),
+                                      ),
                                       child: Container(
                                         decoration: const BoxDecoration(
                                           color: AppColors.error,
@@ -916,10 +988,11 @@ class _MarketFormScreenState extends State<MarketFormScreen> {
                                     ),
                                   )
                                 : Text(
-                                    _isEdit
-                                        ? 'Update market'
-                                        : 'Save market',
-                                    style: AppType.body.copyWith(fontWeight: FontWeight.w600, color: Colors.white),
+                                    _isEdit ? 'Update market' : 'Save market',
+                                    style: AppType.body.copyWith(
+                                      fontWeight: FontWeight.w600,
+                                      color: Colors.white,
+                                    ),
                                   ),
                           ),
                         ),
@@ -952,8 +1025,7 @@ class _MarketFormScreenState extends State<MarketFormScreen> {
                 Expanded(
                   child: VoiceTextField(
                     controller: row.name,
-                    decoration:
-                        _decoration(hint: 'Competitor company name'),
+                    decoration: _decoration(hint: 'Competitor company name'),
                   ),
                 ),
                 const SizedBox(width: 8),
@@ -979,8 +1051,7 @@ class _MarketFormScreenState extends State<MarketFormScreen> {
             const SizedBox(height: 8),
             VoiceTextField(
               controller: row.note,
-              decoration: _decoration(hint: 'Details (products, notes…)',
-              ),
+              decoration: _decoration(hint: 'Details (products, notes…)'),
             ),
           ],
         ),

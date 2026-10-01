@@ -6,9 +6,10 @@ import 'package:intl/intl.dart';
 
 import '../../data/marketing_demo_masters.dart';
 import '../../models/marketing_models.dart';
+import '../../models/zone_scope.dart';
 import '../../services/auth_service.dart';
-import '../../services/employee_marketing_scope_service.dart';
 import '../../services/marketing_service.dart';
+import '../../services/zone_scope_service.dart';
 import '../../utils/marketing_location_helper.dart';
 import '../../widgets/marketing_photo_widgets.dart';
 import '../../widgets/searchable_text_field.dart';
@@ -24,8 +25,7 @@ import 'farm_survey_detail_screen.dart';
   if (trimmed.contains('/')) {
     final parts = trimmed.split('/');
     final left = parts.first.trim().replaceAll('%', '');
-    final right =
-        parts.length > 1 ? parts.sublist(1).join('/').trim() : '';
+    final right = parts.length > 1 ? parts.sublist(1).join('/').trim() : '';
     return (
       productionPercent: double.tryParse(left),
       fcr: right.isNotEmpty ? double.tryParse(right) : null,
@@ -95,7 +95,7 @@ class _FarmSurveyFormScreenState extends State<FarmSurveyFormScreen> {
 
   /// The reporting officer's zone, used as the fallback zone for a farm that
   /// predates zone tagging. The farm's own zone takes precedence.
-  EmployeeMarketingScope _scope = const EmployeeMarketingScope.empty();
+  String? _officerZoneName;
 
   double? _lat;
   double? _lng;
@@ -146,15 +146,33 @@ class _FarmSurveyFormScreenState extends State<FarmSurveyFormScreen> {
     super.dispose();
   }
 
+  /// Loads the officer's profile and their zone.
+  ///
+  /// A farm survey files a visit against an existing farm, so it has no company,
+  /// sector or market of its own to pick — only the zone, and only as the
+  /// fallback for a farm created before zone tagging.
   Future<void> _loadContext() async {
     final profile = await _authService.getCurrentUserProfile();
-    final scope = await EmployeeMarketingScopeService.instance.load();
+    final scope = await ZoneScopeService.instance.load();
     if (!mounted) return;
     setState(() {
       _officerName = profile?.name ?? '';
       _officerDesignation = profile?.designation ?? '';
-      _scope = scope;
+      _officerZoneName = _officerZoneFor(scope);
     });
+  }
+
+  /// The profile's first zone, matched by name against the Sales zone master.
+  ///
+  /// Name matching because the HRM profile carries an id from its own system
+  /// while the option list carries a Sales id; neither is portable.
+  static String? _officerZoneFor(ZoneScope? scope) {
+    if (scope == null || scope.isEmpty) return null;
+
+    for (final name in scope.zoneNames) {
+      if (name.isNotEmpty) return name;
+    }
+    return null;
   }
 
   Future<void> _autoFillLocation() async {
@@ -232,8 +250,9 @@ class _FarmSurveyFormScreenState extends State<FarmSurveyFormScreen> {
     setState(() => _submitting = true);
 
     final productionFcrRaw = _textValue(_productionFcr);
-    final parsedProductionFcr =
-        productionFcrRaw != null ? parseProductionFcr(productionFcrRaw) : null;
+    final parsedProductionFcr = productionFcrRaw != null
+        ? parseProductionFcr(productionFcrRaw)
+        : null;
 
     final extraData = <String, dynamic>{
       if (_textValue(_visitType) != null)
@@ -291,7 +310,8 @@ class _FarmSurveyFormScreenState extends State<FarmSurveyFormScreen> {
         'avg_body_weight_kg': double.tryParse(_avgBodyWeight.text.trim()),
       if (_textValue(_bagWeight) != null)
         'bag_weight_kg': double.tryParse(_bagWeight.text.trim()),
-      if (_textValue(_shedDesign) != null) 'shed_design': _textValue(_shedDesign),
+      if (_textValue(_shedDesign) != null)
+        'shed_design': _textValue(_shedDesign),
       if (_textValue(_shedDesign) != null)
         'housing_type': _textValue(_shedDesign),
       if (_textValue(_curtain) != null) 'curtain_type': _textValue(_curtain),
@@ -345,10 +365,8 @@ class _FarmSurveyFormScreenState extends State<FarmSurveyFormScreen> {
     _snack('Farm visit report saved.');
     await Navigator.of(context).pushReplacement(
       MaterialPageRoute(
-        builder: (_) => FarmSurveyDetailScreen(
-          surveyId: survey.id,
-          initial: survey,
-        ),
+        builder: (_) =>
+            FarmSurveyDetailScreen(surveyId: survey.id, initial: survey),
       ),
     );
   }
@@ -376,7 +394,10 @@ class _FarmSurveyFormScreenState extends State<FarmSurveyFormScreen> {
       padding: const EdgeInsets.only(bottom: 8),
       child: Text(
         text,
-        style: AppType.meta.copyWith(fontWeight: FontWeight.w500, color: AppColors.inkMuted),
+        style: AppType.meta.copyWith(
+          fontWeight: FontWeight.w500,
+          color: AppColors.inkMuted,
+        ),
       ),
     );
   }
@@ -390,8 +411,8 @@ class _FarmSurveyFormScreenState extends State<FarmSurveyFormScreen> {
   String? get _resolvedZoneName {
     final farmZone = widget.party.zoneName?.trim();
     if (farmZone != null && farmZone.isNotEmpty) return farmZone;
-    final scopeZone = _scope.zone?.name;
-    return (scopeZone == null || scopeZone.isEmpty) ? null : scopeZone;
+    final officerZone = _officerZoneName;
+    return (officerZone == null || officerZone.isEmpty) ? null : officerZone;
   }
 
   Widget _readOnly(String label, String? value) {
@@ -453,9 +474,7 @@ class _FarmSurveyFormScreenState extends State<FarmSurveyFormScreen> {
       padding: const EdgeInsets.only(bottom: 8),
       child: Row(
         children: [
-          Expanded(
-            child: Text(label, style: AppType.bodySm),
-          ),
+          Expanded(child: Text(label, style: AppType.bodySm)),
           for (var i = 1; i <= 5; i++)
             IconButton(
               visualDensity: VisualDensity.compact,
@@ -479,405 +498,411 @@ class _FarmSurveyFormScreenState extends State<FarmSurveyFormScreen> {
       body: marketingFormDismissible(
         child: Column(
           children: [
-            AppHeader(
-              title: 'Farm visit report',
-              subtitle: farm.displayName,
-            ),
+            AppHeader(title: 'Farm visit report', subtitle: farm.displayName),
             Expanded(
               child: SingleChildScrollView(
-                padding: const EdgeInsets.fromLTRB(AppSpace.gutter, AppSpace.md, AppSpace.gutter, AppSpace.xl),
+                padding: const EdgeInsets.fromLTRB(
+                  AppSpace.gutter,
+                  AppSpace.md,
+                  AppSpace.gutter,
+                  AppSpace.xl,
+                ),
                 child: Column(
-                children: [
-                  AppCard(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        _suggestField(
-                          label: 'Visit type',
-                          controller: _visitType,
-                          suggestions: MarketingDemoMasters.visitTypes,
-                        ),
-                        _label('Date'),
-                        _dateTile(
-                          'Select date',
-                          _surveyDate,
-                          () => _pickDate(
-                            current: _surveyDate,
-                            onPicked: (d) => setState(() => _surveyDate = d),
+                  children: [
+                    AppCard(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          _suggestField(
+                            label: 'Visit type',
+                            controller: _visitType,
+                            suggestions: MarketingDemoMasters.visitTypes,
                           ),
-                        ),
-                        const SizedBox(height: 12),
-                        _readOnly('Name of farm', farm.displayName),
-                        _readOnly(
-                          'Name of owner',
-                          farm.ownerName ?? farm.contactPerson,
-                        ),
-                        _readOnly('Address', farm.address),
-                        _readOnly('Contact No.', farm.phone),
-                        _readOnly(
-                          'Farming years',
-                          farm.businessYears?.toStringAsFixed(0),
-                        ),
-                        _readOnly('Name of dealer', farm.parentPartyName),
-                        _readOnly('Dealer address', farm.parentPartyAddress),
-                        _readOnly('Dealer contact', farm.parentPartyPhone),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  AppCard(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        _label('Hatch date'),
-                        _dateTile(
-                          'Select hatch date',
-                          _hatchDate,
-                          () => _pickDate(
-                            current: _hatchDate,
-                            onPicked: (d) => setState(() => _hatchDate = d),
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-                        _label('Receiving date'),
-                        _dateTile(
-                          'Select receiving date',
-                          _receivingDate,
-                          () => _pickDate(
-                            current: _receivingDate,
-                            onPicked: (d) =>
-                                setState(() => _receivingDate = d),
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-                        _label('Receiving time'),
-                        InkWell(
-                          onTap: _pickReceivingTime,
-                          borderRadius: BorderRadius.circular(12),
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 14,
-                              vertical: 14,
-                            ),
-                            decoration: BoxDecoration(
-                              color: AppColors.surfaceSunk,
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: Text(
-                              _receivingTime == null
-                                  ? 'Select time'
-                                  : _receivingTime!.format(context),
-                              style: AppType.bodySm,
+                          _label('Date'),
+                          _dateTile(
+                            'Select date',
+                            _surveyDate,
+                            () => _pickDate(
+                              current: _surveyDate,
+                              onPicked: (d) => setState(() => _surveyDate = d),
                             ),
                           ),
-                        ),
-                        const SizedBox(height: 12),
-                        _suggestField(
-                          label: 'Breed',
-                          controller: _breed,
-                          suggestions: _namedSuggestions(
-                            MarketingDemoMasters.breeds,
+                          const SizedBox(height: 12),
+                          _readOnly('Name of farm', farm.displayName),
+                          _readOnly(
+                            'Name of owner',
+                            farm.ownerName ?? farm.contactPerson,
                           ),
-                        ),
-                        _suggestField(
-                          label: 'DOC company',
-                          controller: _docCompany,
-                          suggestions: _namedSuggestions(
-                            MarketingDemoMasters.docCompanies,
+                          _readOnly('Address', farm.address),
+                          _readOnly('Contact No.', farm.phone),
+                          _readOnly(
+                            'Farming years',
+                            farm.businessYears?.toStringAsFixed(0),
                           ),
-                        ),
-                        _suggestField(
-                          label: 'Feed company',
-                          controller: _feedCompany,
-                          suggestions: _namedSuggestions(
-                            MarketingDemoMasters.feedCompanies,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  AppCard(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        _label('Quantity'),
-                        VoiceTextField(
-                          controller: _quantity,
-                          keyboardType: TextInputType.number,
-                          decoration: _decoration(hint: 'Pcs'),
-                        ),
-                        const SizedBox(height: 12),
-                        _label('Age'),
-                        VoiceTextField(
-                          controller: _ageDays,
-                          keyboardType: TextInputType.number,
-                          decoration: _decoration(hint: 'Days'),
-                        ),
-                        const SizedBox(height: 12),
-                        _label('Present mortality (today)'),
-                        VoiceTextField(
-                          controller: _presentMortality,
-                          keyboardType: TextInputType.number,
-                          decoration: _decoration(hint: 'Pcs'),
-                        ),
-                        const SizedBox(height: 12),
-                        _label('Total mortality'),
-                        VoiceTextField(
-                          controller: _totalMortality,
-                          keyboardType: TextInputType.number,
-                          decoration: _decoration(hint: 'Pcs'),
-                        ),
-                        const SizedBox(height: 12),
-                        _label('Mortality %'),
-                        TextField(
-                          controller: _mortalityPct,
-                          keyboardType: TextInputType.number,
-                          readOnly: true,
-                          decoration: _decoration(readOnly: true),
-                        ),
-                        const SizedBox(height: 12),
-                        _label('Rest of bird'),
-                        TextField(
-                          controller: _restOfBirds,
-                          keyboardType: TextInputType.number,
-                          readOnly: true,
-                          decoration: _decoration(hint: 'Pcs', readOnly: true),
-                        ),
-                        const SizedBox(height: 12),
-                        _label('Av. feed intake'),
-                        VoiceTextField(
-                          controller: _avgFeed,
-                          keyboardType: TextInputType.number,
-                          decoration: _decoration(hint: 'grams per bird'),
-                        ),
-                        const SizedBox(height: 12),
-                        _label('Total feed intake'),
-                        TextField(
-                          controller: _totalFeed,
-                          keyboardType: TextInputType.number,
-                          readOnly: true,
-                          decoration: _decoration(hint: 'kg', readOnly: true),
-                        ),
-                        const SizedBox(height: 12),
-                        _label('Total body weight (kg)'),
-                        VoiceTextField(
-                          controller: _totalBodyWeight,
-                          keyboardType: TextInputType.number,
-                          decoration: _decoration(),
-                        ),
-                        const SizedBox(height: 12),
-                        _label('Production% / FCR'),
-                        VoiceTextField(
-                          controller: _productionFcr,
-                          decoration: _decoration(hint: 'e.g. 85% / 1.87'),
-                        ),
-                        const SizedBox(height: 12),
-                        _label('Av. B/W'),
-                        VoiceTextField(
-                          controller: _avgBodyWeight,
-                          keyboardType: TextInputType.number,
-                          decoration: _decoration(hint: 'grams'),
-                        ),
-                        const SizedBox(height: 12),
-                        _label('Per bag weight (kg)'),
-                        VoiceTextField(
-                          controller: _bagWeight,
-                          keyboardType: TextInputType.number,
-                          decoration: _decoration(),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  AppCard(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        _suggestField(
-                          label: 'Shed design',
-                          controller: _shedDesign,
-                          suggestions: _namedSuggestions(
-                            MarketingDemoMasters.shedDesigns,
-                          ),
-                        ),
-                        _suggestField(
-                          label: 'Curtain',
-                          controller: _curtain,
-                          suggestions: _namedSuggestions(
-                            MarketingDemoMasters.curtains,
-                          ),
-                        ),
-                        _suggestField(
-                          label: 'Floor',
-                          controller: _floor,
-                          suggestions: _namedSuggestions(
-                            MarketingDemoMasters.floors,
-                          ),
-                        ),
-                        _label('Quantity of feeder'),
-                        VoiceTextField(
-                          controller: _feederQty,
-                          keyboardType: TextInputType.number,
-                          decoration: _decoration(hint: 'Pcs'),
-                        ),
-                        const SizedBox(height: 12),
-                        _label('Quantity drinker'),
-                        VoiceTextField(
-                          controller: _drinkerQty,
-                          keyboardType: TextInputType.number,
-                          decoration: _decoration(hint: 'Pcs'),
-                        ),
-                        const SizedBox(height: 12),
-                        _label('Av. temperature'),
-                        VoiceTextField(
-                          controller: _avgTemp,
-                          decoration: _decoration(hint: 'e.g. 28-30'),
-                        ),
-                        const SizedBox(height: 12),
-                        _label('Space'),
-                        VoiceTextField(
-                          controller: _space,
-                          decoration: _decoration(hint: 'sq ft'),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  AppCard(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        _ratingRow(
-                          'Biosecurity',
-                          _biosecurity,
-                          (v) => setState(() => _biosecurity = v),
-                        ),
-                        _label('Uniformity'),
-                        VoiceTextField(
-                          controller: _uniformity,
-                          decoration: _decoration(hint: '% or note'),
-                        ),
-                        const SizedBox(height: 8),
-                        _ratingRow(
-                          'Management',
-                          _management,
-                          (v) => setState(() => _management = v),
-                        ),
-                        SwitchListTile(
-                          contentPadding: EdgeInsets.zero,
-                          title: Text(
-                            'Diseases',
-                            style: AppType.bodySm,
-                          ),
-                          value: _diseasePresent,
-                          onChanged: (v) =>
-                              setState(() => _diseasePresent = v),
-                        ),
-                        if (_diseasePresent) ...[
-                          VoiceTextField(
-                            controller: _diseaseDetails,
-                            maxLines: 2,
-                            decoration: _decoration(hint: 'Disease details'),
-                          ),
-                          const SizedBox(height: 8),
+                          _readOnly('Name of dealer', farm.parentPartyName),
+                          _readOnly('Dealer address', farm.parentPartyAddress),
+                          _readOnly('Dealer contact', farm.parentPartyPhone),
                         ],
-                        _ratingRow(
-                          'Technical support',
-                          _technical,
-                          (v) => setState(() => _technical = v),
-                        ),
-                        _label('Problem facing'),
-                        VoiceTextField(
-                          controller: _problems,
-                          maxLines: 2,
-                          decoration: _decoration(),
-                        ),
-                        const SizedBox(height: 8),
-                        _ratingRow(
-                          'Economical solvency',
-                          _economic,
-                          (v) => setState(() => _economic = v),
-                        ),
-                        _label('Remarks'),
-                        VoiceTextField(
-                          controller: _remarks,
-                          maxLines: 2,
-                          decoration: _decoration(),
-                        ),
-                        const SizedBox(height: 12),
-                        _label('Comments'),
-                        VoiceTextField(
-                          controller: _comments,
-                          maxLines: 2,
-                          decoration: _decoration(),
-                        ),
-                      ],
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 12),
-                  AppCard(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        _readOnly('Reporting officer', _officerName),
-                        _readOnly('Designation', _officerDesignation),
-                        _suggestField(
-                          label: 'Territory',
-                          controller: _territory,
-                          suggestions: _namedSuggestions(
-                            MarketingDemoMasters.territories,
+                    const SizedBox(height: 12),
+                    AppCard(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          _label('Hatch date'),
+                          _dateTile(
+                            'Select hatch date',
+                            _hatchDate,
+                            () => _pickDate(
+                              current: _hatchDate,
+                              onPicked: (d) => setState(() => _hatchDate = d),
+                            ),
                           ),
-                        ),
-                        // Zone is no longer typed here. The farm's own zone wins
-                        // when it has one; otherwise the reporting officer's
-                        // scope supplies it. Either way the report is filed
-                        // under a zone the data already knows, not one retyped
-                        // from memory.
-                        ReadOnlyField(
-                          label: 'Zone',
-                          icon: Icons.map_outlined,
-                          value: _resolvedZoneName,
-                          hint: 'Not set — ask an admin to set your zone',
-                        ),
-                        MarketingPhotoPicker(
-                          photos: _photos,
-                          onPick: _pickPhotos,
-                          onRemove: (i) => setState(() => _photos.removeAt(i)),
-                        ),
-                        const SizedBox(height: 16),
-                        SizedBox(
-                          height: 50,
-                          child: ElevatedButton(
-                            onPressed: _submitting ? null : _submit,
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: AppColors.accent,
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(14),
+                          const SizedBox(height: 12),
+                          _label('Receiving date'),
+                          _dateTile(
+                            'Select receiving date',
+                            _receivingDate,
+                            () => _pickDate(
+                              current: _receivingDate,
+                              onPicked: (d) =>
+                                  setState(() => _receivingDate = d),
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          _label('Receiving time'),
+                          InkWell(
+                            onTap: _pickReceivingTime,
+                            borderRadius: BorderRadius.circular(12),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 14,
+                                vertical: 14,
+                              ),
+                              decoration: BoxDecoration(
+                                color: AppColors.surfaceSunk,
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: Text(
+                                _receivingTime == null
+                                    ? 'Select time'
+                                    : _receivingTime!.format(context),
+                                style: AppType.bodySm,
                               ),
                             ),
-                            child: _submitting
-                                ? const SizedBox(
-                                    width: 22,
-                                    height: 22,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2,
-                                      color: Colors.white,
-                                    ),
-                                  )
-                                : Text(
-                                    'Submit report',
-                                    style: AppType.body.copyWith(fontWeight: FontWeight.w600, color: Colors.white),
-                                  ),
                           ),
-                        ),
-                      ],
+                          const SizedBox(height: 12),
+                          _suggestField(
+                            label: 'Breed',
+                            controller: _breed,
+                            suggestions: _namedSuggestions(
+                              MarketingDemoMasters.breeds,
+                            ),
+                          ),
+                          _suggestField(
+                            label: 'DOC company',
+                            controller: _docCompany,
+                            suggestions: _namedSuggestions(
+                              MarketingDemoMasters.docCompanies,
+                            ),
+                          ),
+                          _suggestField(
+                            label: 'Feed company',
+                            controller: _feedCompany,
+                            suggestions: _namedSuggestions(
+                              MarketingDemoMasters.feedCompanies,
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
-                  ),
-                ],
+                    const SizedBox(height: 12),
+                    AppCard(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          _label('Quantity'),
+                          VoiceTextField(
+                            controller: _quantity,
+                            keyboardType: TextInputType.number,
+                            decoration: _decoration(hint: 'Pcs'),
+                          ),
+                          const SizedBox(height: 12),
+                          _label('Age'),
+                          VoiceTextField(
+                            controller: _ageDays,
+                            keyboardType: TextInputType.number,
+                            decoration: _decoration(hint: 'Days'),
+                          ),
+                          const SizedBox(height: 12),
+                          _label('Present mortality (today)'),
+                          VoiceTextField(
+                            controller: _presentMortality,
+                            keyboardType: TextInputType.number,
+                            decoration: _decoration(hint: 'Pcs'),
+                          ),
+                          const SizedBox(height: 12),
+                          _label('Total mortality'),
+                          VoiceTextField(
+                            controller: _totalMortality,
+                            keyboardType: TextInputType.number,
+                            decoration: _decoration(hint: 'Pcs'),
+                          ),
+                          const SizedBox(height: 12),
+                          _label('Mortality %'),
+                          TextField(
+                            controller: _mortalityPct,
+                            keyboardType: TextInputType.number,
+                            readOnly: true,
+                            decoration: _decoration(readOnly: true),
+                          ),
+                          const SizedBox(height: 12),
+                          _label('Rest of bird'),
+                          TextField(
+                            controller: _restOfBirds,
+                            keyboardType: TextInputType.number,
+                            readOnly: true,
+                            decoration: _decoration(
+                              hint: 'Pcs',
+                              readOnly: true,
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          _label('Av. feed intake'),
+                          VoiceTextField(
+                            controller: _avgFeed,
+                            keyboardType: TextInputType.number,
+                            decoration: _decoration(hint: 'grams per bird'),
+                          ),
+                          const SizedBox(height: 12),
+                          _label('Total feed intake'),
+                          TextField(
+                            controller: _totalFeed,
+                            keyboardType: TextInputType.number,
+                            readOnly: true,
+                            decoration: _decoration(hint: 'kg', readOnly: true),
+                          ),
+                          const SizedBox(height: 12),
+                          _label('Total body weight (kg)'),
+                          VoiceTextField(
+                            controller: _totalBodyWeight,
+                            keyboardType: TextInputType.number,
+                            decoration: _decoration(),
+                          ),
+                          const SizedBox(height: 12),
+                          _label('Production% / FCR'),
+                          VoiceTextField(
+                            controller: _productionFcr,
+                            decoration: _decoration(hint: 'e.g. 85% / 1.87'),
+                          ),
+                          const SizedBox(height: 12),
+                          _label('Av. B/W'),
+                          VoiceTextField(
+                            controller: _avgBodyWeight,
+                            keyboardType: TextInputType.number,
+                            decoration: _decoration(hint: 'grams'),
+                          ),
+                          const SizedBox(height: 12),
+                          _label('Per bag weight (kg)'),
+                          VoiceTextField(
+                            controller: _bagWeight,
+                            keyboardType: TextInputType.number,
+                            decoration: _decoration(),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    AppCard(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          _suggestField(
+                            label: 'Shed design',
+                            controller: _shedDesign,
+                            suggestions: _namedSuggestions(
+                              MarketingDemoMasters.shedDesigns,
+                            ),
+                          ),
+                          _suggestField(
+                            label: 'Curtain',
+                            controller: _curtain,
+                            suggestions: _namedSuggestions(
+                              MarketingDemoMasters.curtains,
+                            ),
+                          ),
+                          _suggestField(
+                            label: 'Floor',
+                            controller: _floor,
+                            suggestions: _namedSuggestions(
+                              MarketingDemoMasters.floors,
+                            ),
+                          ),
+                          _label('Quantity of feeder'),
+                          VoiceTextField(
+                            controller: _feederQty,
+                            keyboardType: TextInputType.number,
+                            decoration: _decoration(hint: 'Pcs'),
+                          ),
+                          const SizedBox(height: 12),
+                          _label('Quantity drinker'),
+                          VoiceTextField(
+                            controller: _drinkerQty,
+                            keyboardType: TextInputType.number,
+                            decoration: _decoration(hint: 'Pcs'),
+                          ),
+                          const SizedBox(height: 12),
+                          _label('Av. temperature'),
+                          VoiceTextField(
+                            controller: _avgTemp,
+                            decoration: _decoration(hint: 'e.g. 28-30'),
+                          ),
+                          const SizedBox(height: 12),
+                          _label('Space'),
+                          VoiceTextField(
+                            controller: _space,
+                            decoration: _decoration(hint: 'sq ft'),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    AppCard(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          _ratingRow(
+                            'Biosecurity',
+                            _biosecurity,
+                            (v) => setState(() => _biosecurity = v),
+                          ),
+                          _label('Uniformity'),
+                          VoiceTextField(
+                            controller: _uniformity,
+                            decoration: _decoration(hint: '% or note'),
+                          ),
+                          const SizedBox(height: 8),
+                          _ratingRow(
+                            'Management',
+                            _management,
+                            (v) => setState(() => _management = v),
+                          ),
+                          SwitchListTile(
+                            contentPadding: EdgeInsets.zero,
+                            title: Text('Diseases', style: AppType.bodySm),
+                            value: _diseasePresent,
+                            onChanged: (v) =>
+                                setState(() => _diseasePresent = v),
+                          ),
+                          if (_diseasePresent) ...[
+                            VoiceTextField(
+                              controller: _diseaseDetails,
+                              maxLines: 2,
+                              decoration: _decoration(hint: 'Disease details'),
+                            ),
+                            const SizedBox(height: 8),
+                          ],
+                          _ratingRow(
+                            'Technical support',
+                            _technical,
+                            (v) => setState(() => _technical = v),
+                          ),
+                          _label('Problem facing'),
+                          VoiceTextField(
+                            controller: _problems,
+                            maxLines: 2,
+                            decoration: _decoration(),
+                          ),
+                          const SizedBox(height: 8),
+                          _ratingRow(
+                            'Economical solvency',
+                            _economic,
+                            (v) => setState(() => _economic = v),
+                          ),
+                          _label('Remarks'),
+                          VoiceTextField(
+                            controller: _remarks,
+                            maxLines: 2,
+                            decoration: _decoration(),
+                          ),
+                          const SizedBox(height: 12),
+                          _label('Comments'),
+                          VoiceTextField(
+                            controller: _comments,
+                            maxLines: 2,
+                            decoration: _decoration(),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    AppCard(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          _readOnly('Reporting officer', _officerName),
+                          _readOnly('Designation', _officerDesignation),
+                          _suggestField(
+                            label: 'Territory',
+                            controller: _territory,
+                            suggestions: _namedSuggestions(
+                              MarketingDemoMasters.territories,
+                            ),
+                          ),
+                          // Zone is no longer typed here. The farm's own zone wins
+                          // when it has one; otherwise the reporting officer's
+                          // scope supplies it. Either way the report is filed
+                          // under a zone the data already knows, not one retyped
+                          // from memory.
+                          ReadOnlyField(
+                            label: 'Zone',
+                            icon: Icons.map_outlined,
+                            value: _resolvedZoneName,
+                            hint: 'Not set — ask an admin to set your zone',
+                          ),
+                          MarketingPhotoPicker(
+                            photos: _photos,
+                            onPick: _pickPhotos,
+                            onRemove: (i) =>
+                                setState(() => _photos.removeAt(i)),
+                          ),
+                          const SizedBox(height: 16),
+                          SizedBox(
+                            height: 50,
+                            child: ElevatedButton(
+                              onPressed: _submitting ? null : _submit,
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: AppColors.accent,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(14),
+                                ),
+                              ),
+                              child: _submitting
+                                  ? const SizedBox(
+                                      width: 22,
+                                      height: 22,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                        color: Colors.white,
+                                      ),
+                                    )
+                                  : Text(
+                                      'Submit report',
+                                      style: AppType.body.copyWith(
+                                        fontWeight: FontWeight.w600,
+                                        color: Colors.white,
+                                      ),
+                                    ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
-          ),
           ],
         ),
       ),
