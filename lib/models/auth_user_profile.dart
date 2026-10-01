@@ -14,6 +14,10 @@ class AuthUserProfile {
     this.faceRegistration,
     this.zoneIds = const [],
     this.zoneName,
+    this.permissions = const [],
+    this.roles = const [],
+    this.isAdmin = false,
+    this.isSuperAdmin = false,
   });
 
   final String name;
@@ -33,6 +37,39 @@ class AuthUserProfile {
   /// filtering degrades gracefully while absent.
   final List<int> zoneIds;
   final String? zoneName;
+
+  /// Role names granted to this account, resolved server-side through
+  /// `user_has_roles -> roles`. Informational only — access is decided by
+  /// [permissions], never by a role name, because a role may be renamed or
+  /// renamed-and-remapped without the app shipping a new build.
+  final List<String> roles;
+
+  /// The flat, de-duplicated permission-name strings HRM resolved from this
+  /// user's roles (`UserController::getSelf`, `GET /api/v1/get-my-info`).
+  ///
+  /// Stored as received. [PermissionService] lowercases on comparison, because
+  /// the HRM web client compares case-insensitively and the two must agree on
+  /// what a grant means.
+  final List<String> permissions;
+
+  /// Whether HRM flagged this account as an admin. Both arrive as the *strings*
+  /// `"1"` / `"0"` rather than booleans, so the conversion is
+  /// [parseAdminFlag]'s problem, not the caller's.
+  final bool isAdmin;
+  final bool isSuperAdmin;
+
+  /// HRM sends `isAdmin` / `isSuperAdmin` as `"1"` / `"0"`, and the web client
+  /// reads them with `Boolean(parseInt(v))`. Replicate that exactly, and treat
+  /// a non-numeric truthy string as truthy rather than silently demoting an
+  /// admin to an ordinary user.
+  static bool parseAdminFlag(Object? value) {
+    if (value is bool) return value;
+    if (value is num) return value != 0;
+    final text = value?.toString().trim().toLowerCase() ?? '';
+    if (text.isEmpty) return false;
+    if (text == '0' || text == 'false' || text == 'null') return false;
+    return true;
+  }
 
   /// The first assigned zone, for the legacy single-zone call sites that have
   /// not moved to [ZoneScope] yet.
@@ -137,7 +174,76 @@ class AuthUserProfile {
         facility['zoneName'],
         facility['zone_name'],
       ], fallback: ''),
+      roles: _roleNames(json),
+      permissions: _toStringList(json['permissions']),
+      isAdmin: parseAdminFlag(json['isAdmin'] ?? json['is_admin']),
+      isSuperAdmin:
+          parseAdminFlag(json['isSuperAdmin'] ?? json['is_super_admin']),
     );
+  }
+
+  /// Role names from the `roles2` eager-load on the HRM `User` model.
+  ///
+  /// `roles2` is a `belongsToMany` over `user_has_roles`, so each element is a
+  /// role row carrying `roleName` (camelCase — this schema is hand-rolled, not
+  /// Spatie's, so there is no `name`). A plain `roles` array is accepted as a
+  /// fallback for a payload shaped that way instead.
+  static List<String> _roleNames(Map<String, dynamic> json) {
+    final roles2 = json['roles2'];
+    if (roles2 is List) {
+      return _dedupeNonEmpty(roles2.map(_roleNameOf).toList());
+    }
+
+    final roles = json['roles'];
+    if (roles is List) {
+      return _dedupeNonEmpty(roles.map(_roleNameOf).toList());
+    }
+
+    return const [];
+  }
+
+  static String _roleNameOf(Object? entry) {
+    if (entry is Map) {
+      return _firstNonEmpty([
+        entry['roleName'],
+        entry['name'],
+        entry['role_name'],
+      ], fallback: '');
+    }
+    return '';
+  }
+
+  /// A flat string list from JSON, tolerating a lone string and dropping
+  /// blanks. Order is preserved and duplicates removed, matching the
+  /// de-duplication HRM already applies server-side.
+  static List<String> _toStringList(Object? value) {
+    if (value == null) return const [];
+
+    final raw = <Object?>[];
+    if (value is List) {
+      raw.addAll(value);
+    } else if (value is String && value.contains(',')) {
+      raw.addAll(value.split(','));
+    } else {
+      raw.add(value);
+    }
+
+    final texts = raw
+        .map((item) => item?.toString().trim() ?? '')
+        .where((item) => item.isNotEmpty && item.toLowerCase() != 'null')
+        .toList();
+    return _dedupeNonEmpty(texts);
+  }
+
+  static List<String> _dedupeNonEmpty(List<String> values) {
+    final seen = <String>{};
+    final result = <String>[];
+    for (final value in values) {
+      if (value.isNotEmpty && seen.add(value)) {
+        result.add(value);
+      }
+    }
+    return List.unmodifiable(result);
   }
 
   static AuthUserProfile fallback() {

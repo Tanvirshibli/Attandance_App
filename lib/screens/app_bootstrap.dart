@@ -12,6 +12,7 @@ import '../services/endpoint_config_service.dart';
 import '../services/face_recognition_service.dart';
 import '../services/fcm_wake_handler.dart';
 import '../services/geo_tracking_service.dart';
+import '../services/permission_service.dart';
 
 class AppBootstrap extends StatefulWidget {
   const AppBootstrap({super.key});
@@ -120,6 +121,9 @@ class _AppBootstrapState extends State<AppBootstrap>
     try {
       final profile = await _authService.getCurrentUserProfile();
       _faceRecognitionService.hydrateRegistration(profile?.faceRegistration);
+      // Permissions ride along inside the same get-my-info payload, so gating
+      // costs no extra request and the first frame still waits on nothing.
+      PermissionService.instance.update(profile);
     } catch (_) {
       // The dashboard loads the profile itself and falls back.
     }

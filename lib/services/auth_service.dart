@@ -12,6 +12,7 @@ import '../utils/user_facing_error.dart';
 import 'endpoint_config_service.dart';
 import 'fcm_wake_handler.dart';
 import 'geo_tracking_service.dart';
+import 'permission_service.dart';
 import 'zone_scope_service.dart';
 
 class AuthResult {
@@ -529,6 +530,9 @@ class AuthService {
     }
 
     clearProfileCache();
+    // Drop the previous user's grants before the next login can render a frame,
+    // so a shared device never shows them the previous account's modules.
+    PermissionService.instance.clear();
     try {
       await ZoneScopeService.instance.clear();
     } catch (_) {}
