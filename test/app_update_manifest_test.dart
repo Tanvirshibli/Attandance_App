@@ -58,7 +58,11 @@ void main() {
 
   group('version compare', () {
     test('normalizeVersionCode handles ABI offset', () {
-      expect(normalizeVersionCode('1034'), 34);
+      // The offset is added to the base, so it is subtracted — and it must be
+      // told which ABI it is undoing. Guessing is what made 11008 % 1000 = 8
+      // for a four-digit base; see ota_channel_test.dart.
+      expect(normalizeVersionCode('1034', abiOffset: 1000), 34);
+      expect(normalizeVersionCode('2034', abiOffset: 2000), 34);
       expect(normalizeVersionCode('34'), 34);
     });
 

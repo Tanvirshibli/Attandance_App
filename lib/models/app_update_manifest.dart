@@ -89,24 +89,40 @@ class AppUpdateManifest {
   }
 }
 
-/// Strips Flutter's split-per-ABI prefix from a build number.
+/// Undoes Flutter's split-per-ABI offset from a build number.
 ///
-/// A split-per-ABI build encodes the real code as `prefix + code` where the
-/// prefix is 1000 (armeabi-v7a), 2000 (arm64-v8a) or 3000 (x86_64), so a
-/// release published from `app-arm64-v8a-release.apk` carries 2000+N. Both
-/// sides of the comparison go through this, so the prefix cancels out.
+/// A split-per-ABI build **adds** the offset to the base: armeabi-v7a is
+/// `base + 1000`, arm64-v8a `base + 2000`, x86_64 `base + 3000`. Both sides of
+/// the update comparison go through this, so the offset cancels out.
 ///
-/// **Only those three bands are stripped.** The beta channel deliberately lives
-/// at 9000+, which is not an ABI prefix: reducing it modulo 1000 would turn a
-/// beta build 9108 into 108 and make it compare as a low *production* code —
-/// so a tester would be offered the wrong channel's update and a production
-/// manifest could look newer than a beta build. Anything outside 1000–3999 is
-/// a real version code and is returned untouched.
-int normalizeVersionCode(String rawBuildNumber) {
+/// **Subtraction, not modulo.** `raw % 1000` agrees by coincidence for a
+/// three-digit base (2104 % 1000 = 104) and silently breaks the moment the base
+/// has four digits: a beta build 9008 is `11008` on arm64, and `11008 % 1000` is
+/// 8 — so the beta manifest would advertise build 8 and every tester would read
+/// it as "up to date".
+///
+/// [abiOffset] is the calling APK's own offset, read from its ABI via
+/// [abiOffsetFor]. There is deliberately no guessing fallback: with no offset
+/// supplied this returns the value unchanged, because subtracting a guessed
+/// offset from an unknown base is worse than subtracting nothing — 11008 would
+/// become 6008 or 8008 depending on which offset was assumed, and the resulting
+/// comparison would be wrong in a way nothing would surface.
+int normalizeVersionCode(String rawBuildNumber, {int abiOffset = 0}) {
   final raw = int.tryParse(rawBuildNumber) ?? 0;
-  if (raw >= 1000 && raw < 4000) return raw % 1000;
+  if (abiOffset > 0 && raw >= abiOffset) return raw - abiOffset;
   return raw;
 }
+
+/// The offset Flutter added to [abi], or 0 when it is not a known split ABI.
+///
+/// Read from the device's own ABI rather than assumed, because assuming is what
+/// produced the modulo bug above.
+int abiOffsetFor(String? abi) => switch (abi) {
+  'armeabi-v7a' => 1000,
+  'arm64-v8a' => 2000,
+  'x86_64' => 3000,
+  _ => 0,
+};
 
 /// The lowest build number the beta channel may use.
 ///

@@ -11,6 +11,7 @@ import '../models/app_update_manifest.dart';
 import '../widgets/ui/ui.dart' as ui;
 import '../models/auth_user_profile.dart';
 import '../services/auth_service.dart';
+import '../services/app_update_service.dart';
 import '../services/face_recognition_service.dart';
 import 'login_screen.dart';
 import 'face_registration_screen.dart';
@@ -44,11 +45,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Future<void> _loadAppVersion() async {
     try {
       final info = await PackageInfo.fromPlatform();
+      final abi = await AppUpdateService().getPreferredAbi();
       if (!mounted) return;
-      // Split-per-ABI APKs encode versionCode as abiIndex*1000 + buildNumber.
-      // Shared with the update check so a beta build number (9000+) is not
-      // reduced to a production-sized number here but not there.
-      final buildNumber = normalizeVersionCode(info.buildNumber);
+      // Split-per-ABI APKs encode versionCode as base + abi offset, so a beta
+      // build 9008 reports 11008 on arm64. Shared with the update check so the
+      // number a tester reads here is the number the manifest advertises.
+      final buildNumber = normalizeVersionCode(
+        info.buildNumber,
+        abiOffset: abiOffsetFor(abi),
+      );
       setState(() {
         _appVersionLabel = 'v${info.version}+$buildNumber';
       });

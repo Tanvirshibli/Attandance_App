@@ -12,49 +12,54 @@ import 'package:flutter_test/flutter_test.dart';
 /// manifest at 108 would compare as older than a beta build.
 void main() {
   group('normalizeVersionCode', () {
-    test('leaves an ordinary production build number alone', () {
+    test('leaves an unsplit build number alone', () {
       expect(normalizeVersionCode('104'), 104);
       expect(normalizeVersionCode('999'), 999);
     });
 
-    test('still strips the split-per-ABI prefixes', () {
-      // 1000 = armeabi-v7a, 2000 = arm64-v8a, 3000 = x86_64.
-      expect(normalizeVersionCode('1104'), 104);
-      expect(normalizeVersionCode('2104'), 104);
-      expect(normalizeVersionCode('3104'), 104);
+    test('subtracts the ABI offset from a split build', () {
+      // The offset is ADDED to the base, not prefixed: armeabi-v7a is base+1000,
+      // arm64-v8a base+2000, x86_64 base+3000.
+      expect(normalizeVersionCode('1104', abiOffset: 1000), 104);
+      expect(normalizeVersionCode('2104', abiOffset: 2000), 104);
+      expect(normalizeVersionCode('3104', abiOffset: 3000), 104);
     });
 
-    test('leaves the beta band intact', () {
-      // The whole point: 9000+ is a real version code, not an ABI prefix.
-      expect(normalizeVersionCode('9001'), 9001);
-      expect(normalizeVersionCode('9108'), 9108);
+    test('subtracts, never takes a modulo', () {
+      // The bug this replaced: 11008 % 1000 is 8, so a beta manifest would
+      // have advertised build 8 and every tester read it as up to date.
+      expect(normalizeVersionCode('11008', abiOffset: 2000), 9008);
+      expect(normalizeVersionCode('10008', abiOffset: 1000), 9008);
     });
 
-    test('a beta build never compares as a production build', () {
-      // Both sides go through the function, so a beta install compared against
-      // a beta manifest still behaves.
-      expect(normalizeVersionCode('9002'), greaterThan(normalizeVersionCode('108')));
+    test('the beta band survives normalisation intact', () {
+      expect(normalizeVersionCode('11008', abiOffset: 2000), greaterThan(8999));
+      expect(normalizeVersionCode('9008'), 9008);
     });
 
-    test('a split-per-ABI build still resolves to its real number', () {
-      // The APK's own versionCode is what PackageInfo reports: Flutter adds
-      // abiIndex*1000. 2000+104 is an arm64 production build.
-      expect(normalizeVersionCode('2104'), 104);
-    });
-
-    test('a beta split-per-ABI number is left intact', () {
-      // Flutter would encode a beta arm64 build as 2000+9001 = 29001, which is
-      // outside the 1000-3999 prefix bands. Reducing it modulo 1000 would
-      // produce 901 and break the band, so the whole number is kept. The two
-      // sides of the comparison then still cancel, because both the installed
-      // value and the manifest value pass through this same function.
-      expect(normalizeVersionCode('29001'), 29001);
-      expect(normalizeVersionCode('29001'), greaterThan(normalizeVersionCode('2107')));
+    test('no guessing when the ABI is unknown', () {
+      // Subtracting an assumed offset would turn 11008 into 6008 or 8008
+      // depending on the guess, and nothing downstream would surface it.
+      expect(normalizeVersionCode('11008'), 11008);
     });
 
     test('falls back to 0 on unparseable input rather than throwing', () {
       expect(normalizeVersionCode('not-a-number'), 0);
       expect(normalizeVersionCode(''), 0);
+    });
+  });
+
+  group('abiOffsetFor', () {
+    test('maps the three split ABIs', () {
+      expect(abiOffsetFor('armeabi-v7a'), 1000);
+      expect(abiOffsetFor('arm64-v8a'), 2000);
+      expect(abiOffsetFor('x86_64'), 3000);
+    });
+
+    test('returns 0 for anything else, including null', () {
+      expect(abiOffsetFor(null), 0);
+      expect(abiOffsetFor('mips'), 0);
+      expect(abiOffsetFor(''), 0);
     });
   });
 

@@ -63,7 +63,11 @@ class AppUpdateService {
 
     try {
       final packageInfo = await PackageInfo.fromPlatform();
-      final installedCode = normalizeVersionCode(packageInfo.buildNumber);
+      final preferredAbi = await getPreferredAbi();
+      final installedCode = normalizeVersionCode(
+        packageInfo.buildNumber,
+        abiOffset: abiOffsetFor(preferredAbi),
+      );
 
       final response = await _dio.get<dynamic>(
         AppConfig.updateManifestUrl,
@@ -91,7 +95,12 @@ class AppUpdateService {
         );
       }
 
-      final remoteCode = normalizeVersionCode(manifest.versionCode.toString());
+      // Taken verbatim. The manifest's version_code is written by the publish
+      // script, which already subtracted the ABI offset while reading the APK, so
+      // it is already the base build number. Running it through
+      // normalizeVersionCode again would subtract a further offset from a
+      // legitimate four-digit beta number.
+      final remoteCode = manifest.versionCode;
       if (!isUpdateRequired(
         installedVersionCode: installedCode,
         remoteVersionCode: remoteCode,
