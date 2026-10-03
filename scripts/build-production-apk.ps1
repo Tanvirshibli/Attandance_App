@@ -69,14 +69,19 @@ function Update-PubspecVersion {
     }
 
     $content = Get-Content -LiteralPath $pubspecPath -Raw
-    if ($content -notmatch '(?m)^version:\s*([0-9]+)\.([0-9]+)\.([0-9]+)\+(\d+)\s*$') {
-        throw 'Could not parse version: X.Y.Z+N from pubspec.yaml'
+    # X.Y.Z, an optional pre-release segment (-beta.1), then +BUILD.
+    # The pre-release group is required for a beta channel: a beta
+    # build bumped from 2.5.2-beta.1+9008 must stay a beta version,
+    # not silently become 2.5.2.
+    if ($content -notmatch '(?m)^version:\s*([0-9]+)\.([0-9]+)\.([0-9]+)(-[0-9A-Za-z.]+)?\+(\d+)\s*$') {
+        throw 'Could not parse version: X.Y.Z[+N] from pubspec.yaml'
     }
 
     $major = [int]$Matches[1]
     $medium = [int]$Matches[2]
     $minor = [int]$Matches[3]
-    $oldBuild = [int]$Matches[4]
+    $oldPre = if ($Matches[4]) { $Matches[4] } else { '' }
+    $oldBuild = [int]$Matches[5]
     $oldName = "$major.$medium.$minor"
 
     switch ($Level) {
@@ -101,15 +106,21 @@ function Update-PubspecVersion {
         throw "Prod build number $newBuild is inside the beta band (<= $ProdVersionCeiling is required for prod)."
     }
 
+    # Preserve the pre-release segment when the marketing version did
+    # not change, so bumping 2.5.2-beta.1+9008 does not reset it.
     $newName = "$major.$medium.$minor"
     if ($Channel -eq 'beta') {
-        $newName = "$major.$medium.$minor-beta.1"
+        $newName = if ($oldPre -and $oldName -eq "$major.$medium.$minor") {
+            "$major.$medium.$minor$oldPre"
+        } else {
+            "$major.$medium.$minor-beta.1"
+        }
     }
 
     $newLine = "version: $newName+$newBuild"
     $updated = [regex]::Replace(
         $content,
-        '(?m)^version:\s*[0-9]+\.[0-9]+\.[0-9]+\+\d+\s*$',
+        '(?m)^version:\s*[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?\+\d+\s*$',
         $newLine,
         1
     )
