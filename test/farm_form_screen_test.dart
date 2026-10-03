@@ -78,6 +78,18 @@ void main() {
       );
     });
 
+    test("matches the apostrophe spelling from the curated master", () {
+      // SL 19 of the Bangladesh master spells it "People's Poultry & Hatchery
+      // Ltd.". Matching only "peoples poultry" would miss it and fall through to
+      // the first company in the list, silently filing the farm under the wrong
+      // company.
+      const apostrophe = BookingFormCompany(
+        id: 19,
+        nameEn: "People's Poultry & Hatchery Ltd.",
+      );
+      expect(FarmFormScreen.defaultCompany([rival, apostrophe])?.id, 19);
+    });
+
     test('matches on a substring, so "&" vs "and" does not matter', () {
       const spelledOut = BookingFormCompany(
         id: 9,
@@ -92,6 +104,43 @@ void main() {
 
     test('is null on an empty list, so submit blocks instead of guessing', () {
       expect(FarmFormScreen.defaultCompany(const []), isNull);
+    });
+  });
+
+  group('company hasSectors', () {
+    test('defaults to true so an older payload still shows the picker', () {
+      // Missing flag must degrade to showing the field, not hiding a working
+      // picker on a bad or older response.
+      final company = BookingFormCompany.fromJson({'id': 1, 'nameEn': 'X Ltd'});
+      expect(company.hasSectors, isTrue);
+    });
+
+    test('reads the camelCase and snake_case spellings', () {
+      expect(
+        BookingFormCompany.fromJson({
+          'id': 1,
+          'nameEn': 'Kazi Farms Ltd.',
+          'hasSectors': false,
+        }).hasSectors,
+        isFalse,
+      );
+      expect(
+        BookingFormCompany.fromJson({
+          'id': 1,
+          'nameEn': 'Kazi Farms Ltd.',
+          'has_sectors': false,
+        }).hasSectors,
+        isFalse,
+      );
+    });
+
+    test('ignores a non-boolean flag rather than throwing', () {
+      final company = BookingFormCompany.fromJson({
+        'id': 1,
+        'nameEn': 'X Ltd',
+        'hasSectors': 'yes',
+      });
+      expect(company.hasSectors, isTrue);
     });
   });
 

@@ -111,6 +111,16 @@ class _MarketFormScreenState extends State<MarketFormScreen> {
 
   bool get _isEdit => widget.market != null;
 
+  /// Whether the sector picker belongs on this form right now.
+  ///
+  /// A market sits under one company and one sector, so sector is required —
+  /// except when the chosen company has no sectors in the Sales org master at
+  /// all. That happens for the curated Bangladesh companies (Kazi Farms, CP
+  /// Bangladesh, ACI Godrej and the rest), which are not part of that master.
+  /// The picker is hidden in that case and the sector key is omitted from the
+  /// payload, rather than showing a required field with nothing in it.
+  bool get _showSector => _selectedCompany?.hasSectors ?? true;
+
   /// The code to submit.
   ///
   /// A saved market keeps the code it already has — renumbering it would break
@@ -480,7 +490,10 @@ class _MarketFormScreenState extends State<MarketFormScreen> {
       _snack('Choose the company this market belongs to.');
       return;
     }
-    if (_selectedSector == null) {
+    // Only enforced when the picker is actually on screen. A company with no
+    // sectors in the master has no sector to choose, and blocking there would
+    // be a dead end with nothing the officer could do about it.
+    if (_showSector && _selectedSector == null) {
       _snack('Choose the sector this market belongs to.');
       return;
     }
@@ -687,21 +700,31 @@ class _MarketFormScreenState extends State<MarketFormScreen> {
                           onSelected: _onCompanySelected,
                         ),
                         const SizedBox(height: 12),
-                        SearchableSelectField<BookingFormSector>(
-                          label: 'Sector *',
-                          icon: Icons.hub_outlined,
-                          options: _sectors,
-                          selected: _selectedSector,
-                          enabled: _selectedCompany != null,
-                          hintText: _selectedCompany == null
-                              ? 'Pick a company first'
-                              : 'Tap to pick or type…',
-                          displayString: (s) => s.name,
-                          searchText: (s) => s.searchText,
-                          onSelected: (s) =>
-                              setState(() => _selectedSector = s),
-                        ),
-                        const SizedBox(height: 12),
+                        // Hidden rather than disabled when the chosen company has
+                        // no sectors. Sectors are still read live from the Sales
+                        // org master, and the curated Bangladesh company master
+                        // is not part of it — so a company like Kazi Farms has no
+                        // `companyId` on any sector row and this picker would
+                        // offer nothing. Sector is required on a market, so
+                        // leaving an empty required field on screen would
+                        // dead-end the form at submit with no way to explain why.
+                        if (_showSector) ...[
+                          SearchableSelectField<BookingFormSector>(
+                            label: 'Sector *',
+                            icon: Icons.hub_outlined,
+                            options: _sectors,
+                            selected: _selectedSector,
+                            enabled: _selectedCompany != null,
+                            hintText: _selectedCompany == null
+                                ? 'Pick a company first'
+                                : 'Tap to pick or type…',
+                            displayString: (s) => s.name,
+                            searchText: (s) => s.searchText,
+                            onSelected: (s) =>
+                                setState(() => _selectedSector = s),
+                          ),
+                          const SizedBox(height: 12),
+                        ],
                         _label('Status'),
                         DropdownButtonFormField<String>(
                           initialValue: _status,

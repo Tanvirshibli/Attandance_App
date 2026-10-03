@@ -4,20 +4,36 @@ class BookingFormCompany {
     required this.id,
     required this.nameEn,
     this.nameBn,
+    this.hasSectors = true,
   });
 
   final int id;
   final String nameEn;
   final String? nameBn;
 
+  /// Whether any sector in the master belongs to this company.
+  ///
+  /// The curated Bangladesh company master is not the Sales org master, so a
+  /// company from it has no `companyId` on any sector row and the sector picker
+  /// would offer nothing. The market form requires a sector, so it hides the
+  /// field rather than letting the officer pick a company that dead-ends the
+  /// form.
+  ///
+  /// Defaults to true so a response missing the flag shows the field instead of
+  /// hiding a working picker on a bad or older payload.
+  final bool hasSectors;
+
   String get displayName =>
       nameEn.trim().isNotEmpty ? nameEn.trim() : (nameBn?.trim() ?? 'Company $id');
 
   factory BookingFormCompany.fromJson(Map<String, dynamic> json) {
+    final hasSectors = json['hasSectors'] ?? json['has_sectors'];
+
     return BookingFormCompany(
       id: _asInt(json['id']) ?? 0,
       nameEn: json['nameEn']?.toString() ?? json['name']?.toString() ?? '',
       nameBn: json['nameBn']?.toString(),
+      hasSectors: hasSectors is bool ? hasSectors : true,
     );
   }
 

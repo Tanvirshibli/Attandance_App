@@ -4,6 +4,9 @@ Last updated: September 30, 2026 — **v2.5.0+97**
 
 Field data collection for **markets**, **dealers**, and **farms** in Attandance_App, backed by ZKTeco `/api/v1/mobile/marketing/*` (no JWT — same pattern as geo). Employee identity uses profile `canonicalEmployeeId` (`employees.id`).
 
+**v2.6.0: Company master — 93 curated companies, and Sales fills only the gaps.**
+The company dropdown is now served from the ZKTeco backend's own `mkt_companies` table, merged with the Sales master. Local rows always win: a curated company is never overwritten by an upstream rename. Also hides the sector field when the chosen company has no Sales sectors. See [Company master](#company-master).
+
 **v2.5.4: The Add Farm screen is a lookup, not a form.**
 Tapping the search field now lists every farm in the officer's zones and typing narrows that list — no network round-trip per keystroke. The form itself (details, products, photos) stays hidden until **Add new farm** is chosen, and choosing it closes the list. Farm name and phone moved after the farm code, and the separate trade name field is gone: the farm name is written to both columns. See [Add Farm screen](#add-farm-screen).
 
@@ -190,6 +193,40 @@ Two new nullable columns on `mkt_parties`, from `2026_10_03_100000_add_visit_typ
 Both are strings/doubles rather than a database enum, so a fourth visit kind is a code change rather than an `ALTER TYPE` on a live table — the same reasoning `party_type` already follows. Declared and validated at the same width, deliberately avoiding the `farm_type` mismatch where the column is `string(30)` but the rule is `max:80`.
 
 `visit_type` here is a property of the **farm**, not of a visit. `mkt_visits.visit_type` is a separate column recording what a visit was, and is untouched.
+
+---
+
+## Company master
+
+**v2.6.0.** The company dropdown is served from `GET /marketing/context`, which merges two sources:
+
+| Order | Source | What it is |
+|---|---|---|
+| 1 | `mkt_companies` (`source = manual`) | The curated Bangladesh feed and chicks master — 93 companies |
+| 2 | Sales `form-data` | Any company **not already held locally**, by normalised name |
+
+**Local wins.** The app has no merge logic of its own — the server resolves it — but the consequence matters: a curated company like *Kazi Farms Ltd.* keeps its flags and its `Unknown` breeder status, and an upstream rename cannot replace it.
+
+### `hasSectors`
+
+Each company carries `hasSectors`. Sectors are still read live from the Sales org master, and a curated company is **not** part of it, so it has none.
+
+- **Market form** — sector is required, so the field is **hidden** when the chosen company has no sectors. Leaving an empty required field on screen would dead-end the form at submit with nothing the officer could do. `sector_id` / `sector_name` are simply omitted from the payload.
+- **Dealer form** — sector was already optional; unchanged.
+- **Farm form** — no sector field since v2.5.4.
+
+`BookingFormCompany.hasSectors` defaults to `true`, so a response missing the flag shows the picker rather than hiding a working one on a bad or older payload.
+
+### Default company
+
+`FarmFormScreen.defaultCompany` matches `peoples poultry` **or** `people's poultry`. The apostrophe is inconsistent across the masters this draws on — Sales spells it without, the curated master spells SL 19 *People's Poultry & Hatchery Ltd.* — and matching only one would fall through to the first company in the list, silently filing the farm under the wrong company.
+
+### Refreshing the list
+
+- **Web**: *Sync companies* in the profile dropdown, above *Sign out*. Admin only (`masters.sync`).
+- **CLI**: `marketing:sync-companies --pretend` then `--force` on the ZKTeco backend.
+
+Both drop the cached context list, so the change is visible on the next app cold start rather than after a TTL.
 
 ---
 
