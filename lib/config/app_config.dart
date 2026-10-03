@@ -215,13 +215,47 @@ class AppConfig {
 
   static const int geoTrackingIntervalMinutes = 5;
 
-  /// GitHub-hosted manifest for forced OTA updates (raw.githubusercontent.com).
-  /// Override with `--dart-define=UPDATE_MANIFEST_URL=...`.
-  static const String updateManifestUrl = String.fromEnvironment(
-    'UPDATE_MANIFEST_URL',
-    defaultValue:
-        'https://raw.githubusercontent.com/ciphercall/rocket-launcher/main/ota/manifest.json',
+  /// Which OTA channel this build follows: `prod` or `beta`.
+  ///
+  /// Compile-time, because the manifest URL is baked into the binary — there is
+  /// no way to repoint an installed build at another channel afterwards. Build
+  /// beta with `--dart-define=UPDATE_CHANNEL=beta`; see
+  /// `scripts/build-production-apk.ps1 -Channel beta`.
+  ///
+  /// The channel also decides the version band a build may use: `prod` stays
+  /// under 9000 and `beta` is 9000+, so a beta build is never offered to a
+  /// production device. See [updateManifestUrl] and
+  /// `normalizeVersionCode`.
+  static const String updateChannel = String.fromEnvironment(
+    'UPDATE_CHANNEL',
+    defaultValue: 'prod',
   );
+
+  /// Base the channel's manifest is read from. `raw.githubusercontent.com`
+  /// serves the OTA manifests straight out of the `rocket-launcher` repo.
+  static const String _otaBaseUrl =
+      'https://raw.githubusercontent.com/ciphercall/rocket-launcher/main';
+
+  /// The manifest this build checks.
+  ///
+  /// `prod` keeps today's exact URL so an already-installed build and a freshly
+  /// published one agree. An unrecognised channel falls back to prod rather
+  /// than throwing or resolving to nothing — a typo in a `--dart-define` must
+  /// not leave a build fleet with no OTA path at all, and prod is the safe
+  /// direction to fail in.
+  ///
+  /// `UPDATE_MANIFEST_URL` still wins when set, so a tunnel or one-off build
+  /// can point anywhere without touching the channel logic.
+  static String get updateManifestUrl {
+    const override = String.fromEnvironment('UPDATE_MANIFEST_URL');
+
+    if (override.trim().isNotEmpty) return override.trim();
+
+    return switch (updateChannel) {
+      'beta' => '$_otaBaseUrl/ota/beta/manifest.json',
+      _ => '$_otaBaseUrl/ota/manifest.json',
+    };
+  }
 
   /// Set `--dart-define=UPDATE_CHECK_ENABLED=false` to disable OTA checks (dev).
   static const bool updateCheckEnabled = bool.fromEnvironment(

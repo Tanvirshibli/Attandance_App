@@ -5,7 +5,9 @@ import 'package:package_info_plus/package_info_plus.dart';
 // Mid-migration: the un-migrated parts read the legacy `AppColors`, the new
 // settings rows read the module accents from the new kit. The prefix lets both
 // coexist until the rest of the file is migrated.
+import '../config/app_config.dart';
 import '../config/theme.dart' as legacy;
+import '../models/app_update_manifest.dart';
 import '../widgets/ui/ui.dart' as ui;
 import '../models/auth_user_profile.dart';
 import '../services/auth_service.dart';
@@ -44,9 +46,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
       final info = await PackageInfo.fromPlatform();
       if (!mounted) return;
       // Split-per-ABI APKs encode versionCode as abiIndex*1000 + buildNumber.
-      final rawBuild = int.tryParse(info.buildNumber) ?? 0;
-      final buildNumber =
-          rawBuild >= 1000 ? (rawBuild % 1000).toString() : info.buildNumber;
+      // Shared with the update check so a beta build number (9000+) is not
+      // reduced to a production-sized number here but not there.
+      final buildNumber = normalizeVersionCode(info.buildNumber);
       setState(() {
         _appVersionLabel = 'v${info.version}+$buildNumber';
       });
@@ -605,6 +607,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
           _settingsDivider(),
           _settingsTile(Icons.info_outline, 'About', null,
               color: ui.AppColors.mPayments, trailing: _appVersionLabel),
+          // A beta build and a production build install over each other and
+          // carry the same version name in some cases, so a tester reporting
+          // "it updated fine" is ambiguous. The channel is baked in at compile
+          // time, so it is a fact, not a preference.
+          if (AppConfig.updateChannel == 'beta') ...[
+            _settingsDivider(),
+            _settingsTile(Icons.science_outlined, 'Update channel', null,
+                color: ui.AppColors.mSales,
+                trailing: 'BETA — beta OTA only'),
+          ],
         ],
       ),
     );

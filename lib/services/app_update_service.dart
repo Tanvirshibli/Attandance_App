@@ -48,6 +48,17 @@ class AppUpdateService {
       return const AppUpdateCheckResult.upToDate();
     }
 
+    // Which feed this build watches, and where the installed build sits in its
+    // channel's band. The only way to tell a beta build from a production one
+    // once both are installed, and the first thing to check when a tester says
+    // the update did not appear.
+    if (kDebugMode) {
+      debugPrint(
+        'OTA channel=${AppConfig.updateChannel} '
+        'manifest=${AppConfig.updateManifestUrl}',
+      );
+    }
+
     await cleanupIncompleteDownload();
 
     try {
