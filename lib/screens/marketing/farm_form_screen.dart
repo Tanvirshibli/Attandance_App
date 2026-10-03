@@ -109,7 +109,17 @@ class FarmFormScreen extends StatefulWidget {
     if (companies.isEmpty) return null;
     for (final company in companies) {
       final name = company.displayName.toLowerCase();
-      if (name.contains('peoples poultry')) return company;
+      // The apostrophe is not consistent across the masters this can draw on:
+      // Sales spells it "Peoples Poultry and Hatchery Ltd", the curated
+      // Bangladesh master spells it "People's Poultry & Hatchery Ltd" (SL 19),
+      // and older demo rows have used both. Matching on "peoples poultry" alone
+      // would silently miss the apostrophe spelling and fall through to the
+      // first company in the list, which files the farm under the wrong
+      // company.
+      if (name.contains('peoples poultry') ||
+          name.contains("people's poultry")) {
+        return company;
+      }
     }
     return companies.first;
   }
