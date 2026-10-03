@@ -5,16 +5,27 @@
 #   Minor  — X.Y.Z -> X.Y.(Z+1)   e.g. 2.2.1 -> 2.2.2
 #   Medium — X.Y.Z -> X.(Y+1).Z   e.g. 2.2.1 -> 2.3.1
 #   Major  — X.Y.Z -> (X+1).Y.Z   e.g. 2.2.1 -> 3.2.1
+#
+# -Channel beta builds against ota/beta/manifest.json and puts the build number
+# in the 9000+ band, so a beta build is never offered to a production phone.
 #Requires -Version 5.1
 param(
     [switch]$Emulator,
     [switch]$Publish,
     [string]$ReleaseNotes = '',
     [ValidateSet('Build', 'Minor', 'Medium', 'Major')]
-    [string]$UpdateLevel = 'Build'
+    [string]$UpdateLevel = 'Build',
+    [ValidateSet('prod', 'beta')]
+    [string]$Channel = 'prod'
 )
 
 $ErrorActionPreference = 'Stop'
+
+# Disjoint version bands per channel. The app's update check is a plain integer
+# compare, so a shared counter would let a beta publish reach production
+# devices. Keep beta above this floor and prod below $ProdVersionCeiling.
+$BetaVersionFloor = 9000
+$ProdVersionCeiling = 8999
 
 $projectRoot = Split-Path -Parent $PSScriptRoot
 Set-Location $projectRoot
@@ -44,7 +55,12 @@ function Update-PubspecVersion {
     param(
         [Parameter(Mandatory = $true)]
         [ValidateSet('Build', 'Minor', 'Medium', 'Major')]
-        [string]$Level
+        [string]$Level,
+        [Parameter(Mandatory = $true)]
+        [ValidateSet('prod', 'beta')]
+        [string]$Channel,
+        [int]$BetaVersionFloor = 9000,
+        [int]$ProdVersionCeiling = 8999
     )
 
     $pubspecPath = Join-Path $projectRoot 'pubspec.yaml'
@@ -70,8 +86,26 @@ function Update-PubspecVersion {
         'Build'  { }
     }
 
-    $newName = "$major.$medium.$minor"
+    # The band is applied AFTER the marketing-version bump, and is independent
+    # of it: a beta build is 2.6.0-beta.1 at 9001, not "the next number". The
+    # next build in the same channel is 9002 and keeps the version name.
     $newBuild = $oldBuild + 1
+
+    if ($Channel -eq 'beta' -and $newBuild -lt $BetaVersionFloor) {
+        # Count up to the floor rather than jumping blindly to it, so successive
+        # beta builds stay consecutive and a tester can tell which is newer.
+        $newBuild = $BetaVersionFloor + ($newBuild % 100)
+        Write-Host "Beta band: build number raised to $newBuild (floor $BetaVersionFloor)" -ForegroundColor Yellow
+    }
+    if ($Channel -eq 'prod' -and $newBuild -gt $ProdVersionCeiling) {
+        throw "Prod build number $newBuild is inside the beta band (<= $ProdVersionCeiling is required for prod)."
+    }
+
+    $newName = "$major.$medium.$minor"
+    if ($Channel -eq 'beta') {
+        $newName = "$major.$medium.$minor-beta.1"
+    }
+
     $newLine = "version: $newName+$newBuild"
     $updated = [regex]::Replace(
         $content,
@@ -82,11 +116,11 @@ function Update-PubspecVersion {
     Set-Content -LiteralPath $pubspecPath -Value $updated -NoNewline
 
     if ($oldName -ne $newName) {
-        Write-Host "Marketing version ($Level): $oldName -> $newName" -ForegroundColor Green
+        Write-Host "Marketing version: $oldName -> $newName" -ForegroundColor Green
     } else {
-        Write-Host "Marketing version: $newName (unchanged; UpdateLevel=Build)" -ForegroundColor DarkGray
+        Write-Host "Marketing version: $newName (unchanged; UpdateLevel=$Level)" -ForegroundColor DarkGray
     }
-    Write-Host "Build number: $oldBuild -> $newBuild (version $newName+$newBuild)" -ForegroundColor Green
+    Write-Host "Build number: $oldBuild -> $newBuild (version $newName+$newBuild, channel $Channel)" -ForegroundColor Green
     return "$newName+$newBuild"
 }
 
@@ -104,26 +138,45 @@ if (Test-Path -LiteralPath $localProps) {
     }
 }
 
-$appVersion = Update-PubspecVersion -Level $UpdateLevel
+$appVersion = Update-PubspecVersion -Level $UpdateLevel -Channel $Channel -BetaVersionFloor $BetaVersionFloor -ProdVersionCeiling $ProdVersionCeiling
 
 $rocketLauncherEnv = Join-Path (Split-Path $projectRoot -Parent) 'rocket launcher\config\github.env'
-$updateManifestUrl = $null
+$config = @{}
 if (Test-Path -LiteralPath $rocketLauncherEnv) {
     foreach ($line in Get-Content -LiteralPath $rocketLauncherEnv) {
-        if ($line -match '^\s*UPDATE_MANIFEST_URL=(.+)$') {
-            $updateManifestUrl = $Matches[1].Trim()
-            break
+        $trimmed = $line.Trim()
+        if ($trimmed -eq '' -or $trimmed.StartsWith('#')) { continue }
+        if ($trimmed -match '^([^=]+)=(.*)$') {
+            $config[$Matches[1].Trim()] = $Matches[2].Trim()
         }
     }
 }
 
-$dartDefines = @()
-if ($updateManifestUrl) {
-    $dartDefines += "UPDATE_MANIFEST_URL=$updateManifestUrl"
-    Write-Host "  OTA manifest: $updateManifestUrl" -ForegroundColor DarkGray
+# The manifest URL is derived from the channel, not read from the flat
+# UPDATE_MANIFEST_URL key. That key is a single prod-only URL, so a beta build
+# reading it would check the production manifest and be offered a production
+# APK over the beta build under test.
+$otaBase = if ($config.OTA_BASE_URL) {
+    $config.OTA_BASE_URL.TrimEnd('/')
 } else {
-    Write-Host '  OTA manifest: (default placeholder - set UPDATE_MANIFEST_URL in rocket launcher\config\github.env)' -ForegroundColor Yellow
+    $owner = if ($config.GITHUB_OWNER) { $config.GITHUB_OWNER } else { 'ciphercall' }
+    $repo = if ($config.GITHUB_REPO) { $config.GITHUB_REPO } else { 'rocket-launcher' }
+    $branch = if ($config.GITHUB_BRANCH) { $config.GITHUB_BRANCH } else { 'main' }
+    "https://raw.githubusercontent.com/$owner/$repo/$branch"
 }
+
+$updateManifestUrl = if ($Channel -eq 'beta') {
+    "$otaBase/ota/beta/manifest.json"
+} else {
+    "$otaBase/ota/manifest.json"
+}
+
+$dartDefines = @(
+    "UPDATE_CHANNEL=$Channel",
+    "UPDATE_MANIFEST_URL=$updateManifestUrl"
+)
+Write-Host "  Channel: $Channel"
+Write-Host "  OTA manifest: $updateManifestUrl" -ForegroundColor DarkGray
 
 $symbolsDir = Join-Path $projectRoot 'build\app\outputs\symbols'
 New-Item -ItemType Directory -Force -Path $symbolsDir | Out-Null
@@ -190,7 +243,11 @@ Write-Host 'Install tip: modern phones -> app-arm64-v8a-release.apk; 32-bit -> a
 Write-Host 'For local Cloudflare tunnel backends use scripts/build-dev-tunnel-apk.ps1 instead.' -ForegroundColor DarkGray
 
 if ($Publish) {
-    $inboxDir = Join-Path (Split-Path $projectRoot -Parent) 'rocket launcher\inbox'
+    # Beta gets its own inbox, matching publish-update.ps1's default. Sharing one
+    # would let a beta build sit in the inbox and be picked up by the next prod
+    # publish, which copies the same two filenames.
+    $channelSuffix = if ($Channel -eq 'beta') { 'beta\' } else { '' }
+    $inboxDir = Join-Path (Split-Path $projectRoot -Parent) "rocket launcher\inbox\$channelSuffix"
     New-Item -ItemType Directory -Force -Path $inboxDir | Out-Null
     foreach ($name in $expected) {
         $src = Join-Path $apkDir $name
@@ -201,9 +258,9 @@ if ($Publish) {
     $publishScript = Join-Path (Split-Path $projectRoot -Parent) 'rocket launcher\scripts\publish-update.ps1'
     if (Test-Path -LiteralPath $publishScript) {
         Write-Host ''
-        Write-Host 'Publishing to GitHub via Rocket Launcher...' -ForegroundColor Cyan
+        Write-Host "Publishing [$Channel] to GitHub via Rocket Launcher..." -ForegroundColor Cyan
         $notes = if ($ReleaseNotes) { $ReleaseNotes } else { "Build $appVersion" }
-        & powershell -ExecutionPolicy Bypass -File $publishScript -ReleaseNotes $notes
+        & powershell -ExecutionPolicy Bypass -File $publishScript -ReleaseNotes $notes -Channel $Channel
     } else {
         Write-Host "Publish requested but script not found: $publishScript" -ForegroundColor Yellow
     }

@@ -86,6 +86,31 @@ class _AppUpdateScreenState extends State<AppUpdateScreen> {
                           height: 1.4,
                         ),
                       ),
+                      // Named on the update screen too. A tester looking at a
+                      // blocking screen should not have to guess whether the
+                      // build being offered is the beta one they asked for.
+                      if (widget.manifest.channel == 'beta') ...[
+                        const SizedBox(height: 10),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 5,
+                          ),
+                          decoration: BoxDecoration(
+                            color: AppColors.warning.withValues(alpha: 0.12),
+                            borderRadius: BorderRadius.circular(999),
+                          ),
+                          child: Text(
+                            'Beta build — beta testers only',
+                            textAlign: TextAlign.center,
+                            style: GoogleFonts.poppins(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                              color: AppColors.warning,
+                            ),
+                          ),
+                        ),
+                      ],
                       if (widget.manifest.releaseNotes.isNotEmpty) ...[
                         const SizedBox(height: 20),
                         Container(

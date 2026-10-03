@@ -92,12 +92,60 @@ The build script reads `UPDATE_MANIFEST_URL` from `rocket launcher/config/github
 
 ---
 
+## Channels
+
+Two OTA channels: **prod** (default) and **beta**. Each has its own manifest file in the `rocket-launcher` repo and its own version-number band.
+
+| Channel | Manifest | Version name | Build number | Force update | Release tag |
+|---|---|---|---|---|---|
+| `prod` | `ota/manifest.json` | `2.6.0` | 100–8999 | yes | `v2.6.0-build108` |
+| `beta` | `ota/beta/manifest.json` | `2.6.0-beta.1` | 9000–9999 | **no** | `v2.6.0-beta.1-build9001-beta` |
+
+### ⚠️ The version bands are the whole design
+
+`version_code` is a plain integer compare in `app_update_service.dart` — there is nothing channel-aware in the comparison itself. Separate manifest URLs therefore do **not** keep the channels apart on their own:
+
+```
+beta published at 110 while prod is at 109
+  → every production phone is offered the beta APK
+```
+
+So the build numbers occupy **disjoint ranges**. A prod build can never exceed a beta build, which means a beta manifest is never "older" than a production one and a production device is never offered a beta.
+
+`normalizeVersionCode` is band-aware to support this. It strips Flutter's split-per-ABI prefix (1000 / 2000 / 3000) but **only** for values in 1000–3999 — anything higher is a real version code. Left as `raw % 1000`, a beta build 9108 would become 108 and compare as an early production build.
+
+`build-production-apk.ps1` puts beta numbers at/above 9000 and `publish-update.ps1` **refuses** a build number in the wrong band before uploading anything, because the failure would otherwise only show up in the field.
+
+### Publishing
+
+```powershell
+# production (default)
+powershell -ExecutionPolicy Bypass -File .\scripts\build-production-apk.ps1 -Publish -ReleaseNotes "..."
+
+# beta
+powershell -ExecutionPolicy Bypass -File .\scripts\build-production-apk.ps1 -Channel beta -Publish -ReleaseNotes "..."
+```
+
+`-Channel beta` sets `--dart-define=UPDATE_CHANNEL=beta`, points the build at `ota/beta/manifest.json`, writes the version name as `X.Y.Z-beta.1`, and copies the APKs to `rocket launcher\inbox\beta\` so a beta build cannot be picked up by a later prod publish.
+
+Beta is **not** a forced update — a tester must be able to walk away from a bad build.
+
+### Seeing which channel you are on
+
+- **Profile → Update channel** — only rendered on a beta build, below About.
+- **Update screen** — a beta manifest shows a "Beta build" pill under the version.
+- `adb logcat` shows `OTA channel=... manifest=...` in debug builds.
+
+> **The channel is fixed at compile time.** An installed build cannot be repointed at the other manifest, so switching channels means installing the other channel's APK.
+
+---
+
 ## App-side update flow
 
 1. **`UpdateGate`** ([`main.dart`](../lib/main.dart) home widget) calls `AppUpdateService.checkForUpdate()`
 2. Service GETs `AppConfig.updateManifestUrl` with `Cache-Control: no-cache`
 3. Manifest JSON parsed (supports `Map`, raw JSON `String`, UTF-8 BOM strip)
-4. **`version_code`** compared using `normalizeVersionCode()` (strips ABI prefix from split APK builds, e.g. `2041` → `41`)
+4. **`version_code`** compared using `normalizeVersionCode()` (strips the ABI prefix from split-APK builds, e.g. `2041` → `41`; leaves the 9000+ beta band intact)
 5. If remote > installed → **`AppUpdateScreen`** (non-dismissible when `force_update: true`)
 6. User taps **Download update** → progress bar with size/percentage
 7. SHA-256 verified after download
@@ -171,10 +219,11 @@ single-`Column` layout.
 
 | Dart define | Default | Purpose |
 |-------------|---------|---------|
-| `UPDATE_MANIFEST_URL` | `https://raw.githubusercontent.com/ciphercall/rocket-launcher/main/ota/manifest.json` | Manifest fetch URL |
+| `UPDATE_CHANNEL` | `prod` | `prod` or `beta` — picks the manifest path. See [Channels](#channels) |
+| `UPDATE_MANIFEST_URL` | derived from the channel | Overrides the manifest URL entirely (tunnel / one-off builds) |
 | `UPDATE_CHECK_ENABLED` | `true` | Set `false` to skip OTA gate (local dev) |
 
-Set in [`app_config.dart`](../lib/config/app_config.dart). Production builds pick up `UPDATE_MANIFEST_URL` from `github.env` via [`build-production-apk.ps1`](../scripts/build-production-apk.ps1).
+Set in [`app_config.dart`](../lib/config/app_config.dart). [`build-production-apk.ps1`](../scripts/build-production-apk.ps1) passes `UPDATE_CHANNEL` and the matching `UPDATE_MANIFEST_URL` from `-Channel`; the URL is derived from `OTA_BASE_URL` in `github.env` (or `GITHUB_OWNER`/`GITHUB_REPO`/`GITHUB_BRANCH`), not read from the flat `UPDATE_MANIFEST_URL` key — that key is prod-only and a beta build reading it would watch the production feed.
 
 Dev example:
 
