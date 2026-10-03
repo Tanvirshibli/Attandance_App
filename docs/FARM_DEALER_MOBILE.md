@@ -4,6 +4,9 @@ Last updated: September 30, 2026 — **v2.5.0+97**
 
 Field data collection for **markets**, **dealers**, and **farms** in Attandance_App, backed by ZKTeco `/api/v1/mobile/marketing/*` (no JWT — same pattern as geo). Employee identity uses profile `canonicalEmployeeId` (`employees.id`).
 
+**v2.5.4: The Add Farm screen is a lookup, not a form.**
+Tapping the search field now lists every farm in the officer's zones and typing narrows that list — no network round-trip per keystroke. The form itself (details, products, photos) stays hidden until **Add new farm** is chosen. Farm name and phone moved after the farm code, and the separate trade name field is gone: the farm name is written to both columns. See [Add Farm screen](#add-farm-screen).
+
 **v2.5.3: Add Farm is its own screen, and it starts with a duplicate check.**
 `FarmFormScreen` (`lib/screens/marketing/farm_form_screen.dart`) replaces the farm branch of `PartyFormScreen`, so farm, dealer and market layouts are independent from here on. The screen opens on a searchable **existing-farm lookup** — a hit offers a visit report instead of a second record; a miss offers **Add new farm**. The form itself is re-ordered, several fields are gone, and `visit_type` / `capacity_limit` are new columns on `mkt_parties`. See [Add Farm screen](#add-farm-screen).
 
@@ -79,33 +82,46 @@ The dealer form (`PartyFormScreen`, `initialPartyType: 'dealer'`) and the market
 
 ### Search first
 
-The screen opens as a **duplicate check**, not a blank form. A farm is found by name and identified by its phone, so both are searched at once.
+**v2.5.4.** The screen opens as a **lookup**, not a blank form. A farm is found by name and identified by its phone, so both are searched at once.
 
-| Search result | What the screen shows |
+| State | Shown |
 |---|---|
-| A matching farm | Name, code, phone, zone + **Post a visit report** / **Cancel** |
-| No match | *"No farm found"* + **Add new farm** |
-| Lookup failed | *"Could not check existing farms"* + **Add new farm** |
+| Untouched | Just the search field |
+| Field tapped | Every farm in the officer's zones, scrollable, with **Add new farm** in the list header |
+| Typed | The same list, narrowed |
+| A farm tapped | Name, code, phone, zone + **Post a visit report** / **Cancel** |
+| Nothing matches | *"No farm found"* + **Add new farm** |
+| Load failed | *"Could not load existing farms"* + **Add new farm** |
+
+**The list is fetched once per screen, not per keystroke.** `MarketingService.listFarms()` pulls the zone-scoped set on first focus and `FarmFormScreen.filterFarms` narrows it locally. Re-querying would put a network round-trip between every character on a list the device already holds.
+
+> **A failed load is not an empty list.** Offering to create a farm off a network blip is how a duplicate gets filed, so the failure keeps its own wording. The create path stays open — the server's own uniqueness rule is the authority — but the screen says it could not check.
 
 **Post a visit report** pushes `FarmSurveyFormScreen(party: match)` — the same call the farm detail screen makes. No second record is created.
 
-**Add new farm** reveals the detail fields and seeds one of them from the query: a digit run of 7+ characters (`FarmFormScreen.minPhoneDigits`) cannot be a farm name, so it goes to **Phone**; anything else goes to **Farm name**. The other field is left blank rather than guessed.
+**Add new farm** reveals the form and seeds one field from the query: a digit run of 7+ characters (`FarmFormScreen.minPhoneDigits`) cannot be a farm name, so it goes to **Phone**; anything else goes to **Farm name**. The other field is left blank rather than guessed.
 
-> **A failed lookup is not "no match".** `MarketingService.searchFarms` passes a failed result through rather than returning an empty list. Collapsing the two would let a network blip offer to create a farm that already exists. The create path stays open — the server's own uniqueness rule is the real authority — but the screen says it could not check.
+Narrowing compares **digits first** for a phone-shaped query, so typing a farm's exact number surfaces that farm rather than burying it among farms whose phone merely contains those digits as a substring. Name, code and phone all match, case-insensitively. Under two characters everything is offered — a one-letter query matches most of the catalogue, and a list that looks broken is worse than a long one.
+
+### Everything else waits for "Add new farm"
+
+**v2.5.4.** The farm details, the product rows and the photo gallery all render only after the officer commits. Previously the product table and photo picker were rendered unconditionally, so the screen opened with a search bar above an empty product grid — an officer who had just found the farm they meant was looking at controls they were about to discard.
+
+The first product row is seeded in `_startCreating()` rather than `initState`, for the same reason: a row built before the section is visible is a set of controllers nobody can type into. Going back to search-only (`Cancel` / the clear button) drops the rows, so the next "Add new farm" does not inherit the previous attempt's products.
 
 ### Field order
 
 | # | Field | Notes |
 |---|-------|-------|
-| 1 | **Search existing farm** | type-to-search, debounced 700 ms |
-| 2 | **Farm name** `*` | seeded by the search |
-| 3 | **Phone** `*` | seeded by the search; live uniqueness check |
-| 4 | **Visit type** | `regular_farm` (default) / `model_farm` / `other_farm` |
-| 5 | **Zone** | read-only, from the HRM profile |
-| 6 | **Parent dealer** | live `mkt_parties` dealer list, searchable |
-| 7 | **Farm code** | read-only, server-allocated `FMR-…` |
+| 1 | **Search existing farm** | tap to browse the zone, type to narrow |
+| 2 | **Visit type** | `regular_farm` (default) / `model_farm` / `other_farm` |
+| 3 | **Zone** | read-only, from the HRM profile |
+| 4 | **Parent dealer** | live `mkt_parties` dealer list, searchable |
+| 5 | **Farm code** | read-only, server-allocated `FMR-…` |
+| 6 | **Farm name** `*` | seeded by the search; also written as the trade name |
+| 7 | **Phone** `*` | seeded by the search; live uniqueness check |
 | 8 | **Company** | **Peoples Poultry & Hatchery preselected** |
-| 9 | Trade name | |
+| 9 | Owner name | |
 | 10 | **Farm type** | `broiler` / `layer` / `color` / `all` |
 | 11 | **Capacity** + **Capacity limit** | one row, two number fields |
 | 12 | Capacity unit | |
@@ -113,7 +129,20 @@ The screen opens as a **duplicate check**, not a blank form. A farm is found by 
 | 14 | Address | auto-filled from reverse geocode |
 | 15 | Notes | |
 
-**Removed from the farm form:** party type (now fixed in the payload, never rendered), sector, market, contact person, alt phone, business years, credit limit, payment mode, lead status.
+**v2.5.4:** farm name and phone moved **after** the farm code. The code is the record's identity and is already settled, so what follows is what the officer actually supplies.
+
+**Removed:** party type (now fixed in the payload, never rendered), sector, market, contact person, alt phone, business years, credit limit, payment mode, lead status, and — in v2.5.4 — **trade name**.
+
+### One name, two columns
+
+**v2.5.4.** There is no separate trade name field. `FarmFormScreen.tradeNameFor` writes the farm name to **both** `name` and `trade_name`, because the two are read by different consumers:
+
+| Column | Read by |
+|---|---|
+| `name` | the web farms report (`MarketingFarmsReportPage` export) |
+| `trade_name` | `Party.displayName`, which prefers `tradeName` over `name` |
+
+Filling only one leaves the farm blank in the other place. The value is trimmed, and `null` when blank so the column stays `NULL` rather than holding `''`.
 
 With sector and market gone there is no cascade on this screen, so the company picker is a flat list and `MarketingMasterService.filterSectorsForCompany` / `filterMarketsForSector` are used only by the dealer and market forms.
 
@@ -140,6 +169,8 @@ Choosing a category filters the product list beneath it. A product already picke
 ### Payload changes
 
 **Added:** `visit_type`, `capacity_limit`.
+
+**`trade_name` is no longer a separate input** — it is written from the farm name (see [One name, two columns](#one-name-two-columns)), so the key is always present rather than conditional.
 
 **Removed** (all nullable server-side, so omitting them is safe): `sector_id`, `sector_name`, `market_id`, `contact_person`, `alt_phone`, `business_years`, `credit_limit`, `payment_mode`, `lead_status`. Product rows drop `current_stock`, `stock_qty`, `unit_price`, `competitor_company`.
 
@@ -511,7 +542,7 @@ Selecting a product fills `product_name` and related category/company when those
 | `lib/widgets/ui/app_pill_button.dart` | `AppPillButton` — icon + label action used across the hub and party detail |
 | `lib/widgets/ui/read_only_field.dart` | `ReadOnlyField` — a settled fact (zone, code, party type), shown locked |
 | `lib/services/marketing_master_service.dart` | Company / sector / market lists for the cascading pickers; 24 h cache |
-| `lib/services/marketing_service.dart` | HTTP client (`listExistingDealers`, `nextCode`, `findPartiesByPhone`, `findMarketsByPhone`, `normalisePhone`, `samePhone`, check-in/out, market update) |
+| `lib/services/marketing_service.dart` | HTTP client (`listExistingDealers`, `listFarms`, `nextCode`, `findPartiesByPhone`, `findMarketsByPhone`, `normalisePhone`, `samePhone`, check-in/out, market update) |
 | `lib/models/marketing_dealer.dart` | `MarketingDealer` wire model for the ERP dealer picker |
 | `lib/services/zone_scope_service.dart` | Resolves the profile's zone ids against the master; 24 h cache |
 | `lib/widgets/searchable_select_field.dart` | Type-to-search dropdown (shared with Post booking) |

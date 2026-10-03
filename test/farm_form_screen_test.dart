@@ -17,9 +17,16 @@ void main() {
     int id = 1,
     String name = 'Rahim Poultry Farm',
     String? phone,
+    String? code,
     String partyType = 'farm',
   }) =>
-      Party(id: id, partyType: partyType, name: name, phone: phone);
+      Party(
+        id: id,
+        partyType: partyType,
+        name: name,
+        phone: phone,
+        code: code,
+      );
 
   group('visit type', () {
     test('offers exactly the three farm kinds', () {
@@ -167,6 +174,78 @@ void main() {
         farm(id: 6, partyType: 'farmer', name: 'Karim', phone: '01711000007'),
       ];
       expect(FarmFormScreen.sameFarmPhone(parties, '01711000007')?.id, 6);
+    });
+  });
+
+  group('trade name', () {
+    test('is the farm name itself', () {
+      expect(FarmFormScreen.tradeNameFor('Rahim Poultry Farm'), 'Rahim Poultry Farm');
+    });
+
+    test('is trimmed', () {
+      expect(FarmFormScreen.tradeNameFor('  Rahim Poultry  '), 'Rahim Poultry');
+    });
+
+    test('is null when blank, so the column stays NULL not empty', () {
+      expect(FarmFormScreen.tradeNameFor('   '), isNull);
+      expect(FarmFormScreen.tradeNameFor(''), isNull);
+    });
+  });
+
+  group('browse list narrowing', () {
+    final farms = [
+      farm(id: 1, name: 'Rahim Poultry Farm', phone: '01711000001'),
+      farm(id: 2, name: 'Karim Layer Farm', phone: '01711000002'),
+      farm(id: 3, name: 'SalamBrooder', phone: '01911000003'),
+    ];
+
+    test('an empty query offers every farm', () {
+      expect(FarmFormScreen.filterFarms(farms, '').length, farms.length);
+    });
+
+    test('a single character offers every farm', () {
+      // A one-letter query matches most of the catalogue; a list that looks
+      // broken is worse than a long one.
+      expect(FarmFormScreen.filterFarms(farms, 'R').length, farms.length);
+    });
+
+    test('narrows on the farm name, case-insensitively', () {
+      expect(FarmFormScreen.filterFarms(farms, 'karim').map((f) => f.id), [2]);
+      expect(FarmFormScreen.filterFarms(farms, 'BROODER').map((f) => f.id), [3]);
+    });
+
+    test('narrows on a phone number', () {
+      expect(FarmFormScreen.filterFarms(farms, '01711000002').map((f) => f.id), [2]);
+    });
+
+    test('an exact phone wins over a longer number containing it', () {
+      final numbers = [
+        farm(id: 1, name: 'Shorter', phone: '01711000001'),
+        farm(id: 2, name: 'Longer', phone: '017110000019'),
+      ];
+      expect(
+        FarmFormScreen.filterFarms(numbers, '01711000001').map((f) => f.id),
+        [1],
+      );
+    });
+
+    test('an unformatted phone still finds its farm', () {
+      expect(
+        FarmFormScreen.filterFarms(farms, '+8801711000002').map((f) => f.id),
+        [2],
+      );
+    });
+
+    test('narrows on the farm code', () {
+      final coded = [farm(id: 7, code: 'FMR-09260014', name: 'Unnamed')];
+      expect(
+        FarmFormScreen.filterFarms(coded, 'fmr-0926').map((f) => f.id),
+        [7],
+      );
+    });
+
+    test('no match yields an empty list, which is what offers Add new farm', () {
+      expect(FarmFormScreen.filterFarms(farms, 'zzzz'), isEmpty);
     });
   });
 
