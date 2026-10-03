@@ -210,6 +210,33 @@ class MarketingService {
     return ApiResult.ok(farms, statusCode: result.statusCode);
   }
 
+  /// Every farm, for the Add Farm screen's browse list.
+  ///
+  /// The screen offers the officer the farms already on file before they type
+  /// anything, so the list is fetched once on focus and narrowed in Dart as
+  /// they type. Re-querying the server per keystroke would put a network
+  /// round-trip between every character on a list the device already holds.
+  ///
+  /// Zone narrowing is **not** applied here. Zone is this employee's own
+  /// territory and the caller has to apply it with the same
+  /// `ZoneScope.matches` predicate the party list screen uses — including the
+  /// market-district fallback for farms created before zone tagging — so the
+  /// two lists agree on who is in scope.
+  Future<ApiResult<List<Party>>> listFarms({int limit = 200}) async {
+    final result = await listParties(limit: limit);
+    if (!result.success) return result;
+
+    final farms = (result.data ?? const <Party>[])
+        .where((p) => p.isFarm)
+        .toList()
+      ..sort(
+        (a, b) => a.displayName.toLowerCase().compareTo(
+          b.displayName.toLowerCase(),
+        ),
+      );
+    return ApiResult.ok(farms, statusCode: result.statusCode);
+  }
+
   /// Reduce a phone number to comparable digits.
   ///
   /// `01712-345678`, `+8801712345678` and `01712345678` are the same dealer, so

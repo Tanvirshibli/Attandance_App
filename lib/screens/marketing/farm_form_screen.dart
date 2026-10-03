@@ -154,6 +154,57 @@ class FarmFormScreen extends StatefulWidget {
     return null;
   }
 
+  /// The farms in [farms] matching [query], narrowed for the browse list.
+  ///
+  /// The list is held on the device and filtered here rather than re-fetched,
+  /// so this runs on every keystroke — which is why it is static, pure, and
+  /// why it avoids touching the widget tree.
+  ///
+  /// A phone-shaped query is compared by **digits first**, so typing a farm's
+  /// exact number surfaces that farm at the top of the list rather than burying
+  /// it among the farms whose phone merely contains those digits as a
+  /// substring. The name / code contains pass still runs, so a number that
+  /// matches nothing exactly does not produce an empty list.
+  ///
+  /// Under two characters everything is offered: a single letter matches half
+  /// the catalogue and a list that appears to be broken is worse than a long one.
+  static List<Party> filterFarms(List<Party> farms, String query) {
+    final trimmed = query.trim();
+    if (trimmed.length < 2) return farms;
+
+    final lower = trimmed.toLowerCase();
+    final exact = looksLikePhone(trimmed)
+        ? farms
+              .where((f) => MarketingService.samePhone(f.phone, trimmed))
+              .toList()
+        : const <Party>[];
+    if (exact.isNotEmpty) return exact;
+
+    return farms
+        .where(
+          (f) =>
+              f.displayName.toLowerCase().contains(lower) ||
+              (f.code ?? '').toLowerCase().contains(lower) ||
+              (f.phone ?? '').toLowerCase().contains(lower),
+        )
+        .toList();
+  }
+
+  /// The trade name a farm is filed under.
+  ///
+  /// The farms report exports `name`, not `trade_name`, so a farm that only
+  /// filled `name` would show blank there and anywhere else reading
+  /// [Party.displayName], which prefers `tradeName`. Writing the same value to
+  /// both columns is what makes "the farm name is the trade name" true in the
+  /// data rather than only in the UI.
+  ///
+  /// Trimmed, and null when blank so the column stays NULL rather than holding
+  /// an empty string.
+  static String? tradeNameFor(String name) {
+    final trimmed = name.trim();
+    return trimmed.isEmpty ? null : trimmed;
+  }
+
   /// The products belonging to [category], for a product row's picker.
   ///
   /// A null category means "not chosen yet", which offers the whole catalogue
@@ -175,7 +226,6 @@ class _FarmFormScreenState extends State<FarmFormScreen> {
   final AuthService _authService = AuthService();
 
   final _name = TextEditingController();
-  final _tradeName = TextEditingController();
   final _ownerName = TextEditingController();
   final _phone = TextEditingController();
   final _email = TextEditingController();
@@ -194,22 +244,27 @@ class _FarmFormScreenState extends State<FarmFormScreen> {
   String _visitType = FarmFormScreen.defaultVisitType;
   String _farmType = FarmFormScreen.defaultFarmType;
 
-  /// Long enough to skip the searches for intermediate numbers, short enough
-  /// that the verdict is there before the officer looks up from the keyboard.
-  static const _searchDelay = Duration(milliseconds: 700);
-
-  /// --- Duplicate check -------------------------------------------------
+  // ---------------------------------------------------------------------
+  // Existing-farm lookup
+  // ---------------------------------------------------------------------
 
   final _search = TextEditingController();
-  Timer? _searchDebounce;
+  final _searchFocusNode = FocusNode();
 
-  bool _searching = false;
-  bool _searchFailed = false;
-  List<Party> _farmMatches = const [];
+  /// True once the officer has touched the field. Tapping it lists the farms
+  /// already on file; typing narrows that list. The flag is what keeps the
+  /// screen from firing a list request the moment it opens, before the officer
+  /// has shown any sign of wanting one.
+  bool _browsing = false;
+  bool _loadingFarms = false;
+  bool _loadFailed = false;
+  bool _farmsLoaded = false;
 
-  /// An exact phone match outranks a name substring: if the officer typed a
-  /// number, "this farm already exists" is the only useful answer.
-  Party? _exactMatch;
+  /// Every farm in the employee's zones, fetched once and narrowed in Dart.
+  List<Party> _zoneFarms = const [];
+
+  /// The farm the officer picked out of the browse list, or the exact match the
+  /// query landed on. Null means nothing is selected yet.
   Party? _selectedMatch;
 
   /// Set once the officer commits to creating a farm. The detail fields stay
@@ -266,7 +321,6 @@ class _FarmFormScreenState extends State<FarmFormScreen> {
   @override
   void initState() {
     super.initState();
-    _products.add(_FarmProductRow());
     _bootstrap();
   }
 
@@ -358,9 +412,8 @@ class _FarmFormScreenState extends State<FarmFormScreen> {
 
   @override
   void dispose() {
-    _searchDebounce?.cancel();
+    _searchFocusNode.dispose();
     _name.dispose();
-    _tradeName.dispose();
     _ownerName.dispose();
     _phone.dispose();
     _email.dispose();
@@ -415,62 +468,68 @@ class _FarmFormScreenState extends State<FarmFormScreen> {
   }
 
   // ---------------------------------------------------------------------
-  // Duplicate check
+  // Existing-farm lookup
   // ---------------------------------------------------------------------
 
+  /// Opens the browse list on a tap, and keeps narrowing it as the officer types.
+  ///
+  /// The list is fetched **once** per screen rather than per keystroke: it is
+  /// a bounded, zone-scoped set the device can hold, and a network round-trip
+  /// between every character would make typing feel broken.
   void _onSearchChanged(String value) {
-    _searchDebounce?.cancel();
-    final trimmed = value.trim();
-
-    if (trimmed.length < 2) {
-      setState(() {
-        _searching = false;
-        _searchFailed = false;
-        _farmMatches = const [];
-        _exactMatch = null;
-        _selectedMatch = null;
-      });
+    if (!_browsing) {
+      setState(() => _browsing = true);
+      if (!_farmsLoaded) _loadZoneFarms();
       return;
     }
-
-    setState(() => _searching = true);
-    _searchDebounce = Timer(_searchDelay, () => _runSearch(trimmed));
+    // Narrowing is pure and synchronous, so the list responds on the same frame
+    // as the keystroke. Only a previous selection is dropped — a farm the
+    // officer already picked stays picked until they pick another or clear.
+    setState(() => _selectedMatch = null);
   }
 
-  Future<void> _runSearch(String query) async {
-    final result = await _service.searchFarms(query);
+  /// Tapping the field with an empty box opens the same list as typing would.
+  void _onSearchTap() {
+    if (_browsing) return;
+    setState(() => _browsing = true);
+    if (!_farmsLoaded) _loadZoneFarms();
+  }
+
+  /// Fetches every farm the employee can see, once.
+  Future<void> _loadZoneFarms() async {
+    setState(() {
+      _loadingFarms = true;
+      _loadFailed = false;
+    });
+
+    final result = await _service.listFarms();
     if (!mounted) return;
 
-    // A newer keystroke may have landed while this was in flight.
-    if (_search.text.trim() != query) return;
-
     if (!result.success) {
-      // Not the same as "no such farm". Offering to create one off a failed
-      // lookup is how a duplicate gets filed, so the failure is surfaced and
-      // the create path is left to the server's own uniqueness rule.
+      // A failed load is not an empty list. Offering to create a farm off a
+      // network blip is how a duplicate gets filed, so the failure is surfaced
+      // and the server's own uniqueness rule stays the authority.
       setState(() {
-        _searching = false;
-        _searchFailed = true;
-        _farmMatches = const [];
-        _exactMatch = null;
-        _selectedMatch = null;
+        _loadingFarms = false;
+        _loadFailed = true;
+        _farmsLoaded = true;
+        _zoneFarms = const [];
       });
       return;
     }
 
-    final matches = result.data ?? const <Party>[];
-    final match = FarmFormScreen.exactFarmMatch(matches, query);
     setState(() {
-      _searching = false;
-      _searchFailed = false;
-      _farmMatches = matches;
-      _exactMatch = match;
-      _selectedMatch = match;
+      _loadingFarms = false;
+      _farmsLoaded = true;
+      _zoneFarms = result.data ?? const <Party>[];
     });
   }
 
-  /// The farm this search has landed on, if any.
-  Party? get _activeMatch => _exactMatch ?? _selectedMatch;
+  /// The farms in the employee's zones, narrowed by what they have typed.
+  List<Party> get _visibleFarms => FarmFormScreen.filterFarms(
+    _zoneFarms,
+    _search.text,
+  );
 
   /// Commits to creating a farm, seeding the field the query really was.
   ///
@@ -481,6 +540,10 @@ class _FarmFormScreenState extends State<FarmFormScreen> {
     final typed = _search.text.trim();
     setState(() {
       _creating = true;
+      // The first product row is seeded here rather than in initState: until the
+      // officer commits, the product section is not rendered at all, and a row
+      // built then would be a set of controllers nobody can type into.
+      _products.add(_FarmProductRow());
       if (FarmFormScreen.looksLikePhone(typed)) {
         _phone.text = typed;
       } else if (typed.isNotEmpty) {
@@ -493,15 +556,22 @@ class _FarmFormScreenState extends State<FarmFormScreen> {
   }
 
   /// Clears the search and drops back to the search-only state.
+  ///
+  /// Also drops any product rows, because going back to search-only hides the
+  /// section that owns them — leaving them alive would mean the next
+  /// "Add new farm" starts with the previous attempt's rows still in it.
   void _resetSearch() {
-    _searchDebounce?.cancel();
     setState(() {
+      for (final row in _products) {
+        row.dispose();
+      }
+      _products.clear();
       _search.clear();
       _creating = false;
-      _searching = false;
-      _searchFailed = false;
-      _farmMatches = const [];
-      _exactMatch = null;
+      _browsing = false;
+      _loadFailed = false;
+      _zoneFarms = const [];
+      _farmsLoaded = false;
       _selectedMatch = null;
       _phoneClash = null;
     });
@@ -586,10 +656,10 @@ class _FarmFormScreenState extends State<FarmFormScreen> {
     if (!mounted) return;
     final clash = _phoneClash;
     if (clash != null) {
-      setState(() {
-        _selectedMatch = clash;
-        _exactMatch = clash;
-      });
+      // Surface the farm that already holds the number rather than only saying
+      // no — the officer's next move is almost always to post a visit against
+      // it, and that button is on the match panel.
+      setState(() => _selectedMatch = clash);
       _snack('That phone number is already linked to another farm.');
       return;
     }
@@ -660,8 +730,10 @@ class _FarmFormScreenState extends State<FarmFormScreen> {
       'employee_id': employeeId,
       'party_type': _partyType,
       'name': _name.text.trim(),
-      if (_tradeName.text.trim().isNotEmpty)
-        'trade_name': _tradeName.text.trim(),
+      // Written to both columns: the web farms report exports `name`, while
+      // `Party.displayName` prefers `trade_name`, so filling only one of them
+      // leaves the farm blank in one place or the other.
+      'trade_name': FarmFormScreen.tradeNameFor(_name.text),
       // The server-allocated code wins over anything typed: the field is
       // read-only.
       if (_generatedCode != null && _generatedCode!.isNotEmpty)
@@ -781,64 +853,73 @@ class _FarmFormScreenState extends State<FarmFormScreen> {
   /// The search control at the top of the screen.
   ///
   /// A plain text field rather than a `SearchableSelectField`, because the list
-  /// of hits arrives from the server a beat after the keystroke and the results
-  /// are shown in a panel of their own rather than as an overlay under the field.
+  /// is fetched from the server and stays on the device to be narrowed locally —
+  /// an overlay dropdown that re-queries on every keystroke would be the wrong
+  /// shape for that.
   Widget _buildSearch() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         _label('Search existing farm'),
-        VoiceTextField(
+        TextField(
           controller: _search,
+          focusNode: _searchFocusNode,
+          onTap: _onSearchTap,
           onChanged: _onSearchChanged,
-          keyboardType: TextInputType.text,
-          voiceEnabled: false,
-          decoration: _decoration(
-            hint: 'Farm name or phone number',
-          ).copyWith(
-            prefixIcon: const Icon(Icons.search, size: 20),
-            suffixIcon: _search.text.isEmpty
-                ? null
-                : IconButton(
-                    icon: const Icon(Icons.clear, size: 20),
-                    onPressed: _resetSearch,
-                  ),
-          ),
+          style: AppType.bodySm.copyWith(color: AppColors.ink),
+          decoration: _decoration(hint: 'Tap to browse, or type a name or number')
+              .copyWith(
+                prefixIcon: const Icon(Icons.search, size: 20),
+                suffixIcon: _search.text.isEmpty
+                    ? const Icon(Icons.arrow_drop_down, size: 22)
+                    : IconButton(
+                        icon: const Icon(Icons.clear, size: 20),
+                        onPressed: _resetSearch,
+                      ),
+              ),
         ),
-        if (_searching) ...[
-          const SizedBox(height: 12),
-          const LinearProgressIndicator(),
-        ],
-        if (_searchFailed) ...[
-          const SizedBox(height: 12),
-          _searchNotice(
-            icon: Icons.cloud_off_outlined,
-            tone: AppColors.error,
-            title: 'Could not check existing farms',
-            detail: 'The server did not answer. You can still add the farm — '
-                'a duplicate phone number is rejected on save.',
-            action: TextButton(onPressed: _startCreating, child: const Text('Add new farm')),
-          ),
-        ],
-        if (!_searching && !_searchFailed) _buildSearchResults(),
+        if (_browsing) _buildBrowseResults(),
       ],
     );
   }
 
-  /// Match list, the "add new farm" offer, or nothing at all.
-  Widget _buildSearchResults() {
-    final query = _search.text.trim();
-    if (query.length < 2) return const SizedBox.shrink();
+  /// The farm list under the search field: loading, the zone's farms, the
+  /// "nothing found" offer, or the load failure.
+  Widget _buildBrowseResults() {
+    if (_loadingFarms) {
+      return const Padding(
+        padding: EdgeInsets.only(top: 12),
+        child: LinearProgressIndicator(),
+      );
+    }
 
-    final match = _activeMatch;
+    if (_loadFailed) {
+      return _searchNotice(
+        icon: Icons.cloud_off_outlined,
+        tone: AppColors.error,
+        title: 'Could not load existing farms',
+        detail: 'The server did not answer. You can still add the farm — a '
+            'duplicate phone number is rejected on save.',
+        action: TextButton(
+          onPressed: _startCreating,
+          child: const Text('Add new farm'),
+        ),
+      );
+    }
+
+    final match = _selectedMatch;
     if (match != null) return _buildMatchPanel(match);
 
-    if (_farmMatches.isEmpty) {
+    final farms = _visibleFarms;
+    if (farms.isEmpty) {
+      final query = _search.text.trim();
       return _searchNotice(
         icon: Icons.search_off_outlined,
         tone: AppColors.inkMuted,
         title: 'No farm found',
-        detail: 'Nothing matches "$query".',
+        detail: query.isEmpty
+            ? 'No farms on file in your zone yet.'
+            : 'Nothing in your zone matches "$query".',
         action: FilledButton.icon(
           onPressed: _startCreating,
           icon: const Icon(Icons.add, size: 18),
@@ -847,14 +928,90 @@ class _FarmFormScreenState extends State<FarmFormScreen> {
       );
     }
 
-    return _searchNotice(
-      icon: Icons.info_outline,
-      tone: AppColors.inkMuted,
-      title: 'No exact match',
-      detail: '${_farmMatches.length} similar '
-          '${_farmMatches.length == 1 ? 'farm' : 'farms'} found. Pick one, or '
-          'add the new farm.',
-      action: null,
+    return _buildFarmList(farms);
+  }
+
+  /// The zone's farms, each tappable, with the create action kept in reach.
+  ///
+  /// The header states how many farms are on file and carries the create button,
+  /// so the officer can always add a farm without first having to type something
+  /// that finds nothing — which is the case that happens most often in a zone
+  /// where the farm being visited is genuinely new.
+  Widget _buildFarmList(List<Party> farms) {
+    final query = _search.text.trim();
+    final total = _zoneFarms.length;
+
+    return Container(
+      margin: const EdgeInsets.only(top: 12),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceSunk,
+        borderRadius: BorderRadius.circular(AppRadius.md),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 10, 8, 6),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    query.isEmpty
+                        ? '${farms.length} '
+                              '${farms.length == 1 ? 'farm' : 'farms'} in your zone'
+                        : '${farms.length} of $total '
+                              '${total == 1 ? 'farm' : 'farms'} match',
+                    style: AppType.meta.copyWith(
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.inkMuted,
+                    ),
+                  ),
+                ),
+                TextButton.icon(
+                  onPressed: _startCreating,
+                  icon: const Icon(Icons.add, size: 18),
+                  label: const Text('Add new farm'),
+                ),
+              ],
+            ),
+          ),
+          const Divider(height: 1),
+          // Capped so a zone with hundreds of farms cannot push the create
+          // action and the rest of the screen off the bottom.
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxHeight: 260),
+            child: ListView.builder(
+              shrinkWrap: true,
+              primary: false,
+              padding: EdgeInsets.zero,
+              itemCount: farms.length,
+              itemBuilder: (context, index) => _farmRow(farms[index]),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _farmRow(Party farm) {
+    final phone = farm.phone;
+    final code = farm.code;
+
+    return ListTile(
+      dense: true,
+      onTap: () => setState(() => _selectedMatch = farm),
+      title: Text(farm.displayName, style: AppType.bodySm),
+      subtitle: Text(
+        [if (code != null && code.isNotEmpty) code, if (phone != null && phone.isNotEmpty) phone]
+            .join(' · '),
+        style: AppType.meta.copyWith(color: AppColors.inkMuted),
+      ),
+      trailing: const Icon(
+        Icons.chevron_right,
+        size: 20,
+        color: AppColors.inkFaint,
+      ),
     );
   }
 
@@ -997,14 +1154,19 @@ class _FarmFormScreenState extends State<FarmFormScreen> {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   AppCard(child: _buildSearch()),
+                  // Everything below is the form itself. It appears only once the
+                  // officer has committed to adding a farm — the screen opens as
+                  // a lookup, and an officer who has just found the farm they
+                  // meant should not be looking at an empty product table and a
+                  // photo picker they are about to discard.
                   if (_creating) ...[
                     const SizedBox(height: 12),
                     _buildFarmDetails(),
+                    const SizedBox(height: 12),
+                    _buildProducts(),
+                    const SizedBox(height: 12),
+                    _buildPhotosAndSubmit(),
                   ],
-                  const SizedBox(height: 12),
-                  _buildProducts(),
-                  const SizedBox(height: 12),
-                  _buildPhotosAndSubmit(),
                 ],
               ),
             ),
@@ -1021,22 +1183,6 @@ class _FarmFormScreenState extends State<FarmFormScreen> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           _sectionTitle('Farm details'),
-          _label('Farm name *'),
-          VoiceTextField(
-            controller: _name,
-            decoration: _decoration(hint: 'Farm name'),
-          ),
-          const SizedBox(height: 14),
-          // A farm is looked up by phone, so the number is required and has to
-          // belong to exactly one farm.
-          _label('Phone *'),
-          VoiceTextField(
-            controller: _phone,
-            keyboardType: TextInputType.phone,
-            onChanged: (_) => _onPhoneChanged(),
-            decoration: _decoration(errorText: _phoneError),
-          ),
-          const SizedBox(height: 14),
           _label('Visit type'),
           DropdownButtonFormField<String>(
             initialValue: _visitType,
@@ -1093,6 +1239,27 @@ class _FarmFormScreenState extends State<FarmFormScreen> {
                 : 'Unavailable — will save without one',
           ),
           const SizedBox(height: 14),
+          // The name and phone sit after the code on purpose: the code is the
+          // record's identity and is already settled, so what follows is the
+          // part the officer actually supplies. There is no separate trade
+          // name — the farm name is written to both columns, so what the
+          // officer types here is what every list and report shows.
+          _label('Farm name *'),
+          VoiceTextField(
+            controller: _name,
+            decoration: _decoration(hint: 'Farm name'),
+          ),
+          const SizedBox(height: 14),
+          // A farm is looked up by phone, so the number is required and has to
+          // belong to exactly one farm.
+          _label('Phone *'),
+          VoiceTextField(
+            controller: _phone,
+            keyboardType: TextInputType.phone,
+            onChanged: (_) => _onPhoneChanged(),
+            decoration: _decoration(errorText: _phoneError),
+          ),
+          const SizedBox(height: 14),
           SearchableSelectField<BookingFormCompany>(
             label: 'Company *',
             icon: Icons.apartment_outlined,
@@ -1101,12 +1268,6 @@ class _FarmFormScreenState extends State<FarmFormScreen> {
             displayString: (c) => c.displayName,
             searchText: (c) => c.displayName.toLowerCase(),
             onSelected: (c) => setState(() => _selectedCompany = c),
-          ),
-          const SizedBox(height: 14),
-          _label('Trade name'),
-          VoiceTextField(
-            controller: _tradeName,
-            decoration: _decoration(hint: 'Optional'),
           ),
           const SizedBox(height: 14),
           _label('Owner name'),
