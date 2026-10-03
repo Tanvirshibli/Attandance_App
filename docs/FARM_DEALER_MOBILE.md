@@ -5,7 +5,7 @@ Last updated: September 30, 2026 — **v2.5.0+97**
 Field data collection for **markets**, **dealers**, and **farms** in Attandance_App, backed by ZKTeco `/api/v1/mobile/marketing/*` (no JWT — same pattern as geo). Employee identity uses profile `canonicalEmployeeId` (`employees.id`).
 
 **v2.5.4: The Add Farm screen is a lookup, not a form.**
-Tapping the search field now lists every farm in the officer's zones and typing narrows that list — no network round-trip per keystroke. The form itself (details, products, photos) stays hidden until **Add new farm** is chosen. Farm name and phone moved after the farm code, and the separate trade name field is gone: the farm name is written to both columns. See [Add Farm screen](#add-farm-screen).
+Tapping the search field now lists every farm in the officer's zones and typing narrows that list — no network round-trip per keystroke. The form itself (details, products, photos) stays hidden until **Add new farm** is chosen, and choosing it closes the list. Farm name and phone moved after the farm code, and the separate trade name field is gone: the farm name is written to both columns. See [Add Farm screen](#add-farm-screen).
 
 **v2.5.3: Add Farm is its own screen, and it starts with a duplicate check.**
 `FarmFormScreen` (`lib/screens/marketing/farm_form_screen.dart`) replaces the farm branch of `PartyFormScreen`, so farm, dealer and market layouts are independent from here on. The screen opens on a searchable **existing-farm lookup** — a hit offers a visit report instead of a second record; a miss offers **Add new farm**. The form itself is re-ordered, several fields are gone, and `visit_type` / `capacity_limit` are new columns on `mkt_parties`. See [Add Farm screen](#add-farm-screen).
@@ -100,6 +100,8 @@ The dealer form (`PartyFormScreen`, `initialPartyType: 'dealer'`) and the market
 **Post a visit report** pushes `FarmSurveyFormScreen(party: match)` — the same call the farm detail screen makes. No second record is created.
 
 **Add new farm** reveals the form and seeds one field from the query: a digit run of 7+ characters (`FarmFormScreen.minPhoneDigits`) cannot be a farm name, so it goes to **Phone**; anything else goes to **Farm name**. The other field is left blank rather than guessed.
+
+**Choosing "Add new farm" also closes the list** and unfocuses the field. The farm list was the way *into* that decision; keeping it open would push the form the officer now has to fill in below a scrollable panel they no longer need. The typed query stays in the field, which turns **read-only** and relabels to *"Searched for"* — it is now a record of what they looked for, not something to edit. The clear button is disabled at that point too, because `_resetSearch` discards the whole form rather than just the query.
 
 Narrowing compares **digits first** for a phone-shaped query, so typing a farm's exact number surfaces that farm rather than burying it among farms whose phone merely contains those digits as a substring. Name, code and phone all match, case-insensitively. Under two characters everything is offered — a one-letter query matches most of the catalogue, and a list that looks broken is worse than a long one.
 

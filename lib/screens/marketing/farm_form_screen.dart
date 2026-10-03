@@ -540,6 +540,13 @@ class _FarmFormScreenState extends State<FarmFormScreen> {
     final typed = _search.text.trim();
     setState(() {
       _creating = true;
+      // Close the lookup. The farm list was the way *into* this decision; once
+      // it is made the list is the wrong thing to keep on screen, and leaving
+      // it open would push the form the officer now has to fill in below a
+      // scrollable panel they no longer need. The typed query stays in the
+      // field, so it still reads as what they searched for and seeds the form.
+      _browsing = false;
+      _searchFocusNode.unfocus();
       // The first product row is seeded here rather than in initState: until the
       // officer commits, the product section is not rendered at all, and a row
       // built then would be a set of controllers nobody can type into.
@@ -856,27 +863,34 @@ class _FarmFormScreenState extends State<FarmFormScreen> {
   /// is fetched from the server and stays on the device to be narrowed locally —
   /// an overlay dropdown that re-queries on every keystroke would be the wrong
   /// shape for that.
+  ///
+  /// Read-only once the officer has committed to adding a farm. The field is
+  /// then a record of what they searched for, not something they still need to
+  /// edit — and the clear button has to go with it, because [_resetSearch]
+  /// discards the whole form, not just the query.
   Widget _buildSearch() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _label('Search existing farm'),
+        _label(_creating ? 'Searched for' : 'Search existing farm'),
         TextField(
           controller: _search,
           focusNode: _searchFocusNode,
+          readOnly: _creating,
           onTap: _onSearchTap,
           onChanged: _onSearchChanged,
           style: AppType.bodySm.copyWith(color: AppColors.ink),
-          decoration: _decoration(hint: 'Tap to browse, or type a name or number')
-              .copyWith(
-                prefixIcon: const Icon(Icons.search, size: 20),
-                suffixIcon: _search.text.isEmpty
-                    ? const Icon(Icons.arrow_drop_down, size: 22)
-                    : IconButton(
-                        icon: const Icon(Icons.clear, size: 20),
-                        onPressed: _resetSearch,
-                      ),
-              ),
+          decoration: _decoration(
+            hint: 'Tap to browse, or type a name or number',
+          ).copyWith(
+            prefixIcon: const Icon(Icons.search, size: 20),
+            suffixIcon: _search.text.isEmpty
+                ? const Icon(Icons.arrow_drop_down, size: 22)
+                : IconButton(
+                    icon: const Icon(Icons.clear, size: 20),
+                    onPressed: _creating ? null : _resetSearch,
+                  ),
+          ),
         ),
         if (_browsing) _buildBrowseResults(),
       ],
