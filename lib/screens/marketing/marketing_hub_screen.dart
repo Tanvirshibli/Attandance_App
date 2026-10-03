@@ -8,6 +8,7 @@ import '../../services/marketing_service.dart';
 import '../../services/permission_service.dart';
 import '../../services/zone_scope_service.dart';
 import '../../widgets/ui/ui.dart';
+import 'farm_form_screen.dart';
 import 'followup_form_screen.dart';
 import 'market_detail_screen.dart';
 import 'market_form_screen.dart';
@@ -300,7 +301,7 @@ class _MarketingHubScreenState extends State<MarketingHubScreen>
   void _createFor(int index) {
     switch (_tabs[index].key) {
       case 'farm':
-        _open(const PartyFormScreen(initialPartyType: 'farm'));
+        _open(const FarmFormScreen());
       case 'dealer':
         _open(const PartyFormScreen(initialPartyType: 'dealer'));
       default:

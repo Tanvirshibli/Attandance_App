@@ -178,6 +178,38 @@ class MarketingService {
     return listMarkets(q: digits);
   }
 
+  /// Farms matching [query] on name or phone.
+  ///
+  /// The duplicate check at the top of the Add Farm screen. A farm is identified
+  /// by its phone and found by its name, so both are searched at once.
+  ///
+  /// Filtering happens here rather than through [listParties]' `partyType`
+  /// parameter on purpose: that maps to the backend's exact
+  /// `where('party_type', …)`, and the farm pool is `('farm','farmer')`, so
+  /// passing `party_type=farm` would silently drop every `farmer` row. A single
+  /// unfiltered `q` query plus a Dart filter is one round-trip and gets both.
+  ///
+  /// The backend `q` is a substring `LIKE` over name / trade_name / code /
+  /// phone / contact_person / owner_name, so the hits are *candidates*. Callers
+  /// that care about an exact number compare with [samePhone] themselves.
+  ///
+  /// A failed lookup is **not** an empty result. Returning `ok([])` would tell
+  /// the Add Farm screen "no such farm exists" and offer to create one — turning
+  /// a network blip into a duplicate record. The failure is passed through so
+  /// the screen can say it could not check.
+  Future<ApiResult<List<Party>>> searchFarms(String query) async {
+    final trimmed = query.trim();
+    if (trimmed.length < 2) return ApiResult.ok(const <Party>[]);
+
+    final result = await listParties(q: trimmed, limit: 50);
+    if (!result.success) return result;
+
+    final farms = (result.data ?? const <Party>[])
+        .where((p) => p.isFarm)
+        .toList();
+    return ApiResult.ok(farms, statusCode: result.statusCode);
+  }
+
   /// Reduce a phone number to comparable digits.
   ///
   /// `01712-345678`, `+8801712345678` and `01712345678` are the same dealer, so
