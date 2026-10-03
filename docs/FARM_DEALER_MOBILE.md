@@ -4,6 +4,9 @@ Last updated: September 30, 2026 — **v2.5.0+97**
 
 Field data collection for **markets**, **dealers**, and **farms** in Attandance_App, backed by ZKTeco `/api/v1/mobile/marketing/*` (no JWT — same pattern as geo). Employee identity uses profile `canonicalEmployeeId` (`employees.id`).
 
+**v2.5.3: Add Farm is its own screen, and it starts with a duplicate check.**
+`FarmFormScreen` (`lib/screens/marketing/farm_form_screen.dart`) replaces the farm branch of `PartyFormScreen`, so farm, dealer and market layouts are independent from here on. The screen opens on a searchable **existing-farm lookup** — a hit offers a visit report instead of a second record; a miss offers **Add new farm**. The form itself is re-ordered, several fields are gone, and `visit_type` / `capacity_limit` are new columns on `mkt_parties`. See [Add Farm screen](#add-farm-screen).
+
 **v2.5.2+99: Manual company → sector → market selection.**
 The org master is retired. Zone stays read-only, but company, sector and market are the officer's own picks and cascade downwards; the zone no longer narrows any of them, nor the ERP dealer picker. See [Organisational selection](#organisational-selection).
 
@@ -51,7 +54,7 @@ The hub is a **three-tab page**: Farms, Dealers, Markets. Farms is selected on o
 
 | Tab | Create | View all | Preview tap |
 |-----|--------|----------|-------------|
-| Farms | `PartyFormScreen(farm)` | `PartyListScreen(farm)` | `PartyDetailScreen` → Post visit report |
+| Farms | `FarmFormScreen` | `PartyListScreen(farm)` | `PartyDetailScreen` → Post visit report |
 | Dealers | `PartyFormScreen(dealer)` | `PartyListScreen(dealer)` | `PartyDetailScreen` → Post visit |
 | Markets | `MarketFormScreen` | `MarketListScreen` | `MarketDetailScreen` → Post visit |
 | *(below the tabs)* Follow-ups | — | `FollowupFormScreen` (list mode) | — |
@@ -61,6 +64,99 @@ The hub is a **three-tab page**: Farms, Dealers, Markets. Farms is selected on o
 | Farm party → Post a visit | `FarmSurveyFormScreen` | `POST /farm-surveys` |
 | Dealer party → Post a visit | `DealerVisitFormScreen` | `POST /visits` |
 | Market detail → Post a visit | `MarketVisitFormScreen` (pick party in market) | `POST /visits` |
+
+---
+
+## Add Farm screen
+
+**v2.5.3.** `lib/screens/marketing/farm_form_screen.dart` — `FarmFormScreen`.
+
+### Why it is a separate file
+
+`PartyFormScreen` used to render **both** farm and dealer, split by a single `_isFarm` boolean, so every field change on the farm side moved a control on the dealer side and vice versa. Farm collection has its own field set and its own order now, so it gets its own widget class, its own `_FarmProductRow`, and its own state.
+
+The dealer form (`PartyFormScreen`, `initialPartyType: 'dealer'`) and the market form (`MarketFormScreen`) are **untouched**. Only the leaf widgets are shared — `SearchableSelectField`, `ReadOnlyField`, `VoiceTextField`, the `AppCard` / `AppHeader` kit, and the marketing services. The parent form's layout code is not reused, which is the point.
+
+### Search first
+
+The screen opens as a **duplicate check**, not a blank form. A farm is found by name and identified by its phone, so both are searched at once.
+
+| Search result | What the screen shows |
+|---|---|
+| A matching farm | Name, code, phone, zone + **Post a visit report** / **Cancel** |
+| No match | *"No farm found"* + **Add new farm** |
+| Lookup failed | *"Could not check existing farms"* + **Add new farm** |
+
+**Post a visit report** pushes `FarmSurveyFormScreen(party: match)` — the same call the farm detail screen makes. No second record is created.
+
+**Add new farm** reveals the detail fields and seeds one of them from the query: a digit run of 7+ characters (`FarmFormScreen.minPhoneDigits`) cannot be a farm name, so it goes to **Phone**; anything else goes to **Farm name**. The other field is left blank rather than guessed.
+
+> **A failed lookup is not "no match".** `MarketingService.searchFarms` passes a failed result through rather than returning an empty list. Collapsing the two would let a network blip offer to create a farm that already exists. The create path stays open — the server's own uniqueness rule is the real authority — but the screen says it could not check.
+
+### Field order
+
+| # | Field | Notes |
+|---|-------|-------|
+| 1 | **Search existing farm** | type-to-search, debounced 700 ms |
+| 2 | **Farm name** `*` | seeded by the search |
+| 3 | **Phone** `*` | seeded by the search; live uniqueness check |
+| 4 | **Visit type** | `regular_farm` (default) / `model_farm` / `other_farm` |
+| 5 | **Zone** | read-only, from the HRM profile |
+| 6 | **Parent dealer** | live `mkt_parties` dealer list, searchable |
+| 7 | **Farm code** | read-only, server-allocated `FMR-…` |
+| 8 | **Company** | **Peoples Poultry & Hatchery preselected** |
+| 9 | Trade name | |
+| 10 | **Farm type** | `broiler` / `layer` / `color` / `all` |
+| 11 | **Capacity** + **Capacity limit** | one row, two number fields |
+| 12 | Capacity unit | |
+| 13 | Email / NID / Trade license | |
+| 14 | Address | auto-filled from reverse geocode |
+| 15 | Notes | |
+
+**Removed from the farm form:** party type (now fixed in the payload, never rendered), sector, market, contact person, alt phone, business years, credit limit, payment mode, lead status.
+
+With sector and market gone there is no cascade on this screen, so the company picker is a flat list and `MarketingMasterService.filterSectorsForCompany` / `filterMarketsForSector` are used only by the dealer and market forms.
+
+### Product rows
+
+| Order | Field | Change |
+|---|---|---|
+| 1 | **Product category** | renamed from *Category*, moved to the top |
+| 2 | **Product** | moved directly below the category |
+| 3–8 | Product name, relation type, unit, product company, brand name, monthly / demand | unchanged |
+| 9 | Our product | switch, unchanged |
+| 10 | Product notes | unchanged |
+
+**Removed:** Stock, unit price, competitor company.
+
+Choosing a category filters the product list beneath it. A product already picked from another category is dropped when the category changes, because the two would otherwise contradict each other on submit. Changing the category does not re-add the product — it was a different product, not a stale one.
+
+> The category and product pickers still read `MarketingDemoMasters`, not the live Sales catalogue. That is unchanged from v2.5.x and was left alone here.
+
+### Default company
+
+`FarmFormScreen.defaultCompany` matches a lowercased substring `peoples poultry` on `displayName`, so *"Peoples Poultry & Hatchery Ltd"* and *"Peoples Poultry and Hatchery Ltd"* both hit. It falls back to the first company when nothing matches, and to `null` on an empty list — submit blocks with *"Choose the company this farm belongs to."* An id is never invented.
+
+### Payload changes
+
+**Added:** `visit_type`, `capacity_limit`.
+
+**Removed** (all nullable server-side, so omitting them is safe): `sector_id`, `sector_name`, `market_id`, `contact_person`, `alt_phone`, `business_years`, `credit_limit`, `payment_mode`, `lead_status`. Product rows drop `current_stock`, `stock_qty`, `unit_price`, `competitor_company`.
+
+`party_type: 'farm'` still rides in the payload; it is simply never shown.
+
+### Backend
+
+Two new nullable columns on `mkt_parties`, from `2026_10_03_100000_add_visit_type_and_capacity_limit_to_mkt_parties`:
+
+| Column | Type | Notes |
+|---|---|---|
+| `visit_type` | `string(30)`, indexed | `in:regular_farm,model_farm,other_farm` |
+| `capacity_limit` | `decimal(18,4)` | |
+
+Both are strings/doubles rather than a database enum, so a fourth visit kind is a code change rather than an `ALTER TYPE` on a live table — the same reasoning `party_type` already follows. Declared and validated at the same width, deliberately avoiding the `farm_type` mismatch where the column is `string(30)` but the rule is `max:80`.
+
+`visit_type` here is a property of the **farm**, not of a visit. `mkt_visits.visit_type` is a separate column recording what a visit was, and is untouched.
 
 ---
 
@@ -322,9 +418,11 @@ Searchable company, **zone**, and sector (all **read-only from the employee's sc
 
 ### Create party (dealer / farm)
 
+> **The farm form has moved.** It is no longer `PartyFormScreen(farm)` — see [Add Farm screen](#add-farm-screen) for its own search-first flow and field order. What follows describes the **dealer** form only.
+
 1. Sections: Basic / Contact / Farm&Credit / Location / Products / Photos.
 2. Payload **requires** `employee_id` (plus `created_by_employee_id` / `owner_employee_id`).
-3. **Party type** offers two options (v2.4.0+94): **New dealer** → `dealer`, **Existing dealer** → `outlet`. Both were already in the API enum, so no backend change was needed to name them properly. A farm screen shows its type read-only. The other enum values (`farmer`, `prospect`) remain valid in data and in existing records; they are just not something a field officer creates here.
+3. **Party type** offers two options (v2.4.0+94): **New dealer** → `dealer`, **Existing dealer** → `outlet`. Both were already in the API enum, so no backend change was needed to name them properly. The other enum values (`farmer`, `prospect`) remain valid in data and in existing records; they are just not something a field officer creates here.
 4. **Code** is allocated server-side and read-only — see [Record codes](#record-codes). `_code` is only kept as a fallback for a hand-seeded value.
 5. Scalars: `owner_name` (separate from contact person), `business_years`, `capacity_unit_id`, `existing_dealer_id` (existing dealers only).
 6. Searchable: live parent dealer (farms), live Sales ERP dealer (existing dealers only — see [Existing dealer picker](#existing-dealer-picker)), product / category / unit / company per product row.
@@ -419,6 +517,8 @@ Selecting a product fills `product_name` and related category/company when those
 | `lib/widgets/searchable_select_field.dart` | Type-to-search dropdown (shared with Post booking) |
 | `lib/widgets/voice_input_field.dart` | `VoiceTextField` + `VoiceMicButton` (mic on typed fields) |
 | `lib/screens/marketing/*` | Hub cards, lists, market/party records, farm visit report, visit form |
+| `lib/screens/marketing/farm_form_screen.dart` | `FarmFormScreen` — the standalone Add Farm screen (v2.5.3) |
+| `test/farm_form_screen_test.dart` | Unit tests for the farm form's static rules |
 | `lib/services/endpoint_config_service.dart` | Keys + `marketing.enabled` + `sales.booking.formData` |
 | `lib/screens/employee_services_hub_screen.dart` | Services tile |
 

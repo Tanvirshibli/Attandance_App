@@ -163,6 +163,18 @@ class _PartyDetailScreenState extends State<PartyDetailScreen> {
                             _row('Zone', party.zoneName!),
                           if (party.businessYears != null)
                             _row('Farming years', '${party.businessYears}'),
+                          // Farm-only. Both were collected by the standalone Add
+                          // Farm screen but nothing rendered them, so a farm
+                          // saved with a model-farm classification looked
+                          // identical to a regular one.
+                          if (party.isFarm && party.visitType != null)
+                            _row('Visit type', _label(party.visitType!)),
+                          if (party.isFarm && party.farmType != null)
+                            _row('Farm type', _label(party.farmType!)),
+                          if (party.isFarm && party.capacity != null)
+                            _row('Capacity', '${party.capacity}'),
+                          if (party.isFarm && party.capacityLimit != null)
+                            _row('Capacity limit', '${party.capacityLimit}'),
                         ],
                       ),
                     ),
@@ -294,6 +306,25 @@ class _PartyDetailScreenState extends State<PartyDetailScreen> {
         ),
       ),
     );
+  }
+
+  /// Turns a stored enum-ish value into the words the officer picked.
+  ///
+  /// The API stores `regular_farm` / `broiler`; a detail screen showing raw
+  /// slugs reads like a database dump rather than a record. An unmapped value
+  /// is passed through rather than hidden — a new server-side option should show
+  /// up as itself, not vanish.
+  static String _label(String value) {
+    const labels = {
+      'regular_farm': 'Regular farm',
+      'model_farm': 'Model farm',
+      'other_farm': 'Other farm',
+      'broiler': 'Broiler',
+      'layer': 'Layer',
+      'color': 'Color',
+      'all': 'All',
+    };
+    return labels[value.toLowerCase()] ?? value;
   }
 
   Widget _row(String label, String value) {

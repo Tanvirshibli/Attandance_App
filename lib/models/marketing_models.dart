@@ -389,7 +389,9 @@ class Party {
     this.address,
     this.businessYears,
     this.farmType,
+    this.visitType,
     this.capacity,
+    this.capacityLimit,
     this.capacityUnitId,
     this.creditLimit,
     this.paymentMode,
@@ -433,7 +435,9 @@ class Party {
   final String? address;
   final double? businessYears;
   final String? farmType;
+  final String? visitType;
   final double? capacity;
+  final double? capacityLimit;
   final int? capacityUnitId;
   final double? creditLimit;
   final String? paymentMode;
@@ -498,7 +502,11 @@ class Party {
         json['businessYears'] ?? json['business_years'],
       ),
       farmType: marketingNonEmpty(json['farmType'] ?? json['farm_type']),
+      visitType: marketingNonEmpty(json['visitType'] ?? json['visit_type']),
       capacity: marketingParseDouble(json['capacity']),
+      capacityLimit: marketingParseDouble(
+        json['capacityLimit'] ?? json['capacity_limit'],
+      ),
       capacityUnitId: marketingParseInt(
         json['capacityUnitId'] ?? json['capacity_unit_id'],
       ),
