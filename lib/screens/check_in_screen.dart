@@ -18,6 +18,7 @@ import '../config/theme.dart';
 import '../models/attendance_request_record.dart';
 import '../services/face_recognition_service.dart';
 import '../services/attendance_request_service.dart';
+import '../services/attendance_punch_notifier.dart';
 import '../services/camera_prewarm.dart';
 import '../services/auth_service.dart';
 import '../utils/camera_input_image.dart';
@@ -897,24 +898,59 @@ class _CheckInScreenState extends State<CheckInScreen>
     }
   }
 
-  /// Submit the punch the moment the face verifies — no waiting on GPS.
+  /// Hand back to the dashboard the instant the face verifies.
   ///
-  /// The fix is usually already in hand from [_prefetchLocation]; when it is
-  /// not, the punch goes out without coordinates and [_backfillLocation] patches
-  /// them in afterwards, so the officer is never held on the capture screen.
+  /// The punch is submitted afterwards, off the UI: the officer never waits on
+  /// the network, and [AttendancePunchNotifier] lets the dashboard re-sync once
+  /// the real record lands (and warn if it did not).
   Future<void> _submitPunch() async {
-    setState(() {
-      _phase = CheckInPhase.gps;
-      _statusMessage = 'Submitting...';
-    });
+    // An optimistic record so the dashboard can render the punch immediately.
+    // The dashboard merges by calendar day, so the server row replaces this
+    // cleanly when the background submission lands.
+    final optimistic = _attendanceRequestService.synthesizePunchRecord(
+      postBody: {
+        'attDate': DateTime.now().toIso8601String().substring(0, 10),
+        if (!widget.isCheckOut)
+          'requestedInTime': DateTime.now().toIso8601String(),
+        if (widget.isCheckOut)
+          'requestedOutTime': DateTime.now().toIso8601String(),
+        'requestType': 'self_punch',
+      },
+      isCheckOut: widget.isCheckOut,
+    );
+
+    if (mounted) {
+      setState(() {
+        _phase = CheckInPhase.success;
+        _punchSubmitted = true;
+        _punchedRecord = optimistic;
+        _statusMessage = widget.isCheckOut
+            ? 'Check-out request submitted!'
+            : 'Check-in request submitted!';
+      });
+    }
+
+    // The real submission runs on its own, so the pop below is immediate.
+    unawaited(_submitPunchInBackground());
+
+    await _finishWithSuccess();
+  }
+
+  /// The real submission, detached from the widget tree.
+  ///
+  /// Never calls setState — by the time it resolves this screen is usually gone.
+  /// Announces the outcome so the dashboard can re-sync and, on failure, tell
+  /// the officer the punch did not go through.
+  Future<void> _submitPunchInBackground() async {
+    var succeeded = false;
+    String? message;
 
     try {
       final profile = await _authService.getCurrentUserProfile();
-      final employeeId = profile?.canonicalEmployeeId;
       final position = _position;
 
-      final attendanceResult = await _attendanceRequestService.submitSelfPunch(
-        employeeId: employeeId,
+      final result = await _attendanceRequestService.submitSelfPunch(
+        employeeId: profile?.canonicalEmployeeId,
         isCheckOut: widget.isCheckOut,
         latitude: position?.latitude,
         longitude: position?.longitude,
@@ -922,54 +958,22 @@ class _CheckInScreenState extends State<CheckInScreen>
         faceVerified: true,
       );
 
-      if (!attendanceResult.success) {
-        if (!mounted) return;
-        setState(() {
-          _phase = CheckInPhase.error;
-          _errorMessage = attendanceResult.message ??
-              'Attendance request submission failed.';
-        });
-        return;
-      }
+      succeeded = result.success;
+      message = result.success ? null : result.message;
 
-      final record = attendanceResult.record ??
-          _attendanceRequestService.synthesizePunchRecord(
-            postBody: {
-              'attDate': DateTime.now().toIso8601String().substring(0, 10),
-              if (!widget.isCheckOut)
-                'requestedInTime': DateTime.now().toIso8601String(),
-              if (widget.isCheckOut)
-                'requestedOutTime': DateTime.now().toIso8601String(),
-              'requestType': 'self_punch',
-            },
-            isCheckOut: widget.isCheckOut,
-          );
-
-      // No fix in hand: fill it in once it lands. Fire-and-forget — it must
-      // outlive this screen and must never touch setState.
-      final recordId = record.id;
-      if (position == null && recordId > 0) {
+      // No fix in hand: fill it in once it lands.
+      final recordId = result.record?.id ?? 0;
+      if (succeeded && position == null && recordId > 0) {
         unawaited(_backfillLocation(recordId));
       }
-
-      if (!mounted) return;
-      setState(() {
-        _phase = CheckInPhase.success;
-        _punchSubmitted = true;
-        _punchedRecord = record;
-        _statusMessage = widget.isCheckOut
-            ? 'Check-out request submitted!'
-            : 'Check-in request submitted!';
-      });
-
-      // Redirect at once — the record is already saved.
-      await _finishWithSuccess();
     } catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _phase = CheckInPhase.error;
-        _errorMessage = 'Submission failed: $e';
-      });
+      message = 'Attendance request could not be submitted: $e';
+    } finally {
+      AttendancePunchNotifier.notifySubmitted(
+        isCheckOut: widget.isCheckOut,
+        succeeded: succeeded,
+        message: message,
+      );
     }
   }
 

@@ -16,6 +16,7 @@ import '../models/attendance_summary.dart';
 import '../models/auth_user_profile.dart';
 import '../services/attendance_report_service.dart';
 import '../services/attendance_request_service.dart';
+import '../services/attendance_punch_notifier.dart';
 import '../services/auth_service.dart';
 import '../services/face_recognition_service.dart';
 import '../widgets/stat_card.dart';
@@ -61,14 +62,37 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    AttendancePunchNotifier.revision.addListener(_onPunchSubmitted);
     _lastResumeRefresh = DateTime.now();
     _refreshHomeData();
   }
 
   @override
   void dispose() {
+    AttendancePunchNotifier.revision.removeListener(_onPunchSubmitted);
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
+  }
+
+  /// The check-in screen submits its punch in the background after popping, so
+  /// this re-syncs once it lands — and warns when it did not reach the server.
+  void _onPunchSubmitted() {
+    if (!mounted) return;
+    if (!AttendancePunchNotifier.lastSucceeded) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            AttendancePunchNotifier.lastFailureMessage ??
+                'Attendance could not be submitted. Please retry.',
+          ),
+        ),
+      );
+    }
+    unawaited(
+      _loadAttendanceRequestsWithRetry(
+        requireCheckOut: AttendancePunchNotifier.lastWasCheckOut,
+      ),
+    );
   }
 
   @override
