@@ -105,8 +105,8 @@
   - Must first place the face correctly inside the guide (size + centering gate) before any challenge can progress.
   - Completes **dynamic randomized liveness challenges (up to 5)** from the check-in page: look straight, smile, blink, turn left, turn right.
   - A **clockwise progress animation** fills around the face-shaped container as each accepted challenge is passed. If identity is verified early, remaining steps are skipped and the ring completes with a **green tick**.
-  - The app verifies face identity using a **strict core-template threshold (~80% to 82% quality-aware)** with weighted top-k scoring over registration templates.
-  - Identity approval requires **core consistency across multiple registration templates**; adaptive templates are supporting-only and cannot approve identity by themselves.
+  - The app verifies face identity using a **strict core-template threshold (66%, quality-aware to 68%)** with weighted top-k scoring over registration templates.
+  - Identity approval requires **core consistency across multiple registration templates** (at least 2 hits); adaptive templates are no longer auto-enrolled and never approve identity.
   - Verification uses **multi-attempt capture retry** (2 attempts during early checks, 3 attempts in final verification) and keeps the best confidence.
    - GPS location is captured and reverse-geocoded.
 4. Dashboard shows attendance stats, weekly hours chart, and recent history.
@@ -459,10 +459,11 @@ The face recognition pipeline is implemented entirely on-device in `FaceRecognit
 |---|---|---|
 | `_inputSize` | 112 | MobileFaceNet input image size (112×112 pixels) |
 | `embeddingSize` | 192 | MobileFaceNet output dimensionality; valid templates must be this length and finite |
-| `_matchThreshold` | 0.80 | Base minimum cosine similarity for **core** identity match (quality-aware to ~82% for lower quality) |
-| `_strongMatchThreshold` | 0.88 | Strong **core-template** similarity with consistency requirement |
-| `_adaptiveEnrollmentThreshold` | 0.86 | Minimum core confidence required before adding adaptive templates |
-| `_samePersonThreshold` | 0.65 | Minimum cosine similarity between registration captures to confirm same person |
+| `_matchThreshold` | 0.66 | Base minimum cosine similarity for **core** identity match (quality-aware to 0.68 for lower quality) |
+| `_strongMatchThreshold` | 0.78 | Strong **core-template** similarity with consistency requirement |
+| `_requiredCoreHits` | 2 | Minimum number of enrolled templates that must clear the consistency bar |
+| `_samePersonThreshold` | 0.70 | Minimum cosine similarity between a registration capture and the **running average** of the captures already taken (raised from 0.65) |
+| `templateVersion` | 2 | Embedding-pipeline version — a model or preprocessing change bumps this and forces re-enrolment |
 | `_smileThreshold` | 0.55 | Minimum `smilingProbability` from ML Kit for smile liveness |
 | `minAcceptableFaceRatio` | 0.16 | Hard-reject floor for live **and** still face-area-to-image-area (16%) |
 | `minPreferredFaceRatio` | 0.20 | Below this, `checkFaceQuality` applies a score penalty; hard reject is `minAcceptableFaceRatio` (0.16) |
@@ -575,9 +576,9 @@ Live Camera Preview (front, full frame with one centered dimmed rounded frame)
     → Crop → variant embeddings (normal/flipped/grayscale) → averaged embedding
     → Compare against in-memory average + registration embeddings (core)
     → Weighted top-k aggregate on core templates (top1 60%, top2 25%, top3 15%)
-    → Require core consistency (minimum core-hit count) plus quality-aware threshold (~80% / ~82%)
+    → Require core consistency (≥2 core hits) plus quality-aware threshold (66% / 68%)
     → Evaluate adaptive-template similarity only as supporting signal (not approval source)
-    → On high-confidence core success: auto-save embedding as adaptive template (deduped, rolling max 20)
+    → No adaptive auto-enrolment (removed — it let a shared account accumulate other people's faces)
   → GPS capture (high accuracy, 15s timeout)
   → Reverse geocode
   → Success
@@ -609,7 +610,7 @@ Live Camera Preview (front, full frame with one centered dimmed rounded frame)
 - **Cosine Similarity**: `dot(a, b)` where `a` and `b` are L2-normalized (so cosine similarity = dot product). Clamped to [-1, 1].
 - **L2 Normalization**: `v[i] / sqrt(sum(v[j]²))` — ensures unit-length vectors.
 - **Averaging Embeddings**: Element-wise mean of N embeddings, then L2-normalize the result.
-- **Thresholds**: 80% base core match (quality-aware up to 82%), 88% strong core-match override (with consistency), 86% minimum core similarity for adaptive enrollment, 65% for same-person validation.
+- **Thresholds**: 66% base core match (quality-aware to 68%), 78% strong core-match override (with consistency), ≥2 core-template hits, 70% for same-person registration validation (0.58 for extreme poses). Adaptive auto-enrolment was removed — it let a shared account accumulate other people's faces.
 
 ### 7.6 Sharpness Analysis (Anti-Screen-Photo)
 
