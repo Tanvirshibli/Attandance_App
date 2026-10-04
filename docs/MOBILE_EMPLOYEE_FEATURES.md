@@ -180,7 +180,7 @@ Handoff for backend teams: **[SALES_AND_PAYMENTS_API_CONTRACT.md](SALES_AND_PAYM
 ### Face overlay alignment (v2.2.3+57)
 
 - Success tick is pinned to the **center of the rounded guide**
-- Step badge, coaching, and check-in status sit in one horizontally centered strip **above** the guide (including GPS “Capturing location…”)
+- Step badge, coaching, and check-in status sit in one horizontally centered strip **above** the guide. The location fix is fetched in the background from the moment the screen opens, so the punch carries it without a wait; if it is not ready the punch still goes out and a background call (`POST /mobile/attendance-requests/{id}/location`) patches the record afterwards. The face engine is warmed at app start so the capture screen is ready immediately.
 
 ### Searchable dropdown overlay on tap (v2.2.3+72)
 
