@@ -35,7 +35,8 @@ class FaceRecognitionService {
   /// Bumped whenever the embedding pipeline changes shape or preprocessing
   /// (model, alignment, normalisation). A stored template with a different
   /// version is rejected instead of silently mis-matched.
-  static const int templateVersion = 2;
+  /// 3 = landmark-aligned crop (was 2 = padded bounding-box crop).
+  static const int templateVersion = 3;
 
   // Core match threshold against registration templates (avg + captures).
   // Raised from 0.60: the old bar let different people clear a shared account's
@@ -104,6 +105,14 @@ class FaceRecognitionService {
       return;
     }
 
+    // A template built by a different pipeline (e.g. the old padded-crop
+    // embeddings) cannot be compared against this engine's probe. Drop it so the
+    // officer is asked to re-enrol once rather than failing every match.
+    if (registration.templateVersion != templateVersion) {
+      clearRegistrationMemory();
+      return;
+    }
+
     _registeredAvgEmbedding = List<double>.from(registration.avgEmbedding);
     _registeredEmbeddings = registration.captureEmbeddings
         .map((row) => List<double>.from(row))
@@ -132,6 +141,7 @@ class FaceRecognitionService {
           .map((row) => List<double>.from(row))
           .toList(),
       captureCount: _registrationCaptureCount,
+      templateVersion: templateVersion,
       registeredAt: _registrationTime,
       registrationQuality: null,
       status: 'active',
@@ -719,8 +729,10 @@ class FaceRecognitionService {
       }
     }
 
-    // 7. Crop face region with generous padding
-    final croppedFace = _cropFace(rawImage, face.boundingBox);
+    // 7. Align the face to the canonical template when the landmarks allow it;
+    // fall back to the padded bounding-box crop otherwise.
+    final croppedFace =
+        _alignFace(rawImage, face) ?? _cropFace(rawImage, face.boundingBox);
 
     // 8. Generate embedding (single pass for speed, robust for final match)
     final embedding = robustEmbedding
@@ -756,6 +768,158 @@ class FaceRecognitionService {
     }
 
     return img.copyCrop(image, x: x, y: y, width: w, height: h);
+  }
+
+  // ---- Landmark alignment ----
+
+  /// Canonical 5-point face template (ArcFace, 112×112), in order:
+  /// left eye, right eye, nose tip, left mouth corner, right mouth corner.
+  static const List<List<double>> _canonicalTemplate = [
+    [38.2946, 51.6963],
+    [73.5318, 51.5014],
+    [56.0252, 71.7366],
+    [41.5493, 92.3655],
+    [70.7299, 92.2041],
+  ];
+
+  /// The ML Kit landmarks that correspond, in order, to `_canonicalTemplate`.
+  static const List<FaceLandmarkType> _alignmentLandmarks = [
+    FaceLandmarkType.leftEye,
+    FaceLandmarkType.rightEye,
+    FaceLandmarkType.noseBase,
+    FaceLandmarkType.leftMouth,
+    FaceLandmarkType.rightMouth,
+  ];
+
+  /// Align the detected face onto the canonical template and return a 112×112
+  /// crop, or null when the landmarks are missing or the transform is degenerate.
+  ///
+  /// This is the single biggest free accuracy lever: an aligned crop removes the
+  /// pose/scale variance a raw bounding box leaves in the embedding, so the same
+  /// person's vectors cluster and different people's spread apart.
+  img.Image? _alignFace(img.Image image, Face face) {
+    final source = <List<double>>[];
+    for (final type in _alignmentLandmarks) {
+      final position = face.landmarks[type]?.position;
+      if (position == null) return null;
+      source.add([position.x.toDouble(), position.y.toDouble()]);
+    }
+
+    final transform = _similarityTransform(source, _canonicalTemplate);
+    if (transform == null) return null;
+
+    return _warpToInput(image, transform);
+  }
+
+  /// Closed-form least-squares similarity transform (uniform scale + rotation +
+  /// translation, no shear/reflection) mapping [source] onto [target].
+  ///
+  /// Returns `[scale·cosθ, scale·sinθ, tx, ty]`, or null for a degenerate frame.
+  /// Public for unit testing.
+  static List<double>? similarityTransform(
+    List<List<double>> source,
+    List<List<double>> target,
+  ) {
+    if (source.length != target.length || source.isEmpty) return null;
+
+    final n = source.length;
+    var meanSx = 0.0, meanSy = 0.0, meanTx = 0.0, meanTy = 0.0;
+    for (final p in source) {
+      meanSx += p[0];
+      meanSy += p[1];
+    }
+    for (final p in target) {
+      meanTx += p[0];
+      meanTy += p[1];
+    }
+    meanSx /= n;
+    meanSy /= n;
+    meanTx /= n;
+    meanTy /= n;
+
+    var a = 0.0, b = 0.0, denom = 0.0;
+    for (var i = 0; i < n; i++) {
+      final px = source[i][0] - meanSx;
+      final py = source[i][1] - meanSy;
+      final qx = target[i][0] - meanTx;
+      final qy = target[i][1] - meanTy;
+      a += px * qx + py * qy;
+      b += px * qy - py * qx;
+      denom += px * px + py * py;
+    }
+    if (denom <= 1e-6) return null;
+
+    final c = a / denom;
+    final s = b / denom;
+    final scale = sqrt(c * c + s * s);
+    if (scale < 0.02 || scale > 40) return null;
+
+    final tx = meanTx - (c * meanSx - s * meanSy);
+    final ty = meanTy - (s * meanSx + c * meanSy);
+    return [c, s, tx, ty];
+  }
+
+  static List<double>? _similarityTransform(
+    List<List<double>> source,
+    List<List<double>> target,
+  ) =>
+      similarityTransform(source, target);
+
+  /// Warp [image] into a 112×112 crop with the forward transform
+  /// `dst = [c -s; s c]·src + t`, sampling each output pixel by its inverse.
+  img.Image _warpToInput(img.Image image, List<double> transform) {
+    final c = transform[0];
+    final s = transform[1];
+    final tx = transform[2];
+    final ty = transform[3];
+    final det = c * c + s * s;
+
+    final output = img.Image(width: _inputSize, height: _inputSize);
+    for (var y = 0; y < _inputSize; y++) {
+      for (var x = 0; x < _inputSize; x++) {
+        final dx = x - tx;
+        final dy = y - ty;
+        // Inverse of the similarity transform (rotate by -θ, then un-scale).
+        final sx = (c * dx + s * dy) / det;
+        final sy = (-s * dx + c * dy) / det;
+        final pixel = _bilinearSample(image, sx, sy);
+        output.setPixelRgb(x, y, pixel[0], pixel[1], pixel[2]);
+      }
+    }
+    return output;
+  }
+
+  /// Bilinear sample; black outside the source image. Public for unit testing.
+  static List<int> bilinearSample(img.Image image, double x, double y) =>
+      _bilinearSample(image, x, y);
+
+  static List<int> _bilinearSample(img.Image image, double x, double y) {
+    if (x < 0 || y < 0 || x > image.width - 1 || y > image.height - 1) {
+      return const [0, 0, 0];
+    }
+    final x0 = x.floor();
+    final y0 = y.floor();
+    final x1 = (x0 + 1 < image.width) ? x0 + 1 : x0;
+    final y1 = (y0 + 1 < image.height) ? y0 + 1 : y0;
+    final fx = x - x0;
+    final fy = y - y0;
+
+    final p00 = image.getPixel(x0, y0);
+    final p10 = image.getPixel(x1, y0);
+    final p01 = image.getPixel(x0, y1);
+    final p11 = image.getPixel(x1, y1);
+
+    int mix(num a, num b, num cc, num d) {
+      final top = a * (1 - fx) + b * fx;
+      final bottom = cc * (1 - fx) + d * fx;
+      return (top * (1 - fy) + bottom * fy).round().clamp(0, 255);
+    }
+
+    return [
+      mix(p00.r, p10.r, p01.r, p11.r),
+      mix(p00.g, p10.g, p01.g, p11.g),
+      mix(p00.b, p10.b, p01.b, p11.b),
+    ];
   }
 
   /// Convert image to Float32 input tensor [1, 112, 112, 3] normalized to [-1, 1]

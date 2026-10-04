@@ -7,6 +7,7 @@ class FaceRegistrationData {
     this.registrationQuality,
     this.registeredAt,
     this.status,
+    this.templateVersion = 1,
   });
 
   final List<double> avgEmbedding;
@@ -16,6 +17,11 @@ class FaceRegistrationData {
   final Map<String, dynamic>? registrationQuality;
   final String? registeredAt;
   final String? status;
+
+  /// Which embedding pipeline produced these vectors. Absent (or 1) means the
+  /// original padded-crop pipeline; the app rejects anything that does not match
+  /// the running engine so a stale template is never compared to a new probe.
+  final int templateVersion;
 
   bool get hasData => hasValidTemplates;
 
@@ -34,6 +40,7 @@ class FaceRegistrationData {
       'captureEmbeddings': captureEmbeddings,
       'adaptiveEmbeddings': adaptiveEmbeddings,
       'captureCount': captureCount,
+      'templateVersion': templateVersion,
       'registrationQuality': registrationQuality,
       'registeredAt': registeredAt,
     };
@@ -54,6 +61,7 @@ class FaceRegistrationData {
       captureEmbeddings: _toDoubleMatrix(raw['captureEmbeddings']),
       adaptiveEmbeddings: _toDoubleMatrix(raw['adaptiveEmbeddings']),
       captureCount: _toInt(raw['captureCount']) ?? 0,
+      templateVersion: _toInt(raw['templateVersion']) ?? 1,
       registrationQuality: raw['registrationQuality'] is Map<String, dynamic>
           ? raw['registrationQuality'] as Map<String, dynamic>
           : null,
