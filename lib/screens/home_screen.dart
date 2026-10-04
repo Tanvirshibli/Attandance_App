@@ -20,6 +20,7 @@ import '../services/attendance_punch_notifier.dart';
 import '../services/auth_service.dart';
 import '../services/face_recognition_service.dart';
 import '../widgets/stat_card.dart';
+import '../widgets/syncing_time.dart';
 import '../widgets/attendance_tile.dart';
 import 'check_in_screen.dart';
 import 'face_registration_screen.dart';
@@ -58,6 +59,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   bool _isLoadingProfile = true;
   bool _faceRegistered = true;
 
+  /// True while a punch is still being submitted in the background, so the
+  /// matching time on today's card can pulse until it settles.
+  bool _syncingCheckIn = false;
+  bool _syncingCheckOut = false;
+
   @override
   void initState() {
     super.initState();
@@ -91,7 +97,15 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     unawaited(
       _loadAttendanceRequestsWithRetry(
         requireCheckOut: AttendancePunchNotifier.lastWasCheckOut,
-      ),
+      ).whenComplete(() {
+        // The real row has landed (or the submission failed): stop pulsing.
+        if (mounted) {
+          setState(() {
+            _syncingCheckIn = false;
+            _syncingCheckOut = false;
+          });
+        }
+      }),
     );
   }
 
@@ -562,6 +576,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           );
       if (punched != null) {
         _applyAttendanceRecord(punched);
+        // The punch is still being submitted in the background: pulse the
+        // matching time until it lands and the list re-syncs.
+        setState(() {
+          _syncingCheckIn = !isCheckOut;
+          _syncingCheckOut = isCheckOut;
+        });
       }
     } finally {
       if (mounted) {
@@ -892,6 +912,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     'Check In',
                     _checkInTime,
                     Icons.login_rounded,
+                    syncing: _syncingCheckIn,
                   ),
                   Container(
                     width: 1,
@@ -902,6 +923,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     'Check Out',
                     _checkOutTime,
                     Icons.logout_rounded,
+                    syncing: _syncingCheckOut,
                   ),
                   Container(
                     width: 1,
@@ -922,17 +944,25 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     );
   }
 
-  Widget _buildTodayStat(String label, String value, IconData icon) {
+  Widget _buildTodayStat(
+    String label,
+    String value,
+    IconData icon, {
+    bool syncing = false,
+  }) {
     return Column(
       children: [
         Icon(icon, color: Colors.white70, size: 20),
         const SizedBox(height: 6),
-        Text(
-          value,
-          style: GoogleFonts.poppins(
-            fontSize: 15,
-            fontWeight: FontWeight.w600,
-            color: Colors.white,
+        SyncingTime(
+          syncing: syncing,
+          child: Text(
+            value,
+            style: GoogleFonts.poppins(
+              fontSize: 15,
+              fontWeight: FontWeight.w600,
+              color: Colors.white,
+            ),
           ),
         ),
         Text(
