@@ -1,8 +1,10 @@
 # Farm & Dealer Mobile Module
 
-Last updated: October 4, 2026 — **v2.5.3-beta.1+9014**
+Last updated: October 4, 2026 — **v2.5.3-beta.1+9015**
 
 Field data collection for **markets**, **dealers**, and **farms** in Attandance_App, backed by ZKTeco `/api/v1/mobile/marketing/*` (no JWT — same pattern as geo). Employee identity uses profile `canonicalEmployeeId` (`employees.id`).
+
+**v2.5.3-beta.1+9015: The category filter on the product/competitor company pickers now narrows.** The pickers keep only companies the backend master flags for the chosen category (`feed` / `chicks`) instead of also keeping every company that carried no flag — which had made the list look unfiltered. The masters cache key was versioned (`marketing_masters_json_v2`), so a device that cached the company list before the flags existed re-fetches them rather than restoring nulls and filtering nothing.
 
 **v2.5.3-beta.1+9014: Product companies come from the backend; Add new on a miss.** The dealer product row's **Product company** and **Competitor company** pickers now narrow by the ZKTeco backend's own `mkt_companies` capability flags (`category` / `feed` / `chicks` / `breeder`, served by `/context`) instead of the small in-app demo catalogue — so a company added to the backend shows up under the matching category. A company the master is silent about (a Sales row, or an older payload) is kept in every category rather than hidden. When the top dealer search finds nothing, an **Add new dealer** button is shown directly in the list.
 
@@ -513,7 +515,7 @@ Searchable company, **zone**, and sector (all **read-only from the employee's sc
 5. Fields after revealing the form, top to bottom: **zone** (read-only) → **company** → **dealer name** → **trade name** → **market** → **phone** → **alt phone** → **NID** → **trade license** → **email** → **gelender** (known person's name) → **contact person** → **owner name** → **address** / **notes**. **Sector is removed** from this screen; markets are listed directly rather than cascading from sector — see [Organisational selection](#organisational-selection).
 6. **Farm & Credit** section: `business_years`, `credit_limit`, **Customer type** (`dealer`, `direct_farm`, `others`, `all` — searchable dropdown, replaces `payment_mode`), **Business type** (`chicks`, `feed`, `fish`, `poultry_feed`, `all`, `others` — searchable dropdown, replaces `lead_status`).
 7. **Phone** is required for every party and unique within its pool — see [Phone uniqueness](#phone-uniqueness).
-8. Product rows, in order: **category** → **product** (list narrowed to the category) → product name → relation type → unit → **product company** → brand → monthly/demand + stock → unit price → **competitor company** (searchable dropdown over the same company list) → our-product switch → notes. Both company pickers narrow to the category using the backend's `mkt_companies` capability flags (`feed` / `chicks`), so a company added to the backend appears; a company carrying no flag is kept in every category. An optional photo gallery renders below the form.
+8. Product rows, in order: **category** → **product** (list narrowed to the category) → product name → relation type → unit → **product company** → brand → monthly/demand + stock → unit price → **competitor company** (searchable dropdown over the same company list) → our-product switch → notes. Both company pickers narrow to the category using the backend's `mkt_companies` capability flags (`feed` / `chicks`): only companies flagged for that category are offered, so a company the master has no flag for (a Sales row) is not offered once a category is chosen. A master with no flags at all (an older payload) falls back to the full list. An optional photo gallery renders below the form.
 
 ### Visit (dealer)
 
