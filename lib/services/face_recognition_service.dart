@@ -178,10 +178,20 @@ class FaceRecognitionService {
     _registrationCaptureCount = 0;
   }
 
-  /// Initialize the service: load TFLite model & face detector
-  Future<void> initialize() async {
-    if (_isInitialized) return;
+  /// The in-flight warm-up, so a start-up warm-up and the check-in screen share
+  /// one load instead of racing to build two interpreters.
+  Future<void>? _initFuture;
 
+  /// Initialize the service: load the TFLite model & face detectors.
+  ///
+  /// Concurrency-safe — the app now warms this at start-up while the check-in
+  /// screen may call it too, and they must share the one load.
+  Future<void> initialize() {
+    if (_isInitialized) return Future<void>.value();
+    return _initFuture ??= _initialize();
+  }
+
+  Future<void> _initialize() async {
     _interpreter = await Interpreter.fromAsset(_modelAsset);
     _applyModelShape();
 

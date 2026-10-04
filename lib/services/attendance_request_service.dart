@@ -440,9 +440,9 @@ class AttendanceRequestService {
   Future<AttendanceSubmitResult> submitSelfPunch({
     required int? employeeId,
     required bool isCheckOut,
-    required double latitude,
-    required double longitude,
-    required String address,
+    double? latitude,
+    double? longitude,
+    String address = '',
     bool faceVerified = false,
   }) async {
     if (!await _hasLocalSession()) {
@@ -469,9 +469,12 @@ class AttendanceRequestService {
       'attDate': _dateStr(nowDt),
       if (!isCheckOut) 'requestedInTime': now,
       if (isCheckOut) 'requestedOutTime': now,
-      'lat': latitude,
-      'lng': longitude,
-      'address': address,
+      // Location is optional: the punch goes out the instant the face is
+      // verified so the officer is not kept waiting on GPS, and a background
+      // backfill patches the fix in once it lands.
+      'lat': ?latitude,
+      'lng': ?longitude,
+      if (address.isNotEmpty) 'address': address,
       'face_verified': faceVerified,
       'requestType': 'self_punch',
       ...deviceMetadata,
@@ -534,6 +537,54 @@ class AttendanceRequestService {
       success: false,
       message: networkError ?? UserFacingError.noInternet,
     );
+  }
+
+  /// Patch the location of an already-submitted punch.
+  ///
+  /// The check-in flow punches the instant the face verifies so the officer is
+  /// not kept waiting on GPS; this fills the coordinates in afterwards, once the
+  /// fix lands, without touching the punch time.
+  Future<bool> updateSelfPunchLocation({
+    required int recordId,
+    required double latitude,
+    required double longitude,
+    required String address,
+  }) async {
+    if (recordId <= 0 || !await _hasLocalSession()) return false;
+
+    final token = await _authService.getToken();
+    final body = <String, dynamic>{
+      'lat': latitude,
+      'lng': longitude,
+      if (address.isNotEmpty) 'address': address,
+    };
+
+    for (final base in await _attendancePunchUrls()) {
+      final url = '${base.replaceAll(RegExp(r'/+$'), '')}/$recordId/location';
+      try {
+        final headers = <String, String>{
+          'Accept': 'application/json',
+          'Content-Type': 'application/json',
+          'User-Agent': 'PPHLAttendance/2.2 (Android; Flutter)',
+        };
+        if (token != null && token.isNotEmpty) {
+          headers['Authorization'] = 'Bearer $token';
+        }
+
+        final response = await http
+            .post(Uri.parse(url), headers: headers, body: jsonEncode(body))
+            .timeout(const Duration(seconds: 20));
+
+        if (response.statusCode == 404) continue;
+        if (response.statusCode == 200 || response.statusCode == 201) {
+          return true;
+        }
+        return false;
+      } catch (_) {
+        continue;
+      }
+    }
+    return false;
   }
 
   Future<List<String>> _attendanceListUrls() async {
