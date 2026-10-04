@@ -627,19 +627,23 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
   ///
   /// The flags come from the ZKTeco backend's `mkt_companies`, served by the
   /// context endpoint — not the tiny demo product catalogue, so a company an
-  /// admin adds there shows up. A company the master is silent about (a Sales
-  /// row, or an older payload) is kept in every category rather than hidden, and
-  /// an empty result falls back to the full list so neither picker is ever empty.
+  /// admin adds there shows up. Only companies flagged `true` for the category
+  /// are offered. When the master carries no flags at all (an older payload)
+  /// every company is offered rather than none, and an empty result falls back to
+  /// the full list so a picker is never dead.
   List<BookingFormCompany> _companiesForCategory(MarketingDemoNamed? category) {
     if (category == null) return _productCompanies;
     final flag = _categoryFlag(category.name);
     if (flag == null) return _productCompanies;
 
-    final filtered = _productCompanies.where((c) {
-      final value = flag == 'feed' ? c.feed : c.chicks;
-      return value == null || value;
-    }).toList();
-    return filtered.isNotEmpty ? filtered : _productCompanies;
+    final hasFlags =
+        _productCompanies.any((c) => c.feed != null || c.chicks != null);
+    if (!hasFlags) return _productCompanies;
+
+    final matching = _productCompanies
+        .where((c) => (flag == 'feed' ? c.feed : c.chicks) == true)
+        .toList();
+    return matching.isNotEmpty ? matching : _productCompanies;
   }
 
   /// Maps a product-category name onto the company flag that matches it, or null
@@ -1631,6 +1635,9 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
                                   ),
                                   const SizedBox(height: 8),
                                   SearchableSelectField<BookingFormCompany>(
+                                    key: ValueKey(
+                                      'product-company-${row.category?.id}',
+                                    ),
                                     label: 'Product company',
                                     icon: Icons.apartment_outlined,
                                     options: _companiesForCategory(row.category),
@@ -1678,6 +1685,9 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
                                   ),
                                   const SizedBox(height: 8),
                                   SearchableSelectField<BookingFormCompany>(
+                                    key: ValueKey(
+                                      'competitor-company-${row.category?.id}',
+                                    ),
                                     label: 'Competitor company',
                                     icon: Icons.handshake_outlined,
                                     options: _companiesForCategory(row.category),

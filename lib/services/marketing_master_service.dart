@@ -25,8 +25,13 @@ class MarketingMasterService {
   MarketingMasterService._();
   static final MarketingMasterService instance = MarketingMasterService._();
 
-  static const String _cacheKey = 'marketing_masters_json';
-  static const String _cacheAtKey = 'marketing_masters_resolved_at_ms';
+  // Versioned: bump the suffix whenever the persisted company shape changes, so
+  // a device upgrades past its old copy instead of restoring fields it never
+  // wrote. v2 added the company capability flags (`category`/`feed`/`chicks`/
+  // `breeder`) the product pickers filter on — a v1 cache restored them as null
+  // and nothing filtered.
+  static const String _cacheKey = 'marketing_masters_json_v2';
+  static const String _cacheAtKey = 'marketing_masters_resolved_at_ms_v2';
 
   /// These masters change slowly; a day-old copy spares the app a round-trip on
   /// every cold start.
