@@ -39,6 +39,7 @@ class _LoginPass {
 class AuthService {
   static const String _tokenKey = 'auth_token';
   static const String _emailKey = 'auth_email';
+  static const String _passwordKey = 'auth_password';
   static const String _rememberKey = 'remember_me';
   static const Duration _profileCacheTtl = Duration(minutes: 20);
 
@@ -199,6 +200,7 @@ class AuthService {
           await _saveSession(
             token: token,
             email: email,
+            password: password,
             rememberMe: rememberMe,
           );
 
@@ -499,11 +501,22 @@ class AuthService {
     required String token,
     required String email,
     required bool rememberMe,
+    String? password,
   }) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_tokenKey, token);
-    await prefs.setString(_emailKey, email);
     await prefs.setBool(_rememberKey, rememberMe);
+    if (rememberMe) {
+      await prefs.setString(_emailKey, email);
+      // Only a sign-in carries a password; a token refresh passes none, so the
+      // remembered password is left untouched rather than cleared.
+      if (password != null) {
+        await prefs.setString(_passwordKey, password);
+      }
+    } else {
+      await prefs.remove(_emailKey);
+      await prefs.remove(_passwordKey);
+    }
   }
 
   Future<bool> isLoggedIn() async {
@@ -515,6 +528,11 @@ class AuthService {
   Future<String?> getSavedEmail() async {
     final prefs = await SharedPreferences.getInstance();
     return prefs.getString(_emailKey);
+  }
+
+  Future<String?> getSavedPassword() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(_passwordKey);
   }
 
   Future<bool> getRememberMe() async {
@@ -565,8 +583,15 @@ class AuthService {
 
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_tokenKey);
-    await prefs.remove(_rememberKey);
-    await prefs.remove(_emailKey);
+    // "Remember me" keeps the last email and password so the login screen can
+    // prefill them — signing out ends the session, it does not forget the
+    // login. Without it, nothing is kept.
+    final rememberMe = prefs.getBool(_rememberKey) ?? false;
+    if (!rememberMe) {
+      await prefs.remove(_rememberKey);
+      await prefs.remove(_emailKey);
+      await prefs.remove(_passwordKey);
+    }
   }
 
   Future<List<String>> _loginUrls() async {

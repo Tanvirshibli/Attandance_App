@@ -35,11 +35,13 @@ class _LoginScreenState extends State<LoginScreen> {
 
   Future<void> _loadSavedLoginState() async {
     final savedEmail = await _authService.getSavedEmail();
+    final savedPassword = await _authService.getSavedPassword();
     final rememberMe = await _authService.getRememberMe();
     if (!mounted) return;
     setState(() {
       _rememberMe = rememberMe;
       _emailController.text = savedEmail ?? '';
+      _passwordController.text = savedPassword ?? '';
     });
   }
 
