@@ -114,10 +114,11 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
 
   List<Party> _dealers = const [];
 
-  /// Only the product rows still offer a company picker, so this stays the demo
-  /// catalog. The party's own company comes from the officer's selection.
-  final List<BookingFormCompany> _productCompanies =
-      MarketingDemoMasters.companies;
+  /// Only the product rows still offer a company picker, and it
+  /// offers the same live master the party's own company picker
+  /// uses. The party's own company comes from the officer's
+  /// selection.
+  List<BookingFormCompany> _productCompanies = const [];
   Party? _parentParty;
   MarketingDemoNamed? _capacityUnit;
 
@@ -241,6 +242,7 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
     if (!mounted) return;
     setState(() {
       _companies = companies;
+      _productCompanies = companies;
       _sectors = sectors;
     });
   }

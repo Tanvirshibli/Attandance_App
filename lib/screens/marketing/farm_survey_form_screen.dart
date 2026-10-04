@@ -5,9 +5,11 @@ import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 
 import '../../data/marketing_demo_masters.dart';
+import '../../models/booking_form_data_models.dart';
 import '../../models/marketing_models.dart';
 import '../../models/zone_scope.dart';
 import '../../services/auth_service.dart';
+import '../../services/marketing_master_service.dart';
 import '../../services/marketing_service.dart';
 import '../../services/zone_scope_service.dart';
 import '../../utils/marketing_location_helper.dart';
@@ -102,6 +104,11 @@ class _FarmSurveyFormScreenState extends State<FarmSurveyFormScreen> {
   bool _geoVerified = false;
   final List<XFile> _photos = [];
 
+  /// The live company master, feeding the DOC and feed company
+  /// suggestions so an officer picks a real company name rather
+  /// than a handful of hardcoded ones.
+  List<BookingFormCompany> _companies = const [];
+
   @override
   void initState() {
     super.initState();
@@ -146,19 +153,23 @@ class _FarmSurveyFormScreenState extends State<FarmSurveyFormScreen> {
     super.dispose();
   }
 
-  /// Loads the officer's profile and their zone.
+  /// Loads the officer's profile, their zone, and the live
+  /// company master.
   ///
-  /// A farm survey files a visit against an existing farm, so it has no company,
-  /// sector or market of its own to pick — only the zone, and only as the
-  /// fallback for a farm created before zone tagging.
+  /// A farm survey files a visit against an existing farm, so it has no
+  /// company, sector or market of its own to pick — only the zone, and
+  /// only as the fallback for a farm created before zone tagging. The
+  /// company master feeds the DOC and feed company suggestions.
   Future<void> _loadContext() async {
     final profile = await _authService.getCurrentUserProfile();
     final scope = await ZoneScopeService.instance.load();
+    final companies = await MarketingMasterService.instance.companies();
     if (!mounted) return;
     setState(() {
       _officerName = profile?.name ?? '';
       _officerDesignation = profile?.designation ?? '';
       _officerZoneName = _officerZoneFor(scope);
+      _companies = companies;
     });
   }
 
@@ -469,6 +480,11 @@ class _FarmSurveyFormScreenState extends State<FarmSurveyFormScreen> {
   List<String> _namedSuggestions(List<MarketingDemoNamed> items) =>
       items.map((e) => e.name).toList();
 
+  /// Every company name the backend knows, for the DOC and feed
+  /// company fields.
+  List<String> _companySuggestions() =>
+      _companies.map((c) => c.displayName).toList();
+
   Widget _ratingRow(String label, int value, ValueChanged<int> onChanged) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
@@ -603,16 +619,12 @@ class _FarmSurveyFormScreenState extends State<FarmSurveyFormScreen> {
                           _suggestField(
                             label: 'DOC company',
                             controller: _docCompany,
-                            suggestions: _namedSuggestions(
-                              MarketingDemoMasters.docCompanies,
-                            ),
+                            suggestions: _companySuggestions(),
                           ),
                           _suggestField(
                             label: 'Feed company',
                             controller: _feedCompany,
-                            suggestions: _namedSuggestions(
-                              MarketingDemoMasters.feedCompanies,
-                            ),
+                            suggestions: _companySuggestions(),
                           ),
                         ],
                       ),

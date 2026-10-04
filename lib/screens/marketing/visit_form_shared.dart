@@ -7,6 +7,7 @@ import 'package:intl/intl.dart';
 import '../../data/marketing_demo_masters.dart';
 import '../../models/marketing_models.dart';
 import '../../services/auth_service.dart';
+import '../../services/marketing_master_service.dart';
 import '../../services/marketing_service.dart';
 import '../../services/sales_service.dart';
 import '../../utils/marketing_location_helper.dart';
@@ -174,8 +175,8 @@ class _SharedVisitFormScreenState extends State<SharedVisitFormScreen> {
   final _visitType = TextEditingController(text: 'regular');
 
   List<Market> _markets = const [];
-  List<BookingFormCompany> _companies = MarketingDemoMasters.companies;
-  List<BookingFormSector> _sectors = MarketingDemoMasters.sectors;
+  List<BookingFormCompany> _companies = const [];
+  List<BookingFormSector> _sectors = const [];
   List<MarketingDemoProduct> _catalogProducts = MarketingDemoMasters.products;
   Market? _selectedMarket;
   Party? _selectedParty;
@@ -259,12 +260,19 @@ class _SharedVisitFormScreenState extends State<SharedVisitFormScreen> {
   }
 
   Future<void> _loadMasters() async {
+    // Companies and sectors come from the mobile backend's own
+    // master (curated list merged with Sales, local names win);
+    // the Sales form-data read below is kept only for the product
+    // catalog, which the context endpoint does not serve.
+    final companies = await MarketingMasterService.instance.companies();
+    final sectors =
+        await MarketingMasterService.instance.sectorsForCompany(null);
     final result = await _salesService.fetchBookingFormData();
     if (!mounted) return;
     setState(() {
+      _companies = companies;
+      _sectors = sectors;
       if (result.success && result.data != null) {
-        _companies = MarketingDemoMasters.companiesOr(result.data!.companies);
-        _sectors = MarketingDemoMasters.sectorsOr(result.data!.sectors);
         _catalogProducts =
             MarketingDemoMasters.productsFromBookingForm(result.data);
       }
