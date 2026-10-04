@@ -161,6 +161,12 @@ class _PartyDetailScreenState extends State<PartyDetailScreen> {
                             _row('Dealer', party.parentPartyName!),
                           if (party.zoneName != null)
                             _row('Zone', party.zoneName!),
+                          if (party.gelender != null && party.gelender!.isNotEmpty)
+                            _row('Gelender', party.gelender!),
+                          if (party.customerType != null && party.customerType!.isNotEmpty)
+                            _row('Customer type', party.customerType!),
+                          if (party.businessType != null && party.businessType!.isNotEmpty)
+                            _row('Business type', party.businessType!),
                           if (party.businessYears != null)
                             _row('Farming years', '${party.businessYears}'),
                           // Farm-only. Both were collected by the standalone Add

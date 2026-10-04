@@ -396,6 +396,9 @@ class Party {
     this.creditLimit,
     this.paymentMode,
     this.leadStatus,
+    this.customerType,
+    this.businessType,
+    this.gelender,
     this.marketId,
     this.parentPartyId,
     this.existingDealerId,
@@ -442,6 +445,9 @@ class Party {
   final double? creditLimit;
   final String? paymentMode;
   final String? leadStatus;
+  final String? customerType;
+  final String? businessType;
+  final String? gelender;
   final int? marketId;
   final int? parentPartyId;
   final int? existingDealerId;
@@ -517,6 +523,13 @@ class Party {
         json['paymentMode'] ?? json['payment_mode'],
       ),
       leadStatus: marketingNonEmpty(json['leadStatus'] ?? json['lead_status']),
+      customerType: marketingNonEmpty(
+        json['customerType'] ?? json['customer_type'],
+      ),
+      businessType: marketingNonEmpty(
+        json['businessType'] ?? json['business_type'],
+      ),
+      gelender: marketingNonEmpty(json['gelender']),
       marketId: marketingParseInt(json['marketId'] ?? json['market_id']),
       parentPartyId: marketingParseInt(
         json['parentPartyId'] ?? json['parent_party_id'],

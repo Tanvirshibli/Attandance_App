@@ -19,6 +19,7 @@ import '../../utils/marketing_location_helper.dart';
 import '../../widgets/searchable_select_field.dart';
 import '../../widgets/ui/ui.dart';
 import '../../widgets/voice_input_field.dart';
+import 'dealer_visit_form_screen.dart';
 
 class _ProductRow {
   final name = TextEditingController();
@@ -69,6 +70,7 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
   final _email = TextEditingController();
   final _nid = TextEditingController();
   final _tradeLicense = TextEditingController();
+  final _gelender = TextEditingController();
   final _address = TextEditingController();
   final _notes = TextEditingController();
   final _farmType = TextEditingController();
@@ -77,22 +79,29 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
   final _creditLimit = TextEditingController();
 
   String _partyType = 'dealer';
-  String _paymentMode = 'cash';
-  String _leadStatus = 'new';
+
+  /// Customer type and business type replace payment_mode and lead_status on
+  /// the dealer form — searchable dropdowns instead of free-text enums.
+  MarketingDemoNamed? _selectedCustomerType;
+  MarketingDemoNamed? _selectedBusinessType;
+
+  /// Existing-dealer lookup (search-first pattern).
+  final _search = TextEditingController();
+  final _searchFocusNode = FocusNode();
+  bool _browsing = false;
+  bool _creating = false;
+  Party? _selectedMatch;
 
   /// The employee's own zone, resolved from their HRM profile and shown
   /// read-only. It is a fact about who is filing the record, not a filter on
   /// the choices below.
   MarketingDemoNamed? _employeeZone;
 
-  /// Company → sector → market, each chosen by the officer. The sector list
-  /// narrows to the selected company and the market list to the selected
-  /// sector; changing an upstream pick clears everything below it.
+  /// Company and market, each chosen by the officer. Sectors are no longer
+  /// picked on this screen — markets are listed directly, the officer picks one.
   BookingFormCompany? _selectedCompany;
-  BookingFormSector? _selectedSector;
   Market? _selectedMarket;
   List<BookingFormCompany> _companies = const [];
-  List<BookingFormSector> _sectors = const [];
   List<Market> _markets = const [];
 
   /// Server-allocated `DLR-09260001` / `FMR-09260001`. Null until the endpoint
@@ -148,8 +157,23 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
     'demand',
     'competitor',
   ];
-  static const _paymentModes = ['cash', 'credit', 'mixed', 'other'];
-  static const _leadStatuses = ['new', 'warm', 'hot', 'converted', 'lost'];
+  /// Options for the customer-type searchable dropdown (replaces Payment mode).
+  static final _customerTypeOptions = [
+    MarketingDemoNamed(id: 1, name: 'dealer'),
+    MarketingDemoNamed(id: 2, name: 'direct_farm'),
+    MarketingDemoNamed(id: 3, name: 'others'),
+    MarketingDemoNamed(id: 4, name: 'all'),
+  ];
+
+  /// Options for the business-type searchable dropdown (replaces Lead status).
+  static final _businessTypeOptions = [
+    MarketingDemoNamed(id: 1, name: 'chicks'),
+    MarketingDemoNamed(id: 2, name: 'feed'),
+    MarketingDemoNamed(id: 3, name: 'fish'),
+    MarketingDemoNamed(id: 4, name: 'poultry_feed'),
+    MarketingDemoNamed(id: 5, name: 'all'),
+    MarketingDemoNamed(id: 6, name: 'others'),
+  ];
 
   bool get _isFarm => _partyType == 'farm' || _partyType == 'farmer';
 
@@ -190,7 +214,7 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
       _autoFillLocation(),
       _loadCode(),
       _loadOrgMasters(),
-      if (_isFarm) _loadDealers(),
+      _loadDealers(),
     ]);
   }
 
@@ -233,49 +257,27 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
     return null;
   }
 
-  /// Loads the company list and, until one is chosen, the full sector list.
+  /// Loads the company list and the full market list. Sectors are no longer
+  /// picked on this screen, so markets are fetched directly rather than
+  /// narrowed by a sector cascade.
   Future<void> _loadOrgMasters() async {
     final companies = await MarketingMasterService.instance.companies();
-    final sectors = await MarketingMasterService.instance.sectorsForCompany(
-      _selectedCompany?.id,
-    );
+    final markets = await MarketingMasterService.instance.marketsForSector(null);
     if (!mounted) return;
     setState(() {
       _companies = companies;
       _productCompanies = companies;
-      _sectors = sectors;
+      _markets = markets;
     });
   }
 
-  /// The sector list narrows to the chosen company.
+  /// Company selection clears the market pick — they are independent choices,
+  /// so the officer re-picks the market for the new company.
   Future<void> _onCompanySelected(BookingFormCompany? company) async {
     setState(() {
       _selectedCompany = company;
-      // Everything below the company is now invalid: a sector from the old
-      // company would file the record under a pairing that cannot exist.
-      _selectedSector = null;
       _selectedMarket = null;
     });
-
-    final sectors = await MarketingMasterService.instance.sectorsForCompany(
-      company?.id,
-    );
-    if (!mounted) return;
-    setState(() => _sectors = sectors);
-  }
-
-  /// The market list narrows to the chosen sector.
-  Future<void> _onSectorSelected(BookingFormSector? sector) async {
-    setState(() {
-      _selectedSector = sector;
-      _selectedMarket = null;
-    });
-
-    final markets = await MarketingMasterService.instance.marketsForSector(
-      sector?.id,
-    );
-    if (!mounted) return;
-    setState(() => _markets = markets);
   }
 
   /// Loads the existing-dealer list.
@@ -335,6 +337,8 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
   @override
   void dispose() {
     _phoneDebounce?.cancel();
+    _searchFocusNode.dispose();
+    _search.dispose();
     _name.dispose();
     _tradeName.dispose();
     _contact.dispose();
@@ -345,6 +349,7 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
     _email.dispose();
     _nid.dispose();
     _tradeLicense.dispose();
+    _gelender.dispose();
     _address.dispose();
     _notes.dispose();
     _farmType.dispose();
@@ -490,6 +495,360 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
     return null;
   }
 
+  // ---------------------------------------------------------------------
+  // Existing-dealer lookup (search-first pattern, mirrors FarmFormScreen)
+  // ---------------------------------------------------------------------
+
+  /// Narrows [dealers] by what the officer has typed, with a phone-first pass.
+  ///
+  /// A phone-shaped query is compared by **digits first**, so typing a dealer's
+  /// exact number surfaces that dealer at the top rather than burying it
+  /// among substring hits. The name / code contains pass still runs, so a number
+  /// that matches nothing exactly does not produce an empty list. Under two
+  /// characters everything is offered: a single letter matches half the
+  /// catalogue and a list that appears to be broken is worse than a long one.
+  static List<Party> filterDealers(List<Party> dealers, String query) {
+    final trimmed = query.trim();
+    if (trimmed.length < 2) return dealers;
+
+    final lower = trimmed.toLowerCase();
+
+    if (MarketingService.normalisePhone(trimmed).length >= 7) {
+      final exact = dealers
+          .where((d) => MarketingService.samePhone(d.phone, trimmed))
+          .toList();
+      if (exact.isNotEmpty) return exact;
+    }
+
+    return dealers
+        .where(
+          (d) =>
+              d.displayName.toLowerCase().contains(lower) ||
+              (d.code ?? '').toLowerCase().contains(lower) ||
+              (d.phone ?? '').toLowerCase().contains(lower),
+        )
+        .toList();
+  }
+
+  /// The currently visible dealers in the browse list.
+  List<Party> get _visibleDealers =>
+      filterDealers(_dealers, _search.text);
+
+  /// Opens the browse list on a tap, and keeps narrowing it as the officer
+  /// types. Only a previous selection is dropped — a dealer the officer
+  /// already picked stays picked until they pick another or clear.
+  void _onSearchChanged(String value) {
+    if (_creating) return;
+    if (!_browsing) {
+      setState(() => _browsing = true);
+      return;
+    }
+    setState(() => _selectedMatch = null);
+  }
+
+  /// Tapping the field with an empty box opens the same list as typing would.
+  void _onSearchTap() {
+    if (_browsing || _creating) return;
+    setState(() => _browsing = true);
+  }
+
+  /// Commits to creating a new dealer, seeding the field the query really was.
+  ///
+  /// A digit run of at least 7 cannot be a dealer name, so it goes to Phone;
+  /// anything else goes to Dealer name. The other field is left for the officer.
+  void _startCreating() {
+    final typed = _search.text.trim();
+    setState(() {
+      _creating = true;
+      _browsing = false;
+      _searchFocusNode.unfocus();
+      if (MarketingService.normalisePhone(typed).length >= 7) {
+        _phone.text = typed;
+      } else if (typed.isNotEmpty) {
+        _name.text = typed;
+      }
+    });
+    if (MarketingService.normalisePhone(typed).length >= 7) {
+      _checkPhone();
+    }
+  }
+
+  /// Clears the search and drops back to the search-only state. Also drops any
+  /// product rows, because going back to search-only hides the section that owns
+  /// them — leaving them alive would mean the next "Add new dealer" starts with
+  /// the previous attempt's rows still in it.
+  void _resetSearch() {
+    setState(() {
+      for (final row in _products) {
+        row.dispose();
+      }
+      _products.clear();
+      _search.clear();
+      _creating = false;
+      _browsing = false;
+      _selectedMatch = null;
+      _phoneClash = null;
+    });
+  }
+
+  /// Opens the dealer visit report for a dealer that already exists.
+  Future<void> _postVisit(Party dealer) async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => DealerVisitFormScreen(party: dealer),
+      ),
+    );
+  }
+
+  /// Formats a backend enum value into a human-readable label, e.g.
+  /// `direct_farm` → `Direct farm`.
+  static String _formatOption(String value) => value
+          .replaceAll('_', ' ')
+          .split(' ')
+          .map((w) => w.isEmpty ? w : '${w[0].toUpperCase()}${w.substring(1)}')
+          .join(' ');
+
+  /// The top search bar. In search-only mode it filters the browse list; once
+  /// the officer commits it becomes read-only and acts as a reminder of what
+  /// was looked up.
+  Widget _buildSearch() {
+    final hasMatch = _selectedMatch != null;
+    return Padding(
+      padding: const EdgeInsets.all(12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          TextField(
+            controller: _search,
+            focusNode: _searchFocusNode,
+            readOnly: _creating,
+            decoration: InputDecoration(
+              hintText: hasMatch
+                  ? 'Dealer found — tap "Add new dealer" to create a new one'
+                  : 'Search by name, code or phone…',
+              prefixIcon: const Icon(Icons.search),
+              border: const OutlineInputBorder(),
+              suffixIcon: _search.text.isEmpty
+                  ? const Icon(Icons.arrow_drop_down, size: 22)
+                  : (_creating
+                      ? null
+                      : IconButton(
+                          icon: const Icon(Icons.clear, size: 20),
+                          onPressed: _resetSearch,
+                        )),
+            ),
+            onChanged: _onSearchChanged,
+            onTap: _onSearchTap,
+          ),
+          if (_creating) ...[
+            const SizedBox(height: 8),
+            _searchNotice(
+              icon: Icons.info_outline,
+              text: 'A new dealer will be created. Existing dealers can be '
+                  'found by tapping "Cancel" and searching again.',
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  /// Browse results or match panel shown below the search bar.
+  Widget _buildBrowseCard() {
+    if (_selectedMatch != null) {
+      return AppCard(child: _buildMatchPanel());
+    }
+    if ((!_browsing && _dealers.isEmpty && !_loadingDealers) || _creating) {
+      return const SizedBox.shrink();
+    }
+    return AppCard(child: _buildBrowseResults());
+  }
+
+  /// The filtered dealer list, with a notice for empty or loading states.
+  Widget _buildBrowseResults() {
+    if (_loadingDealers) {
+      return const Padding(
+        padding: EdgeInsets.all(16),
+        child: Center(child: CircularProgressIndicator()),
+      );
+    }
+
+    final visible = _visibleDealers;
+    if (visible.isEmpty) {
+      final query = _search.text.trim();
+      return _searchNotice(
+        icon: Icons.search_off,
+        text: query.isEmpty
+            ? 'No dealers have been recorded yet.'
+            : 'No dealers match "$query".',
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          child: Text(
+            '${visible.length} dealer${visible.length == 1 ? '' : 's'} found',
+            style: const TextStyle(
+              fontSize: 12,
+              color: AppColors.inkMuted,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ),
+        ListView.separated(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          itemCount: visible.length,
+          separatorBuilder: (_, __) => const Divider(height: 1),
+          itemBuilder: (_, i) => _dealerRow(visible[i]),
+        ),
+        const SizedBox(height: 8),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          child: TextButton.icon(
+            onPressed: _startCreating,
+            icon: const Icon(Icons.add, size: 18),
+            label: const Text('Add new dealer'),
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// A single row in the browse list.
+  Widget _dealerRow(Party dealer) {
+    return ListTile(
+      leading: CircleAvatar(
+        backgroundColor: AppColors.primary.withValues(alpha: 0.15),
+        child: const Icon(Icons.storefront_outlined, color: AppColors.primary),
+      ),
+      title: Text(
+        dealer.displayName,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+      ),
+      subtitle: Text(
+        '${dealer.code ?? ''} • ${dealer.phone ?? ''}',
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+      ),
+      trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+      onTap: () {
+        setState(() => _selectedMatch = dealer);
+        _searchFocusNode.unfocus();
+      },
+    );
+  }
+
+  /// Panel shown when a dealer match is tapped — shows what was found and
+  /// offers a visit report or the option to create a new one anyway.
+  Widget _buildMatchPanel() {
+    final match = _selectedMatch!;
+    final code = match.code;
+    final phone = match.phone;
+    final zone = match.zoneName;
+    final market = match.marketName;
+
+    return Padding(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            match.displayName,
+            style: TextStyle(
+              fontWeight: FontWeight.bold,
+              fontSize: 16,
+              color: AppColors.primary,
+            ),
+          ),
+          const SizedBox(height: 8),
+          if (code != null && code.isNotEmpty)
+            _matchLine(Icons.qr_code_2_outlined, 'Code: $code'),
+          if (phone != null && phone.isNotEmpty)
+            _matchLine(Icons.phone_outlined, 'Phone: $phone'),
+          if (market != null && market.isNotEmpty)
+            _matchLine(Icons.store_mall_directory, 'Market: $market'),
+          if (zone != null && zone.isNotEmpty)
+            _matchLine(Icons.map_outlined, 'Zone: $zone'),
+          const SizedBox(height: 16),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              TextButton.icon(
+                onPressed: () => _postVisit(match),
+                icon: const Icon(Icons.post_add),
+                label: const Text('Post a visit report'),
+              ),
+              TextButton.icon(
+                onPressed: _resetSearch,
+                icon: const Icon(Icons.refresh),
+                label: const Text('Cancel'),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          FilledButton.icon(
+            onPressed: _startCreating,
+            icon: const Icon(Icons.add, size: 18),
+            label: const Text('Add new dealer'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _matchLine(IconData icon, String text) => Padding(
+        padding: const EdgeInsets.symmetric(vertical: 2),
+        child: Row(
+          children: [
+            Icon(icon, size: 15, color: AppColors.inkMuted),
+            const SizedBox(width: 6),
+            Expanded(
+              child: Text(
+                text,
+                style: TextStyle(
+                  fontSize: 12,
+                  color: AppColors.inkMuted,
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+
+  /// A thin coloured banner used for notices inside the search flow.
+  Widget _searchNotice({IconData? icon, required String text}) {
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: AppColors.primary.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Row(
+        children: [
+          if (icon != null) ...[
+            Icon(icon, size: 16, color: AppColors.primary),
+            const SizedBox(width: 8),
+          ],
+          Expanded(
+            child: Text(
+              text,
+              style: TextStyle(
+                fontSize: 12,
+                color: AppColors.primary,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _submit() async {
     // Defence in depth: the create pill on the hub is already gated, so a user
     // without `farms.create` / `dealer.create` cannot reach this form by
@@ -501,7 +860,7 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
       return;
     }
     if (_name.text.trim().isEmpty) {
-      _snack('Name is required.');
+      _snack('Dealer name is required.');
       return;
     }
     if (_phoneRequired && _phone.text.trim().isEmpty) {
@@ -615,10 +974,13 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
       if (_nid.text.trim().isNotEmpty) 'nid_no': _nid.text.trim(),
       if (_tradeLicense.text.trim().isNotEmpty)
         'trade_license_no': _tradeLicense.text.trim(),
+      if (_gelender.text.trim().isNotEmpty)
+        'gelender': _gelender.text.trim(),
       if (_address.text.trim().isNotEmpty) 'address': _address.text.trim(),
-      // The zone is the employee's own and is filed as-is. Company, sector and
-      // market are the officer's picks, sent with both the id and the name so
-      // the webapp reports can read them without a master to join against.
+      // The zone is the employee's own and is filed as-is. Company and market
+      // are the officer's picks, sent with both the id and the name so the webapp
+      // reports can read them without a master to join against. Sector is no
+      // longer chosen on this screen.
       if (_selectedMarket != null) 'market_id': _selectedMarket!.id,
       if (_isFarm && _parentParty != null) 'parent_party_id': _parentParty!.id,
       if (_selectedExistingDealer != null)
@@ -626,8 +988,6 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
       if (_selectedCompany != null) 'company_id': _selectedCompany!.id,
       if (_selectedCompany != null)
         'company_name': _selectedCompany!.displayName,
-      if (_selectedSector != null) 'sector_id': _selectedSector!.id,
-      if (_selectedSector != null) 'sector_name': _selectedSector!.name,
       if (_employeeZone != null) 'zone_id': _employeeZone!.id,
       if (_employeeZone != null) 'zone_name': _employeeZone!.name,
       if (_isFarm && _farmType.text.trim().isNotEmpty)
@@ -639,8 +999,10 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
         'business_years': double.tryParse(_businessYears.text.trim()),
       if (_creditLimit.text.trim().isNotEmpty)
         'credit_limit': double.tryParse(_creditLimit.text.trim()),
-      'payment_mode': _paymentMode,
-      'lead_status': _leadStatus,
+      if (_selectedCustomerType != null)
+        'customer_type': _selectedCustomerType!.name,
+      if (_selectedBusinessType != null)
+        'business_type': _selectedBusinessType!.name,
       'created_by_employee_id': employeeId,
       'owner_employee_id': employeeId,
       if (_lat != null) 'lat': _lat,
@@ -722,13 +1084,46 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final title = _isFarm ? 'New Farm' : 'New Dealer';
+    if (!_creating) {
+      return Scaffold(
+        backgroundColor: AppColors.canvas,
+        body: Column(
+          children: [
+            AppHeader(
+              title: 'Add Dealer',
+              subtitle: 'Search for an existing dealer, or add a new one',
+            ),
+            Expanded(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.fromLTRB(
+                  AppSpace.gutter,
+                  AppSpace.md,
+                  AppSpace.gutter,
+                  AppSpace.xl,
+                ),
+                child: Column(
+                  children: [
+                    AppCard(child: _buildSearch()),
+                    const SizedBox(height: 12),
+                    _buildBrowseCard(),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // The form reveals only once the officer commits to creating or the
+    // screen is told up-front that _creating is true. The search bar stays
+    // visible above the form as a read-only reminder of what was looked up.
     return Scaffold(
       backgroundColor: AppColors.canvas,
       body: Column(
         children: [
           AppHeader(
-            title: title,
+            title: 'New Dealer',
             subtitle: 'Identity, contact, credit & products',
           ),
           Expanded(
@@ -741,83 +1136,48 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
               ),
               child: Column(
                 children: [
+                  AppCard(child: _buildSearch()),
+                  const SizedBox(height: 12),
                   AppCard(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        _sectionTitle('Basic'),
-                        // A farm is reached from the Farms tab, so the screen is
-                        // already farm-specific and the type is a fact rather
-                        // than a choice. Dealers get the two business-meaningful
-                        // options; the other party_type values still exist in the
-                        // data model and in existing records, they are just not
-                        // something a field officer creates here.
-                        if (_isFarm)
-                          const ReadOnlyField(
-                            label: 'Party type',
-                            icon: Icons.category_outlined,
-                            value: 'Farm',
-                          )
-                        else ...[
-                          _label('Party type'),
-                          DropdownButtonFormField<String>(
-                            initialValue: _partyType,
-                            decoration: _decoration(),
-                            items: _dealerPartyTypes
-                                .map(
-                                  (t) => DropdownMenuItem(
-                                    value: t.value,
-                                    child: Text(t.label),
-                                  ),
-                                )
-                                .toList(),
-                            onChanged: (v) {
-                              if (v == null) return;
-                              setState(() {
-                                _partyType = v;
-                                _phoneClash = null;
-                                // The picker belongs to the existing-dealer type
-                                // alone, so its selection is cleared when the
-                                // type moves away from it.
-                                if (v != 'outlet') {
-                                  _selectedExistingDealer = null;
-                                }
-                              });
-                              if (v == 'outlet' && _existingDealers.isEmpty) {
-                                _loadExistingDealers();
+                        _sectionTitle('Details'),
+                        // The party-type picker is dealer-specific — the farm
+                        // form lives in FarmFormScreen. Only the two
+                        // business-meaningful dealer types are offered here.
+                        _label('Party type'),
+                        DropdownButtonFormField<String>(
+                          initialValue: _partyType,
+                          decoration: _decoration(),
+                          items: _dealerPartyTypes
+                              .map(
+                                (t) => DropdownMenuItem(
+                                  value: t.value,
+                                  child: Text(t.label),
+                                ),
+                              )
+                              .toList(),
+                          onChanged: (v) {
+                            if (v == null) return;
+                            setState(() {
+                              _partyType = v;
+                              _phoneClash = null;
+                              if (v != 'outlet') {
+                                _selectedExistingDealer = null;
                               }
-                            },
-                          ),
-                        ],
-                        const SizedBox(height: 14),
-                        _label('Name *'),
-                        VoiceTextField(
-                          controller: _name,
-                          decoration: _decoration(hint: 'Party name'),
-                        ),
-                        const SizedBox(height: 14),
-                        _label('Trade name'),
-                        VoiceTextField(
-                          controller: _tradeName,
-                          decoration: _decoration(hint: 'Optional'),
-                        ),
-                        const SizedBox(height: 14),
-                        // Allocated server-side so two officers opening this form
-                        // at the same moment cannot be handed the same code.
-                        ReadOnlyField(
-                          label: 'Code',
-                          icon: Icons.qr_code_2_outlined,
-                          value: _generatedCode,
-                          hint: _loadingCode
-                              ? 'Generating…'
-                              : 'Unavailable — will save without one',
+                            });
+                            if (v == 'outlet' && _existingDealers.isEmpty) {
+                              _loadExistingDealers();
+                            }
+                          },
                         ),
                         const SizedBox(height: 14),
                         // The existing ERP dealer picker appears only for the
-                        // existing-dealer type. A new dealer or a farm has no
-                        // ERP dealer to attach, so showing an always-visible
-                        // field there just invited an officer to file a farm
-                        // against a demo row.
+                        // existing-dealer type. A new dealer has no ERP dealer
+                        // to attach, so showing an always-visible field there
+                        // just invited an officer to file a dealer against a
+                        // demo row.
                         if (_partyType == 'outlet') ...[
                           if (_loadingExistingDealers)
                             const LinearProgressIndicator()
@@ -835,12 +1195,21 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
                             ),
                           const SizedBox(height: 14),
                         ],
+                        // Allocated server-side so two officers opening this form
+                        // at the same moment cannot be handed the same code.
+                        ReadOnlyField(
+                          label: 'Dealer code',
+                          icon: Icons.qr_code_2_outlined,
+                          value: _generatedCode,
+                          hint: _loadingCode
+                              ? 'Generating…'
+                              : 'Unavailable — will save without one',
+                        ),
+                        const SizedBox(height: 14),
                         // The zone is the officer's own territory and stays
-                        // read-only. Company, sector and market are theirs to
-                        // pick, cascading downwards: the zone deliberately does
-                        // not narrow any of them, because an officer who trades
-                        // across a neighbouring zone still has to be able to
-                        // record it.
+                        // read-only. Company and market are theirs to pick
+                        // independently — sectors are no longer chosen on this
+                        // screen.
                         if (_loadingMasters)
                           const LinearProgressIndicator()
                         else ...[
@@ -861,29 +1230,11 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
                             onSelected: _onCompanySelected,
                           ),
                           const SizedBox(height: 14),
-                          SearchableSelectField<BookingFormSector>(
-                            label: 'Sector',
-                            icon: Icons.hub_outlined,
-                            options: _sectors,
-                            selected: _selectedSector,
-                            enabled: _selectedCompany != null,
-                            hintText: _selectedCompany == null
-                                ? 'Pick a company first'
-                                : 'Tap to pick or type…',
-                            displayString: (s) => s.name,
-                            searchText: (s) => s.searchText,
-                            onSelected: _onSectorSelected,
-                          ),
-                          const SizedBox(height: 14),
                           SearchableSelectField<Market>(
                             label: 'Market',
                             icon: Icons.store_mall_directory_outlined,
                             options: _markets,
                             selected: _selectedMarket,
-                            enabled: _selectedSector != null,
-                            hintText: _selectedSector == null
-                                ? 'Pick a sector first'
-                                : 'Tap to pick or type…',
                             displayString: (m) => m.displayName,
                             searchText: (m) =>
                                 '${m.name} ${m.locationLine}'.toLowerCase(),
@@ -891,6 +1242,18 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
                                 m.locationLine.isEmpty ? null : m.locationLine,
                             onSelected: (m) =>
                                 setState(() => _selectedMarket = m),
+                          ),
+                          const SizedBox(height: 14),
+                          _label('Dealer name *'),
+                          VoiceTextField(
+                            controller: _name,
+                            decoration: _decoration(hint: 'Dealer name'),
+                          ),
+                          const SizedBox(height: 14),
+                          _label('Trade name'),
+                          VoiceTextField(
+                            controller: _tradeName,
+                            decoration: _decoration(hint: 'Optional'),
                           ),
                           const SizedBox(height: 14),
                         ],
@@ -903,18 +1266,6 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
                         _sectionTitle('Contact'),
-                        _label('Contact person'),
-                        VoiceTextField(
-                          controller: _contact,
-                          decoration: _decoration(),
-                        ),
-                        const SizedBox(height: 14),
-                        _label('Owner name'),
-                        VoiceTextField(
-                          controller: _ownerName,
-                          decoration: _decoration(hint: 'Owner / proprietor'),
-                        ),
-                        const SizedBox(height: 14),
                         // A dealer is looked up by phone, so the number is
                         // required and has to belong to exactly one dealer.
                         // Re-checked on submit too, because the server is the
@@ -936,13 +1287,6 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
                           decoration: _decoration(),
                         ),
                         const SizedBox(height: 14),
-                        _label('Email'),
-                        VoiceTextField(
-                          controller: _email,
-                          keyboardType: TextInputType.emailAddress,
-                          decoration: _decoration(),
-                        ),
-                        const SizedBox(height: 14),
                         _label('NID'),
                         VoiceTextField(
                           controller: _nid,
@@ -953,6 +1297,33 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
                         VoiceTextField(
                           controller: _tradeLicense,
                           decoration: _decoration(),
+                        ),
+                        const SizedBox(height: 14),
+                        _label('Email'),
+                        VoiceTextField(
+                          controller: _email,
+                          keyboardType: TextInputType.emailAddress,
+                          decoration: _decoration(),
+                        ),
+                        const SizedBox(height: 14),
+                        _label('Gelender'),
+                        VoiceTextField(
+                          controller: _gelender,
+                          decoration: _decoration(
+                            hint: 'Known person / introducer',
+                          ),
+                        ),
+                        const SizedBox(height: 14),
+                        _label('Contact person'),
+                        VoiceTextField(
+                          controller: _contact,
+                          decoration: _decoration(),
+                        ),
+                        const SizedBox(height: 14),
+                        _label('Owner name'),
+                        VoiceTextField(
+                          controller: _ownerName,
+                          decoration: _decoration(hint: 'Owner / proprietor'),
                         ),
                       ],
                     ),
@@ -1023,34 +1394,26 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
                           decoration: _decoration(),
                         ),
                         const SizedBox(height: 14),
-                        _label('Payment mode'),
-                        DropdownButtonFormField<String>(
-                          initialValue: _paymentMode,
-                          decoration: _decoration(),
-                          items: _paymentModes
-                              .map(
-                                (p) =>
-                                    DropdownMenuItem(value: p, child: Text(p)),
-                              )
-                              .toList(),
-                          onChanged: (v) {
-                            if (v != null) setState(() => _paymentMode = v);
-                          },
+                        SearchableSelectField<MarketingDemoNamed>(
+                          label: 'Customer type',
+                          icon: Icons.category_outlined,
+                          options: _customerTypeOptions,
+                          selected: _selectedCustomerType,
+                          displayString: (c) => _formatOption(c.name),
+                          searchText: (c) => c.name.toLowerCase(),
+                          onSelected: (v) =>
+                              setState(() => _selectedCustomerType = v),
                         ),
                         const SizedBox(height: 14),
-                        _label('Lead status'),
-                        DropdownButtonFormField<String>(
-                          initialValue: _leadStatus,
-                          decoration: _decoration(),
-                          items: _leadStatuses
-                              .map(
-                                (p) =>
-                                    DropdownMenuItem(value: p, child: Text(p)),
-                              )
-                              .toList(),
-                          onChanged: (v) {
-                            if (v != null) setState(() => _leadStatus = v);
-                          },
+                        SearchableSelectField<MarketingDemoNamed>(
+                          label: 'Business type',
+                          icon: Icons.business_outlined,
+                          options: _businessTypeOptions,
+                          selected: _selectedBusinessType,
+                          displayString: (c) => _formatOption(c.name),
+                          searchText: (c) => c.name.toLowerCase(),
+                          onSelected: (v) =>
+                              setState(() => _selectedBusinessType = v),
                         ),
                       ],
                     ),
