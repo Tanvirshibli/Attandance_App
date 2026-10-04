@@ -463,7 +463,7 @@ The face recognition pipeline is implemented entirely on-device in `FaceRecognit
 | `_strongMatchThreshold` | 0.78 | Strong **core-template** similarity with consistency requirement |
 | `_requiredCoreHits` | 2 | Minimum number of enrolled templates that must clear the consistency bar |
 | `_samePersonThreshold` | 0.70 | Minimum cosine similarity between a registration capture and the **running average** of the captures already taken (raised from 0.65) |
-| `templateVersion` | 2 | Embedding-pipeline version — a model or preprocessing change bumps this and forces re-enrolment |
+| `templateVersion` | 3 | Embedding-pipeline version — 3 = 5-point landmark alignment (2 = padded bounding-box crop). A stored template from an older pipeline is discarded so the officer re-enrols once |
 | `_smileThreshold` | 0.55 | Minimum `smilingProbability` from ML Kit for smile liveness |
 | `minAcceptableFaceRatio` | 0.16 | Hard-reject floor for live **and** still face-area-to-image-area (16%) |
 | `minPreferredFaceRatio` | 0.20 | Below this, `checkFaceQuality` applies a score penalty; hard reject is `minAcceptableFaceRatio` (0.16) |
@@ -573,7 +573,7 @@ Live Camera Preview (front, full frame with one centered dimmed rounded frame)
     → Front Camera Validation
     → Face Quality Check
     → Sharpness Check (Laplacian variance)
-    → Crop → variant embeddings (normal/flipped/grayscale) → averaged embedding
+    → 5-point landmark alignment onto the canonical template (falls back to a padded crop when landmarks are missing) → variant embeddings (normal/flipped/grayscale) → averaged embedding
     → Compare against in-memory average + registration embeddings (core)
     → Weighted top-k aggregate on core templates (top1 60%, top2 25%, top3 15%)
     → Require core consistency (≥2 core hits) plus quality-aware threshold (66% / 68%)
@@ -611,6 +611,7 @@ Live Camera Preview (front, full frame with one centered dimmed rounded frame)
 - **L2 Normalization**: `v[i] / sqrt(sum(v[j]²))` — ensures unit-length vectors.
 - **Averaging Embeddings**: Element-wise mean of N embeddings, then L2-normalize the result.
 - **Thresholds**: 66% base core match (quality-aware to 68%), 78% strong core-match override (with consistency), ≥2 core-template hits, 70% for same-person registration validation (0.58 for extreme poses). Adaptive auto-enrolment was removed — it let a shared account accumulate other people's faces.
+- **Alignment (templateVersion 3)**: every embedding is now built from a **5-point landmark-aligned** 112×112 crop — a similarity transform of the eyes / nose / mouth onto the canonical ArcFace template — instead of a raw padded bounding box. This is the main accuracy lever. Because the crop changed, **every existing officer must re-enrol once**; a template from the old pipeline is discarded on load.
 
 ### 7.6 Sharpness Analysis (Anti-Screen-Photo)
 
