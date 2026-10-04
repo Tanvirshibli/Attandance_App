@@ -6,10 +6,11 @@ import 'package:flutter_test/flutter_test.dart';
 /// The company → sector → market cascade the farm, dealer and market forms use.
 ///
 /// Pure filters only: the service's network paths are exercised by the manual
-/// smoke test, but the rule that a sector belongs to the company the officer
-/// picked — and a market to the sector — is the part worth pinning down, because
-/// getting it wrong silently files a record under an organisation it has
-/// nothing to do with.
+/// smoke test, but the rules that matter — a sector belongs to the company the
+/// officer picked, a market to the sector, and a company the backend curated
+/// owns no Sales sector — are the parts worth pinning down, because getting
+/// them wrong silently files a record under an organisation it has nothing to
+/// do with.
 void main() {
   const companies = [
     BookingFormCompany(id: 1, nameEn: 'Peoples Poultry & Hatchery Ltd'),
@@ -153,6 +154,111 @@ void main() {
       // Deliberately asserted: the zone no longer filters the company list, and
       // no other upstream picker exists to filter it by.
       expect(companies, hasLength(2));
+    });
+  });
+
+  group('curated companies', () {
+    test('are the ones the backend marked manual, whatever their id', () {
+      const master = [
+        BookingFormCompany(id: 1, nameEn: 'Kazi Farms Ltd', source: 'manual'),
+        BookingFormCompany(id: 2, nameEn: 'Japfa Comfeed', source: 'sales'),
+        BookingFormCompany(id: 1, nameEn: 'Peoples Poultry', source: 'manual'),
+        BookingFormCompany(id: 3, nameEn: 'No Source Stated'),
+      ];
+
+      // Both id-1 rows are curated; the Sales row with id 2 is not, and
+      // neither is the row that does not say. Id spaces overlap — the rule
+      // is the source, not the number.
+      expect(
+        MarketingMasterService.curatedCompanyIds(master),
+        {1},
+      );
+    });
+
+    test('own no sector, even when a Sales sector shares their id', () {
+      // Local id 1 (curated) and Sales company id 1 collide. The sector
+      // belongs to the Sales company; the curated company must not claim it.
+      const master = [
+        BookingFormCompany(id: 1, nameEn: 'Kazi Farms Ltd', source: 'manual'),
+      ];
+      const withCollidingSector = [
+        BookingFormSector(id: 11, name: 'Japfa Depot', companyId: 1),
+      ];
+
+      expect(MarketingMasterService.curatedCompanyIds(master), {1});
+      // The plain filter would claim it — which is exactly why the service
+      // short-circuits curated ids to an empty list before filtering.
+      expect(
+        MarketingMasterService.filterSectorsForCompany(
+          withCollidingSector,
+          1,
+        ),
+        hasLength(1),
+      );
+    });
+  });
+
+  group('marketing context', () {
+    test('parses the companies and sectors the backend merged', () {
+      final context = MarketingContext.fromJson({
+        'companies': [
+          {'id': 1, 'name': 'Kazi Farms Ltd.', 'source': 'manual', 'hasSectors': false},
+          {'id': 9001, 'name': 'Japfa Comfeed Bangladesh Pte. Ltd.', 'source': 'sales', 'hasSectors': true},
+        ],
+        'sectors': [
+          {'id': 51, 'name': 'Japfa Depot', 'companyId': 9001},
+        ],
+      });
+
+      expect(context.companies, hasLength(2));
+      // The curated company leads, and says where it came from.
+      expect(context.companies.first.nameEn, 'Kazi Farms Ltd.');
+      expect(context.companies.first.source, 'manual');
+      expect(context.companies.first.hasSectors, isFalse);
+      // A Sales company without a Bengali name is fine; hasSectors rides
+      // through as sent.
+      expect(context.companies.last.source, 'sales');
+      expect(context.sectors.single.companyId, 9001);
+    });
+
+    test('drops rows with no usable id or name', () {
+      final context = MarketingContext.fromJson({
+        'companies': [
+          {'id': 0, 'name': 'Zero'},
+          {'id': 4, 'name': ''},
+          'not-a-map',
+          {'id': 5, 'name': 'Kept'},
+        ],
+        'sectors': [
+          {'id': 0, 'name': 'Zero'},
+          {'id': 6, 'name': 'Kept'},
+        ],
+      });
+
+      expect(context.companies.map((c) => c.nameEn), ['Kept']);
+      expect(context.sectors.map((s) => s.id), [6]);
+    });
+
+    test('an absent or malformed payload yields empty lists, not a crash', () {
+      expect(MarketingContext.fromJson(const {}).companies, isEmpty);
+      expect(MarketingContext.fromJson(const {}).sectors, isEmpty);
+      expect(
+        MarketingContext.fromJson({'companies': 'nope'}).companies,
+        isEmpty,
+      );
+    });
+
+    test('a company row missing hasSectors still shows the picker', () {
+      // Older or partial payloads: the field defaults to true so a working
+      // picker is never hidden on a missing flag.
+      final context = MarketingContext.fromJson({
+        'companies': [
+          {'id': 7, 'name': 'Legacy Company'},
+        ],
+      });
+
+      expect(context.companies.single.hasSectors, isTrue);
+      expect(context.companies.single.source, isNull);
     });
   });
 }
