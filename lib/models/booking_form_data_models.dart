@@ -7,6 +7,10 @@ class BookingFormCompany {
     this.nameBn,
     this.hasSectors = true,
     this.source,
+    this.category,
+    this.feed,
+    this.chicks,
+    this.breeder,
   });
 
   final int id;
@@ -21,6 +25,18 @@ class BookingFormCompany {
   /// and a name held locally wins, so this is how a picker tells a
   /// curated company from an upstream one.
   final String? source;
+
+  /// What the curated master says the company does: `feed`, `chicks`, `both`,
+  /// or null when the master is silent — a Sales company, or an older payload.
+  ///
+  /// The product pickers narrow their company lists by these, so a company
+  /// added to the backend's `mkt_companies` shows up under the matching
+  /// product category. Null is deliberately kept (not treated as false) so a
+  /// company the master has no category for is never hidden.
+  final String? category;
+  final bool? feed;
+  final bool? chicks;
+  final bool? breeder;
 
   /// Whether any sector in the master belongs to this company.
   ///
@@ -46,6 +62,10 @@ class BookingFormCompany {
       nameBn: json['nameBn']?.toString(),
       hasSectors: hasSectors is bool ? hasSectors : true,
       source: json['source']?.toString(),
+      category: json['category']?.toString(),
+      feed: _asBool(json['feed']),
+      chicks: _asBool(json['chicks']),
+      breeder: _asBool(json['breeder']),
     );
   }
 
@@ -638,4 +658,16 @@ double? _asDouble(dynamic v) {
   if (v == null) return null;
   if (v is num) return v.toDouble();
   return double.tryParse(v.toString());
+}
+
+/// Null when the value is absent or unparseable, which is how a company with no
+/// category flag is told apart from one explicitly marked false.
+bool? _asBool(dynamic v) {
+  if (v == null) return null;
+  if (v is bool) return v;
+  if (v is num) return v != 0;
+  final text = v.toString().trim().toLowerCase();
+  if (text == 'true' || text == '1') return true;
+  if (text == 'false' || text == '0') return false;
+  return null;
 }

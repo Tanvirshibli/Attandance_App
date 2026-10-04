@@ -622,21 +622,34 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
     return filtered.isNotEmpty ? filtered : MarketingDemoMasters.products;
   }
 
-  /// The company list narrowed to the ones that make products in the chosen
-  /// category, read off the catalogue's category→company edge. Falls back to the
-  /// full list when the catalogue has no edge for that category, so both the
-  /// product-company and competitor-company pickers always have options.
+  /// The company list narrowed to the ones the backend master says trade in the
+  /// chosen category.
+  ///
+  /// The flags come from the ZKTeco backend's `mkt_companies`, served by the
+  /// context endpoint — not the tiny demo product catalogue, so a company an
+  /// admin adds there shows up. A company the master is silent about (a Sales
+  /// row, or an older payload) is kept in every category rather than hidden, and
+  /// an empty result falls back to the full list so neither picker is ever empty.
   List<BookingFormCompany> _companiesForCategory(MarketingDemoNamed? category) {
     if (category == null) return _productCompanies;
-    final ids = MarketingDemoMasters.products
-        .where((p) => p.categoryId == category.id)
-        .map((p) => p.companyId)
-        .whereType<int>()
-        .toSet();
-    if (ids.isEmpty) return _productCompanies;
-    final filtered =
-        _productCompanies.where((c) => ids.contains(c.id)).toList();
+    final flag = _categoryFlag(category.name);
+    if (flag == null) return _productCompanies;
+
+    final filtered = _productCompanies.where((c) {
+      final value = flag == 'feed' ? c.feed : c.chicks;
+      return value == null || value;
+    }).toList();
     return filtered.isNotEmpty ? filtered : _productCompanies;
+  }
+
+  /// Maps a product-category name onto the company flag that matches it, or null
+  /// when the category has none (Medicine, Fertilizer, …) — in which case every
+  /// company is offered.
+  static String? _categoryFlag(String name) {
+    final lower = name.trim().toLowerCase();
+    if (lower.contains('feed')) return 'feed';
+    if (lower.contains('chick')) return 'chicks';
+    return null;
   }
 
   /// The top search bar — collapsed to a single field until the officer taps
@@ -696,7 +709,9 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
   }
 
   /// The browse list under the search field: the local dealer matches, then any
-  /// matching ERP dealers, then the create action.
+  /// matching ERP dealers, then the create action. The create action shows even
+  /// when nothing matches, so a miss — or a zone with no dealers yet — still
+  /// offers the way forward.
   Widget _buildBrowseResults() {
     if (_loadingDealers) {
       return const Padding(
@@ -707,20 +722,19 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
 
     final visible = _visibleDealers;
     final erp = _visibleErpDealers;
-
-    if (visible.isEmpty && erp.isEmpty) {
-      final query = _search.text.trim();
-      return _searchNotice(
-        icon: Icons.search_off,
-        text: query.isEmpty
-            ? 'No dealers have been recorded yet.'
-            : 'No dealers match "$query".',
-      );
-    }
+    final query = _search.text.trim();
+    final isEmpty = visible.isEmpty && erp.isEmpty;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        if (isEmpty)
+          _searchNotice(
+            icon: Icons.search_off,
+            text: query.isEmpty
+                ? 'No dealers have been recorded yet.'
+                : 'No dealers match "$query".',
+          ),
         if (visible.isNotEmpty) ...[
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -764,7 +778,7 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
         const SizedBox(height: 8),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          child: TextButton.icon(
+          child: FilledButton.icon(
             onPressed: _startCreating,
             icon: const Icon(Icons.add, size: 18),
             label: const Text('Add new dealer'),

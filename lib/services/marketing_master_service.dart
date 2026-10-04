@@ -3,7 +3,6 @@ import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../data/marketing_demo_masters.dart';
-import '../models/booking_form_data_models.dart';
 import '../models/marketing_models.dart';
 import 'marketing_service.dart';
 import 'sales_service.dart';
@@ -236,6 +235,11 @@ class MarketingMasterService {
                     'nameEn': c.nameEn,
                     'nameBn': c.nameBn,
                     'source': c.source,
+                    'hasSectors': c.hasSectors,
+                    'category': c.category,
+                    'feed': c.feed,
+                    'chicks': c.chicks,
+                    'breeder': c.breeder,
                   })
               .toList(),
           'sectors': sectors
