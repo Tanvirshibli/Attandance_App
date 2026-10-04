@@ -1,15 +1,26 @@
-/// Masters from Sales `GET /api/booking-person-books/form-data`.
+/// Masters from Sales `GET /api/booking-person-books/form-data`, or
+/// from the mobile backend's `GET /api/v1/mobile/marketing/context`.
 class BookingFormCompany {
   const BookingFormCompany({
     required this.id,
     required this.nameEn,
     this.nameBn,
     this.hasSectors = true,
+    this.source,
   });
 
   final int id;
   final String nameEn;
   final String? nameBn;
+
+  /// Which master the company came from: `manual` (the mobile
+  /// backend's curated master) or `sales` (the Sales org master).
+  ///
+  /// Null on a response that does not say — the Sales form-data
+  /// list carries no such field. The mobile backend merges the two
+  /// and a name held locally wins, so this is how a picker tells a
+  /// curated company from an upstream one.
+  final String? source;
 
   /// Whether any sector in the master belongs to this company.
   ///
@@ -34,6 +45,7 @@ class BookingFormCompany {
       nameEn: json['nameEn']?.toString() ?? json['name']?.toString() ?? '',
       nameBn: json['nameBn']?.toString(),
       hasSectors: hasSectors is bool ? hasSectors : true,
+      source: json['source']?.toString(),
     );
   }
 
@@ -73,6 +85,61 @@ class BookingFormSector {
 
   @override
   int get hashCode => id.hashCode;
+}
+
+/// The organisational pickers served by the mobile backend's
+/// `GET /api/v1/mobile/marketing/context`.
+///
+/// The backend merges its own curated company master with the
+/// Sales org master — a name held locally wins over the same name
+/// upstream — so this is the list a phone should offer, not the
+/// raw Sales form-data list. Companies the backend curated report
+/// `hasSectors: false`: their ids are not Sales ids, so no Sales
+/// sector belongs to them.
+class MarketingContext {
+  const MarketingContext({required this.companies, required this.sectors});
+
+  final List<BookingFormCompany> companies;
+  final List<BookingFormSector> sectors;
+
+  factory MarketingContext.fromJson(Map<String, dynamic> json) {
+    return MarketingContext(
+      companies: _companiesFrom(json['companies']),
+      sectors: _sectorsFrom(json['sectors']),
+    );
+  }
+
+  static List<BookingFormCompany> _companiesFrom(Object? raw) {
+    if (raw is! List) return const [];
+
+    final companies = <BookingFormCompany>[];
+    for (final entry in raw) {
+      if (entry is! Map) continue;
+
+      final company =
+          BookingFormCompany.fromJson(Map<String, dynamic>.from(entry));
+      if (company.id > 0 && company.nameEn.trim().isNotEmpty) {
+        companies.add(company);
+      }
+    }
+    return companies;
+  }
+
+  static List<BookingFormSector> _sectorsFrom(Object? raw) {
+    if (raw is! List) return const [];
+
+    final sectors = <BookingFormSector>[];
+    for (final entry in raw) {
+      if (entry is! Map) continue;
+
+      final sector =
+          BookingFormSector.fromJson(Map<String, dynamic>.from(entry));
+      if (sector.id > 0) {
+        sectors.add(sector);
+      }
+    }
+    return sectors;
+  }
 }
 
 class BookingFormCategory {

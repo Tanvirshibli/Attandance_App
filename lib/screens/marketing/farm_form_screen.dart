@@ -300,10 +300,11 @@ class _FarmFormScreenState extends State<FarmFormScreen> {
   BookingFormCompany? _selectedCompany;
   List<BookingFormCompany> _companies = const [];
 
-  /// The list of companies the *product* rows offer. The farm's own company
-  /// comes from the officer's pick above.
-  final List<BookingFormCompany> _productCompanies =
-      MarketingDemoMasters.companies;
+  /// The list of companies the *product* rows offer — the same
+  /// live master the farm's own company picker uses, so the two
+  /// can never disagree. The farm's own company comes from the
+  /// officer's pick above.
+  List<BookingFormCompany> _productCompanies = const [];
 
   List<Party> _dealers = const [];
   Party? _parentParty;
@@ -403,6 +404,7 @@ class _FarmFormScreenState extends State<FarmFormScreen> {
     if (!mounted) return;
     setState(() {
       _companies = companies;
+      _productCompanies = companies;
       _selectedCompany = FarmFormScreen.defaultCompany(companies);
     });
   }

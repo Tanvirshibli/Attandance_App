@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 
 import '../config/app_config.dart';
 import '../models/api_result.dart';
+import '../models/booking_form_data_models.dart';
 import '../models/marketing_dealer.dart';
 import '../models/marketing_models.dart';
 import '../utils/user_facing_error.dart';
@@ -77,6 +78,31 @@ class MarketingService {
       },
     );
     return _getList(uri, Market.fromJson);
+  }
+
+  /// The organisational pickers from this backend's own context
+  /// endpoint.
+  ///
+  /// The mobile backend merges its curated company master with the
+  /// Sales org master — a name held locally wins over the same name
+  /// upstream — so this is the list a phone should offer, not the
+  /// raw Sales form-data list. Sectors stay a pure Sales read: the
+  /// `companyId` edge on each sector row is the cascade.
+  ///
+  /// The endpoint is public (no JWT), like the dealers proxy, so the
+  /// read is one round-trip to the backend the app already talks to.
+  Future<ApiResult<MarketingContext>> fetchMarketingContext() async {
+    if (!await isMarketingEnabled()) {
+      return ApiResult.fail('feature_disabled');
+    }
+
+    final base = await _url(
+      'marketing.context',
+      '/api/v1/mobile/marketing/context',
+    );
+    final uri = Uri.parse(base);
+
+    return _getObject(uri, (json) => MarketingContext.fromJson(json));
   }
 
   /// Dealers from the Sales master.
