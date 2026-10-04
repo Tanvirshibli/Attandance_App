@@ -211,11 +211,19 @@ Both are strings/doubles rather than a database enum, so a fourth visit kind is 
 
 Each company carries `hasSectors`. Sectors are still read live from the Sales org master, and a curated company is **not** part of it, so it has none.
 
+The app also enforces this itself: `MarketingMasterService.sectorsForCompany` returns an empty list for a `source: manual` company rather than matching the `companyId` edge. Local and Sales ids are assigned independently, so a shared number — curated id 1 next to Sales id 1 — must not hand a Sales sector to a curated company.
+
 - **Market form** — sector is required, so the field is **hidden** when the chosen company has no sectors. Leaving an empty required field on screen would dead-end the form at submit with nothing the officer could do. `sector_id` / `sector_name` are simply omitted from the payload.
 - **Dealer form** — sector was already optional; unchanged.
 - **Farm form** — no sector field since v2.5.4.
 
 `BookingFormCompany.hasSectors` defaults to `true`, so a response missing the flag shows the picker rather than hiding a working one on a bad or older payload.
+
+### Where the list comes from on the device
+
+`MarketingMasterService.companies()` tries the mobile backend's `/marketing/context` **first** and only falls back to the Sales `form-data` read when that endpoint is unreachable or returns nothing. Sales is the fallback for an older or downed backend, not the source — otherwise the curated 93-company master would never reach a phone.
+
+Every company surface draws on that one list: the farm, dealer, market and visit form company pickers, the per-product "product company" pickers on the farm and dealer forms, and the DOC / feed company suggestions on the farm survey form. The hardcoded `MarketingDemoMasters` companies survive only as an offline demo fallback when no master answers at all.
 
 ### Default company
 
@@ -245,7 +253,7 @@ That whole mechanism is now retired. Mirroring zones, companies and sectors from
 | Field | Source | Behaviour |
 |---|---|---|
 | Zone | HRM profile `zoneId` → Sales `get-zone` | Read-only. A fact about who is filing the record. |
-| Company | Sales `form-data` company list | **Required.** The officer picks it. |
+| Company | ZKTeco `GET /marketing/context` (curated master + Sales gaps), falling back to the Sales `form-data` list | **Required.** The officer picks it. |
 | Sector | Sales `form-data` sectors, filtered by the chosen company's `companyId` | Optional on a party, required on a market. |
 | Market | `mkt_markets`, filtered by the chosen sector's `sectorId` | Optional. |
 
