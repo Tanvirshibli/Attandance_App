@@ -30,7 +30,7 @@ class FaceRecognitionService {
   /// tensors in [initialize], and [templateVersion] must be bumped when the model
   /// changes so every device re-enrols rather than comparing a new-model probe
   /// against an old-model template.
-  static const String _modelAsset = 'assets/models/mobilefacenet.tflite';
+  static const String _modelAsset = 'assets/models/ghostfacenet.tflite';
 
   /// Fallbacks, used only when the loaded model reports an unexpected shape.
   static const int _defaultInputSize = 112;
@@ -47,16 +47,21 @@ class FaceRecognitionService {
   /// Bumped whenever the embedding pipeline changes shape or preprocessing
   /// (model, alignment, normalisation). A stored template with a different
   /// version is rejected instead of silently mis-matched.
-  /// 3 = landmark-aligned crop (was 2 = padded bounding-box crop).
-  static const int templateVersion = 3;
+  /// 4 = GhostFaceNet W1.3 S2 ArcFace, 512-d (3 = landmark-aligned 192-d crop,
+  /// 2 = padded bounding-box crop).
+  static const int templateVersion = 4;
+
+  // --- Thresholds for the current model (GhostFaceNet W1.3 S2 ArcFace, 512-d) ---
+  // ArcFace-margin models cluster each identity tightly and push different people
+  // far apart, so the *absolute* cosine bar sits lower than MobileFaceNet's while
+  // still rejecting impostors. Starting values — calibrate against a labelled set
+  // before trusting them.
 
   // Core match threshold against registration templates (avg + captures).
-  // Raised from 0.60: the old bar let different people clear a shared account's
-  // template. Calibrate against a labelled set before changing.
-  static const double _matchThreshold = 0.66;
+  static const double _matchThreshold = 0.55;
 
   // Strong core-template match threshold
-  static const double _strongMatchThreshold = 0.78;
+  static const double _strongMatchThreshold = 0.68;
 
   // How many of the enrolled templates must clear the consistency bar. One is
   // not enough when a template set holds several poses (or people); require a
@@ -64,12 +69,12 @@ class FaceRecognitionService {
   static const int _requiredCoreHits = 2;
 
   // Same-person threshold: a registration capture must match the running
-  // average of the captures already taken. Raised from 0.65 so a different
-  // person cannot slip into a shared account's template set.
-  static const double _samePersonThreshold = 0.70;
+  // average of the captures already taken, so a second person cannot slip into a
+  // shared account's template set.
+  static const double _samePersonThreshold = 0.62;
 
   // Relaxed threshold for extreme registration poses (up/down)
-  static const double _samePersonExtremeAngleThreshold = 0.58;
+  static const double _samePersonExtremeAngleThreshold = 0.50;
 
   // Minimum smile probability for liveness "smile" challenge
   static const double _smileThreshold = 0.55;

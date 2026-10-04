@@ -91,6 +91,7 @@ flutter:
 
   assets:
     - assets/models/mobilefacenet.tflite
+    - assets/models/ghostfacenet.tflite
 
   # To add assets to your application, add an assets section, like this:
   # assets:
