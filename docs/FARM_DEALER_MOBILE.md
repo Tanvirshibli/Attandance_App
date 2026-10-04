@@ -1,8 +1,10 @@
 # Farm & Dealer Mobile Module
 
-Last updated: September 30, 2026 — **v2.5.0+97**
+Last updated: October 4, 2026 — **v2.5.3-beta.1+9011**
 
 Field data collection for **markets**, **dealers**, and **farms** in Attandance_App, backed by ZKTeco `/api/v1/mobile/marketing/*` (no JWT — same pattern as geo). Employee identity uses profile `canonicalEmployeeId` (`employees.id`).
+
+**v2.5.3-beta.1+9011: Dealer form restructure.** `PartyFormScreen` now opens on a searchable **existing-dealer lookup** — same pattern as `FarmFormScreen` (see [Search first](#search-first)): a hit offers a visit report, a miss offers **Add new dealer**. Form reveals with a revised field order: dealer code → zone → company → dealer name → trade name → market → phone → alt phone → NID → trade license → email → gelender. **Sector is removed** from the dealer screen — markets are listed directly without the sector cascade. `payment_mode` is replaced by a searchable **Customer type** dropdown (`dealer`, `direct_farm`, `others`, `all`), and `lead_status` by **Business type** (`chicks`, `feed`, `fish`, `poultry_feed`, `all`, `others`). New `gelender` field captures the known person's name.
 
 **v2.6.0: Company master — 93 curated companies, and Sales fills only the gaps.**
 The company dropdown is now served from the ZKTeco backend's own `mkt_companies` table, merged with the Sales master. Local rows always win: a curated company is never overwritten by an upstream rename. Also hides the sector field when the chosen company has no Sales sectors. See [Company master](#company-master).
@@ -81,7 +83,7 @@ The hub is a **three-tab page**: Farms, Dealers, Markets. Farms is selected on o
 
 `PartyFormScreen` used to render **both** farm and dealer, split by a single `_isFarm` boolean, so every field change on the farm side moved a control on the dealer side and vice versa. Farm collection has its own field set and its own order now, so it gets its own widget class, its own `_FarmProductRow`, and its own state.
 
-The dealer form (`PartyFormScreen`, `initialPartyType: 'dealer'`) and the market form (`MarketFormScreen`) are **untouched**. Only the leaf widgets are shared — `SearchableSelectField`, `ReadOnlyField`, `VoiceTextField`, the `AppCard` / `AppHeader` kit, and the marketing services. The parent form's layout code is not reused, which is the point.
+**As of v2.5.3-beta.1**, the dealer form has been **restructured** to mirror the `FarmFormScreen` pattern — it opens on a searchable existing-dealer lookup before revealing the form below. The market form (`MarketFormScreen`) remains **untouched**. Only the leaf widgets are shared — `SearchableSelectField`, `ReadOnlyField`, `VoiceTextField`, the `AppCard` / `AppHeader` kit, and the marketing services. The parent form's layout code is not reused, which is the point.
 
 ### Search first
 
@@ -107,6 +109,8 @@ The dealer form (`PartyFormScreen`, `initialPartyType: 'dealer'`) and the market
 **Choosing "Add new farm" also closes the list** and unfocuses the field. The farm list was the way *into* that decision; keeping it open would push the form the officer now has to fill in below a scrollable panel they no longer need. The typed query stays in the field, which turns **read-only** and relabels to *"Searched for"* — it is now a record of what they looked for, not something to edit. The clear button is disabled at that point too, because `_resetSearch` discards the whole form rather than just the query.
 
 Narrowing compares **digits first** for a phone-shaped query, so typing a farm's exact number surfaces that farm rather than burying it among farms whose phone merely contains those digits as a substring. Name, code and phone all match, case-insensitively. Under two characters everything is offered — a one-letter query matches most of the catalogue, and a list that looks broken is worse than a long one.
+
+**v2.5.3-beta.1.** The **dealer form** (`PartyFormScreen`) adopts the same search-first flow: the screen opens on the lookup, a hit offers **Post a visit report** (opens `DealerVisitFormScreen`), and "Add new dealer" reveals the form. The dealer list is fetched once via `MarketingService.listParties(partyType: 'dealer')` and then narrowed locally by `PartyFormScreen.filterDealers`.
 
 ### Everything else waits for "Add new farm"
 
@@ -254,14 +258,14 @@ That whole mechanism is now retired. Mirroring zones, companies and sectors from
 |---|---|---|
 | Zone | HRM profile `zoneId` → Sales `get-zone` | Read-only. A fact about who is filing the record. |
 | Company | ZKTeco `GET /marketing/context` (curated master + Sales gaps), falling back to the Sales `form-data` list | **Required.** The officer picks it. |
-| Sector | Sales `form-data` sectors, filtered by the chosen company's `companyId` | Optional on a party, required on a market. |
-| Market | `mkt_markets`, filtered by the chosen sector's `sectorId` | Optional. |
+| Sector | N/A on the dealer form — **removed** in v2.5.3-beta.1. Still present on the market form (`MarketFormScreen`). Sales `form-data` sectors, filtered by the chosen company's `companyId` | Not applicable to dealers; optional on a market. |
+| Market | `mkt_markets`, listed directly on the dealer form (no sector cascade); still cascades from sector on the market form | Optional. |
 
-Each picker clears everything below it: changing the company drops the sector and market, because a sector from the previous company would file the record under a pairing that cannot exist.
+On the dealer form company and market are picked independently — selecting a company does not narrow the market list. On the market form the cascade remains company → sector → market. Changing the company still clears the market on the dealer form.
 
 The sector list follows the **real** `companyId` edge Sales ships on every sector row (`BookingPersonWiseBookingsService::getChicksSectorList`, `getFeedSalesPointList`). The app never guesses a company from a name — that was the old bug.
 
-`MarketingMasterService` (`lib/services/marketing_master_service.dart`) holds the company, sector and market lists, cached for 24 h. `filterSectorsForCompany` and `filterMarketsForSector` are static and pure so the cascade is unit-tested without a network round-trip.
+`MarketingMasterService` (`lib/services/marketing_master_service.dart`) holds the company, sector and market lists, cached for 24 h. `filterSectorsForCompany` and `filterMarketsForSector` are static and pure so the cascade is unit-tested without a network round-trip. `marketsForSector(null)` returns the full unfiltered market list, which the dealer form loads up-front.
 
 ### Why the zone stopped filtering
 
@@ -498,17 +502,14 @@ Searchable company, **zone**, and sector (all **read-only from the employee's sc
 
 > **The farm form has moved.** It is no longer `PartyFormScreen(farm)` — see [Add Farm screen](#add-farm-screen) for its own search-first flow and field order. What follows describes the **dealer** form only.
 
-1. Sections: Basic / Contact / Farm&Credit / Location / Products / Photos.
+1. **Starts with a searchable existing-dealer lookup** (same pattern as `FarmFormScreen` — see [Search first](#search-first)). A hit offers a visit report; a miss or "Add new dealer" reveals the form below. The party-type dropdown (New dealer / Existing dealer) and the read-only dealer code / zone appear first, then the rest of the form.
 2. Payload **requires** `employee_id` (plus `created_by_employee_id` / `owner_employee_id`).
-3. **Party type** offers two options (v2.4.0+94): **New dealer** → `dealer`, **Existing dealer** → `outlet`. Both were already in the API enum, so no backend change was needed to name them properly. The other enum values (`farmer`, `prospect`) remain valid in data and in existing records; they are just not something a field officer creates here.
-4. **Code** is allocated server-side and read-only — see [Record codes](#record-codes). `_code` is only kept as a fallback for a hand-seeded value.
-5. Scalars: `owner_name` (separate from contact person), `business_years`, `capacity_unit_id`, `existing_dealer_id` (existing dealers only).
-6. Searchable: live parent dealer (farms), live Sales ERP dealer (existing dealers only — see [Existing dealer picker](#existing-dealer-picker)), product / category / unit / company per product row.
-7. **Zone is read-only** from the employee's profile; **company, sector and market are the officer's own picks**, cascading company → sector → market — see [Organisational selection](#organisational-selection). **Phone** is required for every party and unique within its pool — see [Phone uniqueness](#phone-uniqueness).
-8. Extra fields: email, alt phone, NID, trade license, `farm_type`, `capacity`, `credit_limit`, `payment_mode`, `lead_status`.
-9. Product rows: relation types include `business`; searchable product (fills `product_name` + `product_id`); category, unit, company; `brand_name`, `monthly_quantity` / `current_stock`, `unit_price`, `competitor_company`, `is_our_product`, notes. A row is sent only when `product_name` is present.
-10. Auto location on open → `lat`/`lng` + address prefill (editable). No Capture GPS button.
-11. Optional multi-photo gallery → attachments `attachable_type=party`, WebP under `image[]`.
+3. **Party type** offers two options: **New dealer** → `dealer`, **Existing dealer** → `outlet`. The existing-dealer type reveals the ERP dealer picker (Sales master).
+4. **Dealer code** is allocated server-side and read-only — see [Record codes](#record-codes).
+5. Fields after revealing the form, top to bottom: **zone** (read-only) → **company** → **dealer name** → **trade name** → **market** → **phone** → **alt phone** → **NID** → **trade license** → **email** → **gelender** (known person's name) → **contact person** → **owner name** → **address** / **notes**. **Sector is removed** from this screen; markets are listed directly rather than cascading from sector — see [Organisational selection](#organisational-selection).
+6. **Farm & Credit** section: `business_years`, `credit_limit`, **Customer type** (`dealer`, `direct_farm`, `others`, `all` — searchable dropdown, replaces `payment_mode`), **Business type** (`chicks`, `feed`, `fish`, `poultry_feed`, `all`, `others` — searchable dropdown, replaces `lead_status`).
+7. **Phone** is required for every party and unique within its pool — see [Phone uniqueness](#phone-uniqueness).
+8. Product rows and optional photo gallery render below the form. Product section will be refined in a follow-up.
 
 ### Visit (dealer)
 
@@ -657,8 +658,8 @@ Parties carry no district of their own, so they inherit the district of the mark
 | Marketing hub previews | Farms, dealers and markets, each the union of every assigned zone. A strip above them names the zones and lists their districts. |
 | Markets / Parties list screens | Full lists, filtered. An empty result names the zones rather than looking like a loading bug. |
 | Visits list | Filtered by zone id and name (no district available). |
-| Market + Party create forms | **Zone is read-only**, resolved from the profile and matched **by name** to the `get-zone` master. Company / sector / market are the officer's own picks and are **not** zone-scoped — see [Organisational selection](#organisational-selection). |
-| Party form market picker | Offers only the markets belonging to the **chosen sector**, not the employee's zone. |
+| Market + Party create forms | **Zone is read-only**, resolved from the profile and matched **by name** to the `get-zone` master. Company / market are the officer's own picks and are **not** zone-scoped — see [Organisational selection](#organisational-selection). Sector is no longer picked on the dealer form as of v2.5.3-beta.1. |
+| Party form market picker | On the dealer form: all markets from the context, listed directly (no sector cascade). On the market form: markets belonging to the chosen sector. |
 | Post sale / Post booking / Receive payment | Dealer dropdowns scoped to the employee's zones **by zone name**. Dealers with no zone are kept — the payload cannot say which zone they belong to. |
 
 The market form previously had **no** profile prefill while the party form did; both now prefill the zone by name.
