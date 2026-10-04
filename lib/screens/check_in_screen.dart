@@ -18,6 +18,7 @@ import '../config/theme.dart';
 import '../models/attendance_request_record.dart';
 import '../services/face_recognition_service.dart';
 import '../services/attendance_request_service.dart';
+import '../services/camera_prewarm.dart';
 import '../services/auth_service.dart';
 import '../utils/camera_input_image.dart';
 import '../utils/face_guide_placement.dart';
@@ -112,6 +113,11 @@ class _CheckInScreenState extends State<CheckInScreen>
   static const int _nullInputFrameThreshold = 10;
   bool _punchSubmitted = false;
   AttendanceRequestRecord? _punchedRecord;
+
+  /// The in-flight location capture, started at screen open so the punch can
+  /// carry a fix without making the officer wait for GPS.
+  Future<void>? _locationFuture;
+  bool _locationAttempted = false;
   bool _isClosing = false;
   bool _aborted = false;
   bool _wakelockHeld = false;
@@ -178,6 +184,12 @@ class _CheckInScreenState extends State<CheckInScreen>
   }
 
   Future<void> _init() async {
+    // Start the location fix now, in parallel with the face work. The officer
+    // spends several seconds on the challenges, so by the time the face matches
+    // the fix is usually ready and the punch can carry it with no wait.
+    _locationFuture ??= _prefetchLocation();
+
+    // The engine is warmed at app start; this is a no-op when it is already up.
     await _faceService.initialize();
 
     // Ensure face is registered
@@ -208,7 +220,7 @@ class _CheckInScreenState extends State<CheckInScreen>
         return;
       }
 
-      final cameras = await availableCameras();
+      final cameras = await CameraPrewarm.cameras();
       final front = cameras.firstWhere(
         (c) => c.lensDirection == CameraLensDirection.front,
         orElse: () => cameras.first,
@@ -703,7 +715,7 @@ class _CheckInScreenState extends State<CheckInScreen>
         _progressAnimationStart = _animatedProgress;
         _progressAnim.forward(from: 0);
         await _tickAnim.forward(from: 0);
-        await _captureGPS();
+        await _submitPunch();
         return true;
       }
     } catch (e) {
@@ -773,7 +785,7 @@ class _CheckInScreenState extends State<CheckInScreen>
           _verificationConfidence = result.confidence;
           _statusMessage = result.message;
         });
-        await _captureGPS();
+        await _submitPunch();
       } else {
         setState(() {
           _phase = CheckInPhase.error;
@@ -825,69 +837,93 @@ class _CheckInScreenState extends State<CheckInScreen>
     return bestResult;
   }
 
-  Future<void> _captureGPS() async {
-    setState(() {
-      _phase = CheckInPhase.gps;
-      _statusMessage = 'Capturing location...';
-    });
+  /// Start the location fix early, in parallel with the face challenges.
+  ///
+  /// Best-effort and never fatal: whatever it finds is stashed on [_position] /
+  /// [_address] so the punch can carry it, and anything still missing is filled
+  /// in by [_backfillLocation] after the punch is away.
+  Future<void> _prefetchLocation() async {
+    if (_locationAttempted) return;
+    _locationAttempted = true;
 
     try {
       final locPerm = await Permission.location.request();
-      if (!locPerm.isGranted) {
-        setState(() {
-          _phase = CheckInPhase.error;
-          _errorMessage = 'Location permission denied';
-        });
-        return;
+      if (!locPerm.isGranted) return;
+      if (!await Geolocator.isLocationServiceEnabled()) return;
+
+      // Last-known is instant and usually close enough to carry the punch.
+      final last = await Geolocator.getLastKnownPosition();
+      if (last != null) {
+        _storePosition(last);
       }
 
-      final serviceEnabled = await Geolocator.isLocationServiceEnabled();
-      if (!serviceEnabled) {
-        setState(() {
-          _phase = CheckInPhase.error;
-          _errorMessage = 'Location services are disabled';
-        });
-        return;
-      }
-
-      _position = await Geolocator.getCurrentPosition(
+      final fresh = await Geolocator.getCurrentPosition(
         locationSettings: const LocationSettings(
           accuracy: LocationAccuracy.high,
           timeLimit: Duration(seconds: 15),
         ),
       );
+      _storePosition(fresh);
+      await _resolveAddress(fresh);
+    } catch (_) {
+      // Ignored — the punch still goes out and the backfill retries.
+    }
+  }
 
-      try {
-        final placemarks = await placemarkFromCoordinates(
-            _position!.latitude, _position!.longitude);
-        if (placemarks.isNotEmpty) {
-          final p = placemarks.first;
-          _address =
-              [p.street, p.subLocality, p.locality, p.country]
-                  .where((s) => s != null && s.isNotEmpty)
-                  .join(', ');
-        }
-      } catch (_) {
-        _address =
-            '${_position!.latitude.toStringAsFixed(4)}, '
-            '${_position!.longitude.toStringAsFixed(4)}';
+  void _storePosition(Position position) {
+    if (!mounted) return;
+    setState(() {
+      _position = position;
+      if (_address.isEmpty) {
+        _address = '${position.latitude.toStringAsFixed(4)}, '
+            '${position.longitude.toStringAsFixed(4)}';
       }
+    });
+  }
 
-      if (!mounted) return;
+  Future<void> _resolveAddress(Position position) async {
+    try {
+      final placemarks =
+          await placemarkFromCoordinates(position.latitude, position.longitude);
+      if (placemarks.isEmpty) return;
+      final p = placemarks.first;
+      final address = [p.street, p.subLocality, p.locality, p.country]
+          .where((s) => s != null && s.isNotEmpty)
+          .join(', ');
+      if (address.isEmpty || !mounted) return;
+      setState(() => _address = address);
+    } catch (_) {
+      // The "lat, lng" fallback set by _storePosition stands.
+    }
+  }
 
+  /// Submit the punch the moment the face verifies — no waiting on GPS.
+  ///
+  /// The fix is usually already in hand from [_prefetchLocation]; when it is
+  /// not, the punch goes out without coordinates and [_backfillLocation] patches
+  /// them in afterwards, so the officer is never held on the capture screen.
+  Future<void> _submitPunch() async {
+    setState(() {
+      _phase = CheckInPhase.gps;
+      _statusMessage = 'Submitting...';
+    });
+
+    try {
       final profile = await _authService.getCurrentUserProfile();
       final employeeId = profile?.canonicalEmployeeId;
+      final position = _position;
 
       final attendanceResult = await _attendanceRequestService.submitSelfPunch(
         employeeId: employeeId,
         isCheckOut: widget.isCheckOut,
-        latitude: _position!.latitude,
-        longitude: _position!.longitude,
+        latitude: position?.latitude,
+        longitude: position?.longitude,
         address: _address,
         faceVerified: true,
       );
 
       if (!attendanceResult.success) {
+        if (!mounted) return;
         setState(() {
           _phase = CheckInPhase.error;
           _errorMessage = attendanceResult.message ??
@@ -896,36 +932,77 @@ class _CheckInScreenState extends State<CheckInScreen>
         return;
       }
 
+      final record = attendanceResult.record ??
+          _attendanceRequestService.synthesizePunchRecord(
+            postBody: {
+              'attDate': DateTime.now().toIso8601String().substring(0, 10),
+              if (!widget.isCheckOut)
+                'requestedInTime': DateTime.now().toIso8601String(),
+              if (widget.isCheckOut)
+                'requestedOutTime': DateTime.now().toIso8601String(),
+              'requestType': 'self_punch',
+            },
+            isCheckOut: widget.isCheckOut,
+          );
+
+      // No fix in hand: fill it in once it lands. Fire-and-forget — it must
+      // outlive this screen and must never touch setState.
+      final recordId = record.id;
+      if (position == null && recordId > 0) {
+        unawaited(_backfillLocation(recordId));
+      }
+
+      if (!mounted) return;
       setState(() {
         _phase = CheckInPhase.success;
         _punchSubmitted = true;
-        _punchedRecord = attendanceResult.record ??
-            _attendanceRequestService.synthesizePunchRecord(
-              postBody: {
-                'attDate': DateTime.now().toIso8601String().substring(0, 10),
-                if (!widget.isCheckOut)
-                  'requestedInTime': DateTime.now().toIso8601String(),
-                if (widget.isCheckOut)
-                  'requestedOutTime': DateTime.now().toIso8601String(),
-                'requestType': 'self_punch',
-              },
-              isCheckOut: widget.isCheckOut,
-            );
+        _punchedRecord = record;
         _statusMessage = widget.isCheckOut
             ? 'Check-out request submitted!'
             : 'Check-in request submitted!';
       });
-      Future.delayed(const Duration(milliseconds: 1500), () {
-        if (mounted && _punchSubmitted && !_isClosing) {
-          _finishWithSuccess();
-        }
-      });
+
+      // Redirect at once — the record is already saved.
+      await _finishWithSuccess();
     } catch (e) {
       if (!mounted) return;
       setState(() {
         _phase = CheckInPhase.error;
-        _errorMessage = 'Location capture failed: $e';
+        _errorMessage = 'Submission failed: $e';
       });
+    }
+  }
+
+  /// Patch the punch's location once a fix arrives, after the officer has left.
+  ///
+  /// Detached from the widget tree: never calls setState, swallows every
+  /// failure, because the punch itself is already safely recorded.
+  Future<void> _backfillLocation(int recordId) async {
+    try {
+      await _locationFuture;
+
+      var position = _position;
+      position ??= await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.high,
+          timeLimit: Duration(seconds: 20),
+        ),
+      );
+
+      var address = _address;
+      if (address.isEmpty) {
+        address = '${position.latitude.toStringAsFixed(4)}, '
+            '${position.longitude.toStringAsFixed(4)}';
+      }
+
+      await _attendanceRequestService.updateSelfPunchLocation(
+        recordId: recordId,
+        latitude: position.latitude,
+        longitude: position.longitude,
+        address: address,
+      );
+    } catch (_) {
+      // Best-effort; the punch stands without a location.
     }
   }
 

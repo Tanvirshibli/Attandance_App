@@ -8,6 +8,7 @@ import 'permissions_gate_screen.dart';
 import 'server_bootstrap_screen.dart';
 import '../services/app_permissions_service.dart';
 import '../services/auth_service.dart';
+import '../services/camera_prewarm.dart';
 import '../services/endpoint_config_service.dart';
 import '../services/face_recognition_service.dart';
 import '../services/fcm_wake_handler.dart';
@@ -129,6 +130,11 @@ class _AppBootstrapState extends State<AppBootstrap>
     } catch (_) {
       // The dashboard loads the profile itself and falls back.
     }
+
+    // Warm the heavy pieces the capture screens need, so tapping check-in opens
+    // instantly instead of loading the model and enumerating cameras on demand.
+    unawaited(_faceRecognitionService.initialize());
+    CameraPrewarm.warm();
 
     try {
       await GeoTrackingService().ensureEnabledIfAllowed();

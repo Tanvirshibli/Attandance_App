@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:animate_do/animate_do.dart';
 import 'package:fl_chart/fl_chart.dart';
@@ -123,6 +125,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   /// Returns the employee id, or null when the profile could not be resolved.
   Future<int?> _loadProfile() async {
+    // Warm the face engine while the dashboard is on screen, so a later tap on
+    // check-in opens straight into a usable camera instead of loading on demand.
+    unawaited(_faceService.initialize());
+
     try {
       final profile = await _authService.getCurrentUserProfile();
 
