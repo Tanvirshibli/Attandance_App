@@ -71,7 +71,8 @@ class FaceRegistrationData {
       captureEmbeddings: _toDoubleMatrix(raw['captureEmbeddings']),
       adaptiveEmbeddings: _toDoubleMatrix(raw['adaptiveEmbeddings']),
       captureCount: _toInt(raw['captureCount']) ?? 0,
-      templateVersion: _toInt(raw['templateVersion']) ?? 1,
+      // 0 = the server did not say (a row written before the version was stored).
+      templateVersion: _toInt(raw['templateVersion']) ?? 0,
       registrationQuality: raw['registrationQuality'] is Map<String, dynamic>
           ? raw['registrationQuality'] as Map<String, dynamic>
           : null,

@@ -124,8 +124,13 @@ class FaceRecognitionService {
 
     // A template built by a different pipeline (e.g. the old padded-crop
     // embeddings) cannot be compared against this engine's probe. Drop it so the
-    // officer is asked to re-enrol once rather than failing every match.
-    if (registration.templateVersion != templateVersion) {
+    // officer is asked to re-enrol once rather than failing every match — but
+    // only when the stored version is *known* to differ. 0 means the server did
+    // not record a version (a row written before the column existed); that is
+    // accepted here, and a genuinely older model's template is still caught by
+    // the length guard in verifyFace.
+    final storedVersion = registration.templateVersion;
+    if (storedVersion > 0 && storedVersion != templateVersion) {
       clearRegistrationMemory();
       return;
     }

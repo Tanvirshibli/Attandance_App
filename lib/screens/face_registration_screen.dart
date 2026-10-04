@@ -523,13 +523,18 @@ class _FaceRegistrationScreenState extends State<FaceRegistrationScreen>
               registrationData,
               canonicalEmployeeId: profile?.canonicalEmployeeId,
             );
-            // Delete old face data from local memory only after successful new registration
-            // Then refresh from server to get the latest registration data
+            // Do NOT clear the in-memory template first — it is the one just
+            // built. Refresh the profile so we hydrate exactly what the server
+            // stored, but only when a registration actually comes back, so a
+            // cached or empty profile can never wipe a good template.
             if (savedToBackend) {
-              await _faceService.deleteRegisteredFace();
-              final updatedProfile = await _authService.getCurrentUserProfile();
-              if (updatedProfile != null && mounted) {
-                _faceService.hydrateRegistration(updatedProfile.faceRegistration);
+              final updatedProfile = await _authService.getCurrentUserProfile(
+                forceRefresh: true,
+              );
+              if (updatedProfile?.faceRegistration != null && mounted) {
+                _faceService.hydrateRegistration(
+                  updatedProfile!.faceRegistration,
+                );
               }
             }
           }
