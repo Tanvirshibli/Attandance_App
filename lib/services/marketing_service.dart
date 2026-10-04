@@ -306,6 +306,19 @@ class MarketingService {
     );
   }
 
+  /// Fetch one market, with its attachments inlined. Mirrors `getParty`.
+  Future<ApiResult<Market>> getMarket(int marketId) async {
+    if (!await isMarketingEnabled()) {
+      return ApiResult.fail('feature_disabled');
+    }
+    if (marketId <= 0) return ApiResult.fail('Invalid market.');
+    final base = await _url(
+      'marketing.markets',
+      '/api/v1/mobile/marketing/markets',
+    );
+    return _getObject(Uri.parse('$base/$marketId'), Market.fromJson);
+  }
+
   /// Update market intel + identity (any logged-in employee; the backend
   /// stamps `updated_by_employee_id` from `employee_id`).
   Future<ApiResult<Market>> updateMarket(
