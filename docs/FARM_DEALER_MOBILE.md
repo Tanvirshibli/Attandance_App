@@ -1,8 +1,10 @@
 # Farm & Dealer Mobile Module
 
-Last updated: October 4, 2026 — **v2.5.3-beta.1+9015**
+Last updated: October 4, 2026 — **v2.5.3-beta.1+9016**
 
 Field data collection for **markets**, **dealers**, and **farms** in Attandance_App, backed by ZKTeco `/api/v1/mobile/marketing/*` (no JWT — same pattern as geo). Employee identity uses profile `canonicalEmployeeId` (`employees.id`).
+
+**v2.5.3-beta.1+9016: The market form opens as a lookup.** `MarketFormScreen` now mirrors the farm and dealer forms — it opens on a collapsible existing-market search: browse the officer's zone, tap a match to open its detail, or **Add new market** to reveal the form. Editing an existing market (opened from `MarketDetailScreen`) still goes straight to the form. The backend gained `GET /markets/{id}` (with inlined `attachments[]`), a `createdByEmployeeId` attribute set on create, an `employee_id` index filter, and `address` in search; the Markets report page gained **Zone** and employee filters, an **Owner** column, and a fuller CSV.
 
 **v2.5.3-beta.1+9015: The category filter on the product/competitor company pickers now narrows.** The pickers keep only companies the backend master flags for the chosen category (`feed` / `chicks`) instead of also keeping every company that carried no flag — which had made the list look unfiltered. The masters cache key was versioned (`marketing_masters_json_v2`), so a device that cached the company list before the flags existed re-fetches them rather than restoring nulls and filtering nothing.
 
@@ -89,7 +91,7 @@ The hub is a **three-tab page**: Farms, Dealers, Markets. Farms is selected on o
 
 `PartyFormScreen` used to render **both** farm and dealer, split by a single `_isFarm` boolean, so every field change on the farm side moved a control on the dealer side and vice versa. Farm collection has its own field set and its own order now, so it gets its own widget class, its own `_FarmProductRow`, and its own state.
 
-**As of v2.5.3-beta.1**, the dealer form has been **restructured** to mirror the `FarmFormScreen` pattern — it opens on a searchable existing-dealer lookup before revealing the form below. The market form (`MarketFormScreen`) remains **untouched**. Only the leaf widgets are shared — `SearchableSelectField`, `ReadOnlyField`, `VoiceTextField`, the `AppCard` / `AppHeader` kit, and the marketing services. The parent form's layout code is not reused, which is the point.
+**As of v2.5.3-beta.1**, the dealer form has been **restructured** to mirror the `FarmFormScreen` pattern — it opens on a searchable existing-dealer lookup before revealing the form below. The market form adopted the same lookup-first pattern in **v2.5.3-beta.1+9016**. Only the leaf widgets are shared — `SearchableSelectField`, `ReadOnlyField`, `VoiceTextField`, the `AppCard` / `AppHeader` kit, and the marketing services. The parent form's layout code is not reused, which is the point.
 
 ### Search first
 
