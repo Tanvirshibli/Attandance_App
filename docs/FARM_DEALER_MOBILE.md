@@ -1,8 +1,10 @@
 # Farm & Dealer Mobile Module
 
-Last updated: October 4, 2026 — **v2.5.3-beta.1+9011**
+Last updated: October 4, 2026 — **v2.5.3-beta.1+9013**
 
 Field data collection for **markets**, **dealers**, and **farms** in Attandance_App, backed by ZKTeco `/api/v1/mobile/marketing/*` (no JWT — same pattern as geo). Employee identity uses profile `canonicalEmployeeId` (`employees.id`).
+
+**v2.5.3-beta.1+9013: Dealer screen layout fixes.** The dealer form's top search is now **collapsible** — collapsed to a single field and expands on tap, exactly like Add Farm. The **Party type** dropdown is gone: new versus existing is decided in the search (a found local dealer offers a visit report, and any matching **ERP dealer** appears under the local results so tapping one attaches its Sales id and prefills the form; "Add new dealer" always creates). In a product row the **category** now sits first, directly above the product picker; the product list, **product company**, and **competitor company** all narrow to the chosen category, and competitor company is a **searchable dropdown** over the same company list instead of a free-text box. On the login screen **Remember me** now really remembers the last email **and password** and prefills both.
 
 **v2.5.3-beta.1+9011: Dealer form restructure.** `PartyFormScreen` now opens on a searchable **existing-dealer lookup** — same pattern as `FarmFormScreen` (see [Search first](#search-first)): a hit offers a visit report, a miss offers **Add new dealer**. Form reveals with a revised field order: dealer code → zone → company → dealer name → trade name → market → phone → alt phone → NID → trade license → email → gelender. **Sector is removed** from the dealer screen — markets are listed directly without the sector cascade. `payment_mode` is replaced by a searchable **Customer type** dropdown (`dealer`, `direct_farm`, `others`, `all`), and `lead_status` by **Business type** (`chicks`, `feed`, `fish`, `poultry_feed`, `all`, `others`). New `gelender` field captures the known person's name.
 
@@ -502,14 +504,14 @@ Searchable company, **zone**, and sector (all **read-only from the employee's sc
 
 > **The farm form has moved.** It is no longer `PartyFormScreen(farm)` — see [Add Farm screen](#add-farm-screen) for its own search-first flow and field order. What follows describes the **dealer** form only.
 
-1. **Starts with a searchable existing-dealer lookup** (same pattern as `FarmFormScreen` — see [Search first](#search-first)). A hit offers a visit report; a miss or "Add new dealer" reveals the form below. The party-type dropdown (New dealer / Existing dealer) and the read-only dealer code / zone appear first, then the rest of the form.
+1. **Starts with a collapsible searchable existing-dealer lookup** (same pattern as `FarmFormScreen` — see [Search first](#search-first)): collapsed to one field, expands on tap, and collapses again on a second tap. The browse list shows local dealers plus any matching **ERP dealers**; tapping an ERP dealer attaches its Sales id and prefills the form. A local hit offers a visit report; a miss or "Add new dealer" reveals the form below.
 2. Payload **requires** `employee_id` (plus `created_by_employee_id` / `owner_employee_id`).
-3. **Party type** offers two options: **New dealer** → `dealer`, **Existing dealer** → `outlet`. The existing-dealer type reveals the ERP dealer picker (Sales master).
+3. **Party type is no longer a field.** The form always creates a `dealer` and still sends `party_type: 'dealer'`. New versus existing is decided in the search above: an ERP dealer picked there is sent as `existing_dealer_id`, and a found local dealer offers a visit report instead.
 4. **Dealer code** is allocated server-side and read-only — see [Record codes](#record-codes).
 5. Fields after revealing the form, top to bottom: **zone** (read-only) → **company** → **dealer name** → **trade name** → **market** → **phone** → **alt phone** → **NID** → **trade license** → **email** → **gelender** (known person's name) → **contact person** → **owner name** → **address** / **notes**. **Sector is removed** from this screen; markets are listed directly rather than cascading from sector — see [Organisational selection](#organisational-selection).
 6. **Farm & Credit** section: `business_years`, `credit_limit`, **Customer type** (`dealer`, `direct_farm`, `others`, `all` — searchable dropdown, replaces `payment_mode`), **Business type** (`chicks`, `feed`, `fish`, `poultry_feed`, `all`, `others` — searchable dropdown, replaces `lead_status`).
 7. **Phone** is required for every party and unique within its pool — see [Phone uniqueness](#phone-uniqueness).
-8. Product rows and optional photo gallery render below the form. Product section will be refined in a follow-up.
+8. Product rows, in order: **category** → **product** (list narrowed to the category) → product name → relation type → unit → **product company** (narrowed to the category) → brand → monthly/demand + stock → unit price → **competitor company** (searchable dropdown over the same company list, narrowed to the category) → our-product switch → notes. An optional photo gallery renders below the form.
 
 ### Visit (dealer)
 

@@ -319,6 +319,7 @@ Behaviour worth knowing:
 | **Flow** | Backend-authenticated sign-in → `pushReplacement` to `MainShell` |
 | **Background work** | Endpoint config refresh and profile hydration run unawaited, after navigation |
 | **UI** | Dark gradient background (`AppColors.darkGradient`), animated PPHL GIF logo from `peoplespoultry.com`, login card with email/password fields, remember me checkbox |
+| **Remember me** | When checked, the last email **and password** are stored (`auth_email` / `auth_password`) and prefilled on the next open. Unchecking clears both and stops prefilling. Signing out keeps them only while remember-me is on. |
 | **Logo URL** | `https://peoplespoultry.com/assets/front/img/1730297252134723053.gif` |
 
 A successful login navigates as soon as the token is stored. The profile fetch
