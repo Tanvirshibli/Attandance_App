@@ -5,7 +5,6 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../../data/marketing_demo_masters.dart';
-import '../../models/booking_form_data_models.dart';
 import '../../models/marketing_dealer.dart';
 import '../../models/marketing_models.dart';
 import '../../models/zone_scope.dart';
@@ -27,13 +26,13 @@ class _ProductRow {
   final demand = TextEditingController();
   final stock = TextEditingController();
   final unitPrice = TextEditingController();
-  final competitor = TextEditingController();
   final notes = TextEditingController();
   String relationType = 'stock';
   MarketingDemoProduct? product;
   MarketingDemoNamed? category;
   MarketingDemoNamed? unit;
   BookingFormCompany? company;
+  BookingFormCompany? competitorCompany;
   bool isOurProduct = true;
 
   void dispose() {
@@ -42,7 +41,6 @@ class _ProductRow {
     demand.dispose();
     stock.dispose();
     unitPrice.dispose();
-    competitor.dispose();
     notes.dispose();
   }
 }
@@ -131,13 +129,13 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
   Party? _parentParty;
   MarketingDemoNamed? _capacityUnit;
 
-  /// Dealers from the Sales master, offered by the existing-dealer picker.
+  /// Dealers from the Sales master, folded into the top search alongside the
+  /// local ones.
   ///
   /// Replaces a hardcoded demo catalog that had no phone, address or zone on it,
-  /// so selecting from it could never autofill anything. Only fetched while the
-  /// party type is an existing dealer — see `_loadExistingDealers`.
+  /// so selecting from it could never autofill anything. Tapping one attaches
+  /// its Sales id and prefills the form — see `_useErpDealer`.
   List<MarketingDealer> _existingDealers = const [];
-  bool _loadingExistingDealers = false;
   MarketingDealer? _selectedExistingDealer;
   double? _lat;
   double? _lng;
@@ -177,14 +175,6 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
 
   bool get _isFarm => _partyType == 'farm' || _partyType == 'farmer';
 
-  /// The two dealer-facing types the form offers. `dealer` is a new dealer and
-  /// `outlet` an existing one — both are already in the backend's party_type
-  /// enum, so no server change was needed to name them properly.
-  static const _dealerPartyTypes = [
-    (label: 'New dealer', value: 'dealer'),
-    (label: 'Existing dealer', value: 'outlet'),
-  ];
-
   /// Code prefix per record kind.
   String get _codePrefix => _isFarm ? 'FMR' : 'DLR';
 
@@ -215,6 +205,9 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
       _loadCode(),
       _loadOrgMasters(),
       _loadDealers(),
+      // The ERP dealer master is one of the two sources the top search draws
+      // from, so it is warmed alongside the local dealer list.
+      _loadExistingDealers(),
     ]);
   }
 
@@ -280,25 +273,20 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
     });
   }
 
-  /// Loads the existing-dealer list.
-  ///
-  /// Only ever called while the party type is an existing dealer — the picker
-  /// is not rendered otherwise, so fetching for a new dealer or a farm would be
-  /// a request nobody can use.
+  /// Loads the ERP (Sales) dealer list that the top search merges with the
+  /// local dealers.
   ///
   /// Unfiltered: the Sales dealer master carries no company or sector edge, so
   /// there is nothing to narrow it by, and narrowing by the employee's zone
-  /// would hide dealers they legitimately trade with. The picker is searchable.
+  /// would hide dealers they legitimately trade with. The search narrows it.
   ///
-  /// A failure is not fatal: the picker then offers nothing and the officer can
-  /// still register the dealer by hand. The Sales master sits behind a public
-  /// endpoint that can 500 on unrelated data, so this has to be a soft failure.
+  /// A failure is not fatal: the search then offers only local dealers and the
+  /// officer can still register the dealer by hand. The Sales master sits behind
+  /// a public endpoint that can 500 on unrelated data, so this is a soft failure.
   Future<void> _loadExistingDealers() async {
-    setState(() => _loadingExistingDealers = true);
     final result = await _service.listExistingDealers(limit: 200);
     if (!mounted) return;
     setState(() {
-      _loadingExistingDealers = false;
       _existingDealers = result.success
           ? (result.data ?? const <MarketingDealer>[])
           : const <MarketingDealer>[];
@@ -321,6 +309,7 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
       controller.text = text;
     }
 
+    fillIfEmpty(_name, dealer.name);
     fillIfEmpty(_contact, dealer.contactPerson);
     fillIfEmpty(_phone, dealer.phone);
     fillIfEmpty(_altPhone, dealer.altPhone);
@@ -534,6 +523,19 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
   List<Party> get _visibleDealers =>
       filterDealers(_dealers, _search.text);
 
+  /// ERP (Sales) dealers narrowed by the query, merged into the same browse list
+  /// as the local ones. The full master is a large unpaginated dump, so it is
+  /// only offered once the officer has typed something to narrow it by.
+  List<MarketingDealer> get _visibleErpDealers {
+    final query = _search.text.trim();
+    if (query.length < 2) return const [];
+    final lower = query.toLowerCase();
+    return _existingDealers
+        .where((d) => d.searchText.contains(lower))
+        .take(25)
+        .toList();
+  }
+
   /// Opens the browse list on a tap, and keeps narrowing it as the officer
   /// types. Only a previous selection is dropped — a dealer the officer
   /// already picked stays picked until they pick another or clear.
@@ -546,10 +548,11 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
     setState(() => _selectedMatch = null);
   }
 
-  /// Tapping the field with an empty box opens the same list as typing would.
+  /// Tapping the field toggles the browse list, so the dropdown the officer
+  /// opened can be closed again without leaving the screen.
   void _onSearchTap() {
-    if (_browsing || _creating) return;
-    setState(() => _browsing = true);
+    if (_creating) return;
+    setState(() => _browsing = !_browsing);
   }
 
   /// Commits to creating a new dealer, seeding the field the query really was.
@@ -608,9 +611,38 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
           .map((w) => w.isEmpty ? w : '${w[0].toUpperCase()}${w.substring(1)}')
           .join(' ');
 
-  /// The top search bar. In search-only mode it filters the browse list; once
-  /// the officer commits it becomes read-only and acts as a reminder of what
-  /// was looked up.
+  /// The product catalogue narrowed to the officer's chosen category. With no
+  /// category picked — or a category the catalogue is silent on — the whole
+  /// catalogue is offered, so the picker is never empty.
+  List<MarketingDemoProduct> _productsForCategory(MarketingDemoNamed? category) {
+    if (category == null) return MarketingDemoMasters.products;
+    final filtered = MarketingDemoMasters.products
+        .where((p) => p.categoryId == category.id)
+        .toList();
+    return filtered.isNotEmpty ? filtered : MarketingDemoMasters.products;
+  }
+
+  /// The company list narrowed to the ones that make products in the chosen
+  /// category, read off the catalogue's category→company edge. Falls back to the
+  /// full list when the catalogue has no edge for that category, so both the
+  /// product-company and competitor-company pickers always have options.
+  List<BookingFormCompany> _companiesForCategory(MarketingDemoNamed? category) {
+    if (category == null) return _productCompanies;
+    final ids = MarketingDemoMasters.products
+        .where((p) => p.categoryId == category.id)
+        .map((p) => p.companyId)
+        .whereType<int>()
+        .toSet();
+    if (ids.isEmpty) return _productCompanies;
+    final filtered =
+        _productCompanies.where((c) => ids.contains(c.id)).toList();
+    return filtered.isNotEmpty ? filtered : _productCompanies;
+  }
+
+  /// The top search bar — collapsed to a single field until the officer taps
+  /// it, exactly like the Add Farm screen. Typing narrows the browse list in
+  /// place; once the officer commits it becomes read-only and acts as a
+  /// reminder of what was looked up.
   Widget _buildSearch() {
     final hasMatch = _selectedMatch != null;
     return Padding(
@@ -618,6 +650,7 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          _label(_creating ? 'Searched for' : 'Search existing dealer'),
           TextField(
             controller: _search,
             focusNode: _searchFocusNode,
@@ -625,11 +658,14 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
             decoration: InputDecoration(
               hintText: hasMatch
                   ? 'Dealer found — tap "Add new dealer" to create a new one'
-                  : 'Search by name, code or phone…',
+                  : 'Tap to browse, or type a name, code or phone…',
               prefixIcon: const Icon(Icons.search),
               border: const OutlineInputBorder(),
               suffixIcon: _search.text.isEmpty
-                  ? const Icon(Icons.arrow_drop_down, size: 22)
+                  ? Icon(
+                      _browsing ? Icons.arrow_drop_up : Icons.arrow_drop_down,
+                      size: 22,
+                    )
                   : (_creating
                       ? null
                       : IconButton(
@@ -640,6 +676,12 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
             onChanged: _onSearchChanged,
             onTap: _onSearchTap,
           ),
+          if (!_creating) ...[
+            if (_selectedMatch != null)
+              _buildMatchPanel()
+            else if (_browsing)
+              _buildBrowseResults(),
+          ],
           if (_creating) ...[
             const SizedBox(height: 8),
             _searchNotice(
@@ -653,28 +695,20 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
     );
   }
 
-  /// Browse results or match panel shown below the search bar.
-  Widget _buildBrowseCard() {
-    if (_selectedMatch != null) {
-      return AppCard(child: _buildMatchPanel());
-    }
-    if ((!_browsing && _dealers.isEmpty && !_loadingDealers) || _creating) {
-      return const SizedBox.shrink();
-    }
-    return AppCard(child: _buildBrowseResults());
-  }
-
-  /// The filtered dealer list, with a notice for empty or loading states.
+  /// The browse list under the search field: the local dealer matches, then any
+  /// matching ERP dealers, then the create action.
   Widget _buildBrowseResults() {
     if (_loadingDealers) {
       return const Padding(
-        padding: EdgeInsets.all(16),
-        child: Center(child: CircularProgressIndicator()),
+        padding: EdgeInsets.only(top: 12),
+        child: LinearProgressIndicator(),
       );
     }
 
     final visible = _visibleDealers;
-    if (visible.isEmpty) {
+    final erp = _visibleErpDealers;
+
+    if (visible.isEmpty && erp.isEmpty) {
       final query = _search.text.trim();
       return _searchNotice(
         icon: Icons.search_off,
@@ -687,24 +721,46 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          child: Text(
-            '${visible.length} dealer${visible.length == 1 ? '' : 's'} found',
-            style: const TextStyle(
-              fontSize: 12,
-              color: AppColors.inkMuted,
-              fontWeight: FontWeight.w600,
+        if (visible.isNotEmpty) ...[
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: Text(
+              '${visible.length} dealer${visible.length == 1 ? '' : 's'} found',
+              style: const TextStyle(
+                fontSize: 12,
+                color: AppColors.inkMuted,
+                fontWeight: FontWeight.w600,
+              ),
             ),
           ),
-        ),
-        ListView.separated(
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          itemCount: visible.length,
-          separatorBuilder: (_, __) => const Divider(height: 1),
-          itemBuilder: (_, i) => _dealerRow(visible[i]),
-        ),
+          ListView.separated(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: visible.length,
+            separatorBuilder: (_, _) => const Divider(height: 1),
+            itemBuilder: (_, i) => _dealerRow(visible[i]),
+          ),
+        ],
+        if (erp.isNotEmpty) ...[
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+            child: Text(
+              '${erp.length} from the ERP dealer master',
+              style: const TextStyle(
+                fontSize: 12,
+                color: AppColors.inkMuted,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+          ListView.separated(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: erp.length,
+            separatorBuilder: (_, _) => const Divider(height: 1),
+            itemBuilder: (_, i) => _erpDealerRow(erp[i]),
+          ),
+        ],
         const SizedBox(height: 8),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -741,6 +797,40 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
         _searchFocusNode.unfocus();
       },
     );
+  }
+
+  /// A row for an ERP (Sales) dealer. Tapping it attaches the Sales id and
+  /// prefills the form, which is where the old "Existing dealer" party type
+  /// went — one place in the search decides new versus existing.
+  Widget _erpDealerRow(MarketingDealer dealer) {
+    return ListTile(
+      leading: CircleAvatar(
+        backgroundColor: AppColors.primary.withValues(alpha: 0.15),
+        child: const Icon(Icons.business_outlined, color: AppColors.primary),
+      ),
+      title: Text(
+        dealer.displayName,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+      ),
+      subtitle: Text(
+        dealer.subtitle.isEmpty ? 'ERP dealer' : dealer.subtitle,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+      ),
+      trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+      onTap: () => _useErpDealer(dealer),
+    );
+  }
+
+  /// Attaches an ERP dealer and reveals the form prefilled from it.
+  void _useErpDealer(MarketingDealer dealer) {
+    _applyExistingDealer(dealer);
+    setState(() {
+      _creating = true;
+      _browsing = false;
+      _searchFocusNode.unfocus();
+    });
   }
 
   /// Panel shown when a dealer match is tapped — shows what was found and
@@ -945,8 +1035,8 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
           'stock_qty': double.tryParse(row.stock.text.trim()),
         if (row.unitPrice.text.trim().isNotEmpty)
           'unit_price': double.tryParse(row.unitPrice.text.trim()),
-        if (row.competitor.text.trim().isNotEmpty)
-          'competitor_company': row.competitor.text.trim(),
+        if (row.competitorCompany != null)
+          'competitor_company': row.competitorCompany!.displayName,
         'is_our_product': row.isOurProduct,
         if (row.notes.text.trim().isNotEmpty) 'notes': row.notes.text.trim(),
       });
@@ -1104,8 +1194,6 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
                 child: Column(
                   children: [
                     AppCard(child: _buildSearch()),
-                    const SizedBox(height: 12),
-                    _buildBrowseCard(),
                   ],
                 ),
               ),
@@ -1143,58 +1231,11 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
                         _sectionTitle('Details'),
-                        // The party-type picker is dealer-specific — the farm
-                        // form lives in FarmFormScreen. Only the two
-                        // business-meaningful dealer types are offered here.
-                        _label('Party type'),
-                        DropdownButtonFormField<String>(
-                          initialValue: _partyType,
-                          decoration: _decoration(),
-                          items: _dealerPartyTypes
-                              .map(
-                                (t) => DropdownMenuItem(
-                                  value: t.value,
-                                  child: Text(t.label),
-                                ),
-                              )
-                              .toList(),
-                          onChanged: (v) {
-                            if (v == null) return;
-                            setState(() {
-                              _partyType = v;
-                              _phoneClash = null;
-                              if (v != 'outlet') {
-                                _selectedExistingDealer = null;
-                              }
-                            });
-                            if (v == 'outlet' && _existingDealers.isEmpty) {
-                              _loadExistingDealers();
-                            }
-                          },
-                        ),
-                        const SizedBox(height: 14),
-                        // The existing ERP dealer picker appears only for the
-                        // existing-dealer type. A new dealer has no ERP dealer
-                        // to attach, so showing an always-visible field there
-                        // just invited an officer to file a dealer against a
-                        // demo row.
-                        if (_partyType == 'outlet') ...[
-                          if (_loadingExistingDealers)
-                            const LinearProgressIndicator()
-                          else
-                            SearchableSelectField<MarketingDealer>(
-                              label: 'Existing ERP dealer',
-                              icon: Icons.storefront_outlined,
-                              options: _existingDealers,
-                              selected: _selectedExistingDealer,
-                              displayString: (d) => d.displayName,
-                              searchText: (d) => d.searchText,
-                              subtitleFor: (d) =>
-                                  d.subtitle.isEmpty ? null : d.subtitle,
-                              onSelected: _applyExistingDealer,
-                            ),
-                          const SizedBox(height: 14),
-                        ],
+                        // The new/existing choice now lives in the top search:
+                        // finding an existing dealer there offers a visit report
+                        // or an ERP attach, and "Add new dealer" reveals this
+                        // form. The record this form saves is always a new dealer.
+                        //
                         // Allocated server-side so two officers opening this form
                         // at the same moment cannot be handed the same code.
                         ReadOnlyField(
@@ -1486,10 +1527,28 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
                               ),
                               child: Column(
                                 children: [
+                                  SearchableSelectField<MarketingDemoNamed>(
+                                    label: 'Category',
+                                    icon: Icons.category_outlined,
+                                    options: MarketingDemoMasters.categories,
+                                    selected: row.category,
+                                    displayString: (c) => c.displayName,
+                                    searchText: (c) => c.searchText,
+                                    onSelected: (c) => setState(() {
+                                      row.category = c;
+                                      // The product and both company picks
+                                      // belonged to the old category, so they
+                                      // are dropped along with it.
+                                      row.product = null;
+                                      row.company = null;
+                                      row.competitorCompany = null;
+                                    }),
+                                  ),
+                                  const SizedBox(height: 8),
                                   SearchableSelectField<MarketingDemoProduct>(
                                     label: 'Product',
                                     icon: Icons.inventory_2_outlined,
-                                    options: MarketingDemoMasters.products,
+                                    options: _productsForCategory(row.category),
                                     selected: row.product,
                                     displayString: (p) => p.displayName,
                                     searchText: (p) => p.searchText,
@@ -1508,7 +1567,9 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
                                               );
                                           row.company =
                                               MarketingDemoMasters.byId(
-                                                _productCompanies,
+                                                _companiesForCategory(
+                                                  row.category,
+                                                ),
                                                 p.companyId,
                                                 (c) => c.id,
                                               );
@@ -1545,17 +1606,6 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
                                   ),
                                   const SizedBox(height: 8),
                                   SearchableSelectField<MarketingDemoNamed>(
-                                    label: 'Category',
-                                    icon: Icons.category_outlined,
-                                    options: MarketingDemoMasters.categories,
-                                    selected: row.category,
-                                    displayString: (c) => c.displayName,
-                                    searchText: (c) => c.searchText,
-                                    onSelected: (c) =>
-                                        setState(() => row.category = c),
-                                  ),
-                                  const SizedBox(height: 8),
-                                  SearchableSelectField<MarketingDemoNamed>(
                                     label: 'Unit',
                                     icon: Icons.straighten,
                                     options: MarketingDemoMasters.units,
@@ -1569,7 +1619,7 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
                                   SearchableSelectField<BookingFormCompany>(
                                     label: 'Product company',
                                     icon: Icons.apartment_outlined,
-                                    options: _productCompanies,
+                                    options: _companiesForCategory(row.category),
                                     selected: row.company,
                                     displayString: (c) => c.displayName,
                                     searchText: (c) =>
@@ -1613,10 +1663,16 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
                                     decoration: _decoration(hint: 'Unit price'),
                                   ),
                                   const SizedBox(height: 8),
-                                  VoiceTextField(
-                                    controller: row.competitor,
-                                    decoration: _decoration(
-                                      hint: 'Competitor company',
+                                  SearchableSelectField<BookingFormCompany>(
+                                    label: 'Competitor company',
+                                    icon: Icons.handshake_outlined,
+                                    options: _companiesForCategory(row.category),
+                                    selected: row.competitorCompany,
+                                    displayString: (c) => c.displayName,
+                                    searchText: (c) =>
+                                        c.displayName.toLowerCase(),
+                                    onSelected: (c) => setState(
+                                      () => row.competitorCompany = c,
                                     ),
                                   ),
                                   const SizedBox(height: 8),
