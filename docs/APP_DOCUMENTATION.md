@@ -119,7 +119,7 @@
 |---|---|
 | **Framework** | Flutter 3.41.2 (Dart 3.11) |
 | **Face Detection** | Google ML Kit Face Detection (`google_mlkit_face_detection: ^0.13.2`) — on-device, with landmarks + classification |
-| **Face Embedding** | MobileFaceNet via TensorFlow Lite (`tflite_flutter: ^0.12.1`) — 112×112 input, 192-dim L2-normalized output |
+| **Face Embedding** | **GhostFaceNet W1.3 S2 ArcFace** via TensorFlow Lite (`tflite_flutter: ^0.12.1`) — 112×112 input, **512-dim** L2-normalized output. MIT-licensed, converted from the official Keras `.h5`; the engine reads the sizes from the model tensors, so `_modelAsset` is the only thing to change to swap models |
 | **Image Processing** | `image: ^4.8.0` — crop, resize, grayscale, Laplacian sharpness |
 | **Camera** | `camera: ^0.11.1` — live camera preview for face scanning & registration |
 | **Camera (legacy)** | `image_picker: ^1.2.1` — native camera UI (still available for fallback) |
@@ -861,7 +861,8 @@ android:label="PPHL Attendance"
 
 | Asset | Path | Size | Purpose |
 |---|---|---|---|
-| MobileFaceNet | `assets/models/mobilefacenet.tflite` | ~5.2 MB | Face embedding model (112×112 → 192-dim) |
+| **GhostFaceNet W1.3 S2 ArcFace** | `assets/models/ghostfacenet.tflite` | ~16 MB | Active face-embedding model (112×112 → **512-dim**). MIT licence, converted from the official Keras `.h5` (`HamadYA/GhostFaceNets` v1.3) with TensorFlow 2.15 |
+| MobileFaceNet (fallback) | `assets/models/mobilefacenet.tflite` | ~5.2 MB | Legacy 112×112 → 192-dim model, kept so `_modelAsset` can be reverted in one line |
 
 Declared in `pubspec.yaml`:
 ```yaml
