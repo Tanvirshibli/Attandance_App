@@ -791,7 +791,7 @@ class _CheckInScreenState extends State<CheckInScreen>
 
   Future<FaceVerificationResult?> _verifyFaceWithRetries({
     int attempts = 3,
-    bool robustEmbedding = true,
+    bool robustEmbedding = false,
   }) async {
     FaceVerificationResult? bestResult;
 

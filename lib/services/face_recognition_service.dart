@@ -25,25 +25,38 @@ class FaceRecognitionService {
   late FaceDetector _finalFaceDetector;
   bool _isInitialized = false;
 
-  // MobileFaceNet input: 112x112x3, output: 1x192
+  // MobileFaceNet input: 112x112x3, output: 1x192.
+  // A model swap (e.g. an ArcFace/AdaFace 512-d model) means changing these three
+  // — plus [templateVersion], so every device re-enrols rather than comparing a
+  // new-model probe against an old-model template.
   static const int _inputSize = 112;
   static const int embeddingSize = 192;
 
+  /// Bumped whenever the embedding pipeline changes shape or preprocessing
+  /// (model, alignment, normalisation). A stored template with a different
+  /// version is rejected instead of silently mis-matched.
+  static const int templateVersion = 2;
+
   // Core match threshold against registration templates (avg + captures).
-  // Accepts a >=60% best-template match — goal is correct-user detection.
-  static const double _matchThreshold = 0.60;
+  // Raised from 0.60: the old bar let different people clear a shared account's
+  // template. Calibrate against a labelled set before changing.
+  static const double _matchThreshold = 0.66;
 
   // Strong core-template match threshold
-  static const double _strongMatchThreshold = 0.72;
+  static const double _strongMatchThreshold = 0.78;
 
-  // Minimum confidence to auto-enroll an adaptive template
-  static const double _adaptiveEnrollmentThreshold = 0.75;
+  // How many of the enrolled templates must clear the consistency bar. One is
+  // not enough when a template set holds several poses (or people); require a
+  // majority-ish agreement so a single lucky template cannot carry a match.
+  static const int _requiredCoreHits = 2;
 
-  // Same-person threshold: captures during registration must be >= 65% similar
-  static const double _samePersonThreshold = 0.65;
+  // Same-person threshold: a registration capture must match the running
+  // average of the captures already taken. Raised from 0.65 so a different
+  // person cannot slip into a shared account's template set.
+  static const double _samePersonThreshold = 0.70;
 
   // Relaxed threshold for extreme registration poses (up/down)
-  static const double _samePersonExtremeAngleThreshold = 0.50;
+  static const double _samePersonExtremeAngleThreshold = 0.58;
 
   // Minimum smile probability for liveness "smile" challenge
   static const double _smileThreshold = 0.55;
@@ -421,24 +434,6 @@ class FaceRecognitionService {
       return _samePersonExtremeAngleThreshold;
     }
     return _samePersonThreshold;
-  }
-
-  double _bestSimilarityWithExisting(
-    List<double> newEmbedding,
-    List<List<double>> existingEmbeddings,
-  ) {
-    if (existingEmbeddings.isEmpty) return 1.0;
-
-    double best = -1.0;
-    for (final existing in existingEmbeddings) {
-      final similarity = _cosineSimilarity(newEmbedding, existing);
-      if (similarity > best) best = similarity;
-    }
-
-    final avgEmbedding = _averageEmbeddings(existingEmbeddings);
-    final avgSimilarity = _cosineSimilarity(newEmbedding, avgEmbedding);
-
-    return max(best, avgSimilarity);
   }
 
   // ---- Face Angle & Challenge Detection ----
@@ -879,19 +874,25 @@ class FaceRecognitionService {
         ? _registeredEmbeddings.map((item) => List<double>.from(item)).toList()
         : <List<double>>[];
 
-    // Same-person check: verify this capture is the same person as previous captures
+    // Same-person check: verify this capture is the same person as previous captures.
+    //
+    // This anchors to the AVERAGE of the captures already taken, not the
+    // best-matching one. A different person can resemble a single pose yet will
+    // not match the person's mean face — so this is what stops a shared account
+    // from quietly enrolling several people into one template set, the root
+    // cause of "one face, many identities" on a shared test account.
     if (embeddings.isNotEmpty) {
       final requiredSimilarity = _requiredSamePersonThreshold(targetAngle);
-      final bestSimilarity = _bestSimilarityWithExisting(
+      final avgSimilarity = _cosineSimilarity(
         result.embedding!,
-        embeddings,
+        _averageEmbeddings(embeddings),
       );
 
-      if (bestSimilarity < requiredSimilarity) {
+      if (avgSimilarity < requiredSimilarity) {
         return FaceRegistrationResult(
           success: false,
           message:
-              'Different person detected (${(bestSimilarity * 100).toStringAsFixed(1)}% similarity, required ${(requiredSimilarity * 100).toStringAsFixed(0)}%). Please retake this capture with similar distance and lighting.',
+              'Different person detected (${(avgSimilarity * 100).toStringAsFixed(1)}% match to the face already being registered, required ${(requiredSimilarity * 100).toStringAsFixed(0)}%). Please retake this capture with similar distance and lighting.',
           quality: result.quality,
           captureNumber: captureNumber,
           totalCaptures: registrationCaptures,
@@ -975,11 +976,15 @@ class FaceRecognitionService {
   }
 
   /// Verify a face against registration templates with strict core consistency.
-  /// Adaptive templates are used as supporting references but cannot alone approve identity.
+  ///
+  /// Runs a SINGLE inference by default: the 4-variant average inflates
+  /// cross-identity similarity (it pulls everyone toward the mean) and costs 4×
+  /// the time, so it is kept for enrolment only. Adaptive templates are reported
+  /// but never decide identity.
   Future<FaceVerificationResult> verifyFace(
     File imageFile, {
     bool requireSmile = false,
-    bool robustEmbedding = true,
+    bool robustEmbedding = false,
   }) async {
     final storedEmbedding = _registeredAvgEmbedding;
 
@@ -1041,7 +1046,11 @@ class FaceRecognitionService {
     final qualityAwareThreshold =
         qualityScore >= 75 ? _matchThreshold : _matchThreshold + 0.02;
     final coreConsistencyThreshold = qualityAwareThreshold - 0.02;
-    final requiredCoreHits = 1;
+    // Require agreement across the enrolled templates when there are enough of
+    // them; a single template (the average only) cannot satisfy a two-hit rule.
+    final requiredCoreHits = coreSimilarityScores.length >= _requiredCoreHits
+        ? _requiredCoreHits
+        : 1;
     final coreHitCount = coreSimilarityScores
         .where((sim) => sim >= coreConsistencyThreshold)
         .length;
@@ -1056,12 +1065,9 @@ class FaceRecognitionService {
     final isMatch = isCoreMatch || strongCoreMatch;
     final finalConfidence = (finalSimilarity * 100).clamp(0.0, 100.0);
 
-    if (isMatch &&
-        coreTop1 >= _adaptiveEnrollmentThreshold &&
-        coreAggregateSimilarity >= qualityAwareThreshold) {
-      await _addAdaptiveTemplate(result.embedding!);
-    }
-
+    // Adaptive templates are no longer auto-enrolled: on a shared account they
+    // accumulated other people's faces. Adaptive similarity is reported for
+    // context only, never used for the identity decision.
     final supportiveAdaptive = adaptiveTop1 >= coreConsistencyThreshold;
 
     return FaceVerificationResult(
@@ -1072,23 +1078,6 @@ class FaceRecognitionService {
           ? 'Face verified! (${finalConfidence.toStringAsFixed(1)}% match)'
           : 'Face match too low: ${finalConfidence.toStringAsFixed(1)}%. Need stable core match ≥ ${(qualityAwareThreshold * 100).toStringAsFixed(0)}% (adaptive ${(supportiveAdaptive ? 'supporting' : 'not supporting')}). Please try again in good lighting, facing the camera directly.',
     );
-  }
-
-  Future<void> _addAdaptiveTemplate(
-    List<double> embedding,
-  ) async {
-    final adaptiveEmbeddings = [..._adaptiveEmbeddings];
-
-    final exists = adaptiveEmbeddings
-        .any((stored) => _cosineSimilarity(stored, embedding) > 0.97);
-    if (exists) return;
-
-    adaptiveEmbeddings.add(embedding);
-    if (adaptiveEmbeddings.length > 20) {
-      adaptiveEmbeddings.removeRange(0, adaptiveEmbeddings.length - 20);
-    }
-
-    _adaptiveEmbeddings = adaptiveEmbeddings;
   }
 
   /// Release resources
