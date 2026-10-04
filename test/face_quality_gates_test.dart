@@ -250,6 +250,31 @@ void main() {
       );
     });
 
+    test('sizes are model-agnostic: 512 accepted when expected, 192 rejected', () {
+      expect(
+        FaceRegistrationData.isValidEmbedding(
+          List<double>.filled(512, 0.02),
+          expectedSize: 512,
+        ),
+        isTrue,
+      );
+      expect(
+        FaceRegistrationData.isValidEmbedding(
+          List<double>.filled(192, 0.02),
+          expectedSize: 512,
+        ),
+        isFalse,
+      );
+      // expectedSize: null validates structurally, whatever the model's width.
+      expect(
+        FaceRegistrationData.isValidEmbedding(
+          List<double>.filled(512, 0.02),
+          expectedSize: null,
+        ),
+        isTrue,
+      );
+    });
+
     test('fromJson rejects corrupt avg embeddings', () {
       expect(
         FaceRegistrationData.fromJson({

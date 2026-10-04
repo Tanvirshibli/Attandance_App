@@ -62,7 +62,10 @@ class FaceRegistrationApiService {
             continue;
           }
           final retryBody = _decodeMap(retry.body);
-          return FaceRegistrationData.fromJson(retryBody['face_registration']);
+          return FaceRegistrationData.fromJson(
+            retryBody['face_registration'],
+            expectedSize: null,
+          );
         }
 
         if (response.statusCode != 200) {
@@ -70,7 +73,10 @@ class FaceRegistrationApiService {
         }
 
         final body = _decodeMap(response.body);
-        return FaceRegistrationData.fromJson(body['face_registration']);
+        return FaceRegistrationData.fromJson(
+          body['face_registration'],
+          expectedSize: null,
+        );
       } catch (_) {
         continue;
       }

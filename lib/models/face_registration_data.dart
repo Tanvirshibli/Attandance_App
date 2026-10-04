@@ -25,10 +25,17 @@ class FaceRegistrationData {
 
   bool get hasData => hasValidTemplates;
 
-  bool get hasValidTemplates => isValidEmbedding(avgEmbedding);
+  bool get hasValidTemplates =>
+      isValidEmbedding(avgEmbedding, expectedSize: null);
 
-  static bool isValidEmbedding(List<double>? values) {
-    if (values == null || values.length != 192) {
+  /// A vector is valid when it is non-empty and every element is finite. When
+  /// [expectedSize] is given (the default) the length must match it exactly; pass
+  /// `null` to validate structurally without pinning a model's dimension.
+  static bool isValidEmbedding(List<double>? values, {int? expectedSize = 192}) {
+    if (values == null || values.isEmpty) {
+      return false;
+    }
+    if (expectedSize != null && values.length != expectedSize) {
       return false;
     }
     return values.every((value) => value.isFinite);
@@ -46,13 +53,16 @@ class FaceRegistrationData {
     };
   }
 
-  static FaceRegistrationData? fromJson(Object? raw) {
+  static FaceRegistrationData? fromJson(
+    Object? raw, {
+    int? expectedSize = 192,
+  }) {
     if (raw is! Map<String, dynamic>) {
       return null;
     }
 
     final avg = _toDoubleList(raw['avgEmbedding']);
-    if (!isValidEmbedding(avg)) {
+    if (!isValidEmbedding(avg, expectedSize: expectedSize)) {
       return null;
     }
 

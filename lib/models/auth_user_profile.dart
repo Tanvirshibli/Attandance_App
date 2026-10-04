@@ -156,7 +156,13 @@ class AuthUserProfile {
         employee['date_of_joining'],
       ], fallback: 'N/A'),
       canonicalEmployeeId: _parseCanonicalEmployeeId(json, employee),
-      faceRegistration: FaceRegistrationData.fromJson(json['face_registration']),
+      faceRegistration: FaceRegistrationData.fromJson(
+        json['face_registration'],
+        // The engine (and its model width) may not be initialised when the
+        // profile is parsed, so parse structurally here; the template version and
+        // a verify-time length guard reject anything from a different model.
+        expectedSize: null,
+      ),
       zoneIds: _toPositiveIntList(
         json['zoneId'] ??
             json['zone_id'] ??

@@ -25,12 +25,24 @@ class FaceRecognitionService {
   late FaceDetector _finalFaceDetector;
   bool _isInitialized = false;
 
-  // MobileFaceNet input: 112x112x3, output: 1x192.
-  // A model swap (e.g. an ArcFace/AdaFace 512-d model) means changing these three
-  // — plus [templateVersion], so every device re-enrols rather than comparing a
-  // new-model probe against an old-model template.
-  static const int _inputSize = 112;
-  static const int embeddingSize = 192;
+  /// The single place to swap the recogniser. Any TFLite face-embedding model
+  /// works: the input size and embedding length are read from the model's own
+  /// tensors in [initialize], and [templateVersion] must be bumped when the model
+  /// changes so every device re-enrols rather than comparing a new-model probe
+  /// against an old-model template.
+  static const String _modelAsset = 'assets/models/mobilefacenet.tflite';
+
+  /// Fallbacks, used only when the loaded model reports an unexpected shape.
+  static const int _defaultInputSize = 112;
+  static const int defaultEmbeddingSize = 192;
+
+  /// Set from the loaded model's input tensor (square models only; alignment
+  /// assumes 112 and is skipped otherwise).
+  int _inputSize = _defaultInputSize;
+
+  /// Set from the loaded model's output tensor length (192 for MobileFaceNet,
+  /// 512 for GhostFaceNet/ArcFace).
+  int embeddingSize = defaultEmbeddingSize;
 
   /// Bumped whenever the embedding pipeline changes shape or preprocessing
   /// (model, alignment, normalisation). A stored template with a different
@@ -128,7 +140,7 @@ class FaceRecognitionService {
   }
 
   FaceRegistrationData? exportRegistrationData() {
-    if (!FaceRegistrationData.isValidEmbedding(_registeredAvgEmbedding)) {
+    if (!FaceRegistrationData.isValidEmbedding(_registeredAvgEmbedding, expectedSize: null)) {
       return null;
     }
 
@@ -160,8 +172,8 @@ class FaceRecognitionService {
   Future<void> initialize() async {
     if (_isInitialized) return;
 
-    _interpreter =
-        await Interpreter.fromAsset('assets/models/mobilefacenet.tflite');
+    _interpreter = await Interpreter.fromAsset(_modelAsset);
+    _applyModelShape();
 
     _liveFaceDetector = FaceDetector(
       options: FaceDetectorOptions(
@@ -186,6 +198,29 @@ class FaceRecognitionService {
     );
 
     _isInitialized = true;
+  }
+
+  /// Read the input / output size straight off the loaded model so a swapped
+  /// `.tflite` works with no code change. Falls back to the defaults when the
+  /// tensor shapes are not the expected square-image / flat-vector form.
+  void _applyModelShape() {
+    final interpreter = _interpreter;
+    if (interpreter == null) return;
+    try {
+      final inputShape = interpreter.getInputTensor(0).shape; // [1, h, w, 3]
+      if (inputShape.length == 4 &&
+          inputShape[1] > 0 &&
+          inputShape[1] == inputShape[2]) {
+        _inputSize = inputShape[1];
+      }
+      final outputShape = interpreter.getOutputTensor(0).shape; // [1, n]
+      final outputSize = outputShape.isEmpty ? 0 : outputShape.last;
+      if (outputSize > 0) {
+        embeddingSize = outputSize;
+      }
+    } catch (_) {
+      // Keep the defaults; the model still runs with 112 / 192.
+    }
   }
 
   /// Detect faces in an image file. Returns list of Face objects.
@@ -798,6 +833,10 @@ class FaceRecognitionService {
   /// pose/scale variance a raw bounding box leaves in the embedding, so the same
   /// person's vectors cluster and different people's spread apart.
   img.Image? _alignFace(img.Image image, Face face) {
+    // The canonical template is defined for a 112×112 crop; a model with a
+    // different input falls back to the padded bounding-box crop.
+    if (_inputSize != 112) return null;
+
     final source = <List<double>>[];
     for (final type in _alignmentLandmarks) {
       final position = face.landmarks[type]?.position;
@@ -1121,7 +1160,7 @@ class FaceRecognitionService {
 
   /// Check if a valid face template is loaded in memory.
   Future<bool> isFaceRegistered() async {
-    return FaceRegistrationData.isValidEmbedding(_registeredAvgEmbedding);
+    return FaceRegistrationData.isValidEmbedding(_registeredAvgEmbedding, expectedSize: null);
   }
 
   /// Get the registration timestamp
@@ -1177,6 +1216,21 @@ class FaceRecognitionService {
       );
     }
 
+    // A stored template from a different model has a different vector length and
+    // would make cosine similarity throw. Treat the mismatch as out-of-date so
+    // the officer re-registers rather than hitting a crash.
+    final probeLength = result.embedding!.length;
+    if (storedEmbedding.length != probeLength ||
+        _registeredEmbeddings.any((e) => e.length != probeLength)) {
+      return FaceVerificationResult(
+        isMatch: false,
+        confidence: 0,
+        message:
+            'Your face template is out of date. Please register your face again.',
+        quality: result.quality,
+      );
+    }
+
     // Core similarities (average + all registration captures)
     final coreSimilarityScores = <double>[
       _cosineSimilarity(result.embedding!, storedEmbedding),
@@ -1187,9 +1241,11 @@ class FaceRecognitionService {
       coreSimilarityScores.add(_cosineSimilarity(result.embedding!, emb));
     }
 
-    // Adaptive similarities (supporting templates only)
+    // Adaptive similarities (supporting templates only). A stale adaptive vector
+    // from another model is skipped rather than crashing the cosine.
     final adaptiveSimilarityScores = <double>[];
     for (final emb in _adaptiveEmbeddings) {
+      if (emb.length != probeLength) continue;
       adaptiveSimilarityScores.add(_cosineSimilarity(result.embedding!, emb));
     }
 
