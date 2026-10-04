@@ -457,8 +457,9 @@ The face recognition pipeline is implemented entirely on-device in `FaceRecognit
 
 | Constant | Value | Purpose |
 |---|---|---|
-| `_inputSize` | 112 | MobileFaceNet input image size (112×112 pixels) |
-| `embeddingSize` | 192 | MobileFaceNet output dimensionality; valid templates must be this length and finite |
+| `_modelAsset` | `assets/models/mobilefacenet.tflite` | The **single place to swap the recogniser** — any TFLite face-embedding model works |
+| `_inputSize` | from model tensor | Read from the loaded model's input tensor (112 today); the landmark alignment assumes 112 and is skipped for any other size |
+| `embeddingSize` | from model tensor | Read from the loaded model's output tensor (192 today; 512 for GhostFaceNet/ArcFace). Templates are validated structurally, and a probe/template width mismatch at verify asks the officer to re-register instead of crashing |
 | `_matchThreshold` | 0.66 | Base minimum cosine similarity for **core** identity match (quality-aware to 0.68 for lower quality) |
 | `_strongMatchThreshold` | 0.78 | Strong **core-template** similarity with consistency requirement |
 | `_requiredCoreHits` | 2 | Minimum number of enrolled templates that must clear the consistency bar |
