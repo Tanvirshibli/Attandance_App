@@ -103,6 +103,11 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
   /// answers, and left null on failure rather than invented locally — a code
   /// guessed on the device can collide, which is the whole reason it is
   /// allocated server-side.
+  ///
+  /// The one exception: an existing ERP dealer already carries its own
+  /// `dealerCode`, which becomes the record's code verbatim (see
+  /// [_applyExistingDealer]) so the local outlet and the Sales master
+  /// share one identifier.
   String? _generatedCode;
 
   /// Party already holding the typed phone, when the uniqueness check finds one.
@@ -318,9 +323,16 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
 
     // A selected dealer is a fact about the record, so it goes in the payload
     // even though the field is otherwise absent from the farm form.
+    //
+    // The ERP dealer's own code becomes the record's code, so the local
+    // outlet and the Sales master share one identifier — no sequence
+    // number is allocated for it. A dealer without a code keeps the
+    // server-allocated path.
+    final erpCode = dealer.code?.trim() ?? '';
     setState(() {
       _selectedExistingDealer = dealer;
       _phoneClash = null;
+      _generatedCode = erpCode.isNotEmpty ? erpCode : null;
     });
   }
 
@@ -1011,8 +1023,15 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
 
     // Reserve the record code now. It is only consumed when the form is actually
     // submitted, so merely opening the screen no longer burns a sequence number.
-    await _loadCode();
-    if (!mounted) return;
+    // An attached ERP dealer already carries its own code, which is used
+    // verbatim instead — no sequence number is allocated for it.
+    final erpCode = _selectedExistingDealer?.code?.trim() ?? '';
+    if (erpCode.isNotEmpty) {
+      setState(() => _generatedCode = erpCode);
+    } else {
+      await _loadCode();
+      if (!mounted) return;
+    }
 
     setState(() => _submitting = true);
 
@@ -1237,6 +1256,10 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
                               _partyType = v;
                               if (v != 'outlet') {
                                 _selectedExistingDealer = null;
+                                // An ERP dealer's code only belongs to
+                                // the existing-dealer path; a new dealer
+                                // gets a server-allocated code again.
+                                _generatedCode = null;
                               }
                             });
                             if (v == 'outlet' && _existingDealers.isEmpty) {

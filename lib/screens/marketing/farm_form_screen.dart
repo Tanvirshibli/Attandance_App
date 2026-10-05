@@ -6,6 +6,7 @@ import 'package:image_picker/image_picker.dart';
 
 import '../../data/marketing_demo_masters.dart';
 import '../../models/booking_form_data_models.dart';
+import '../../models/marketing_dealer.dart';
 import '../../models/marketing_models.dart';
 import '../../models/zone_scope.dart';
 import '../../services/auth_service.dart';
@@ -18,6 +19,58 @@ import '../../widgets/searchable_select_field.dart';
 import '../../widgets/ui/ui.dart';
 import '../../widgets/voice_input_field.dart';
 import 'farm_survey_form_screen.dart';
+
+/// One entry of the farm form's parent dealer picker: either a
+/// dealer stored in this system (`Party`) or a dealer that lives
+/// only in the ERP/Sales master (`MarketingDealer`).
+///
+/// A native dealer links the farm through `parent_party_id`; an ERP
+/// dealer cannot (the backend FK-checks `parent_party_id` against
+/// `mkt_parties`), so the farm records its Sales id as
+/// `existing_dealer_id` instead.
+class ParentDealerOption {
+  const ParentDealerOption.native(this.party) : erpDealer = null;
+  const ParentDealerOption.erp(this.erpDealer) : party = null;
+
+  final Party? party;
+  final MarketingDealer? erpDealer;
+
+  bool get isErp => erpDealer != null;
+
+  String get displayName =>
+      party?.displayName ?? erpDealer?.displayName ?? '';
+
+  String? get phone => party?.phone ?? erpDealer?.phone;
+
+  /// ERP entries are tagged so an officer can tell a Sales-master
+  /// dealer from one stored locally when both are listed.
+  String get subtitle {
+    if (party != null) return party!.phone ?? '';
+    final erp = erpDealer!;
+    return [
+      'ERP',
+      erp.code,
+      erp.contactPerson,
+      erp.phone,
+      erp.zoneName,
+    ].where((part) => part != null && part.trim().isNotEmpty).join(' · ');
+  }
+
+  String get searchText => [
+        party?.displayName,
+        party?.code,
+        party?.phone,
+        party?.contactPerson,
+        erpDealer?.name,
+        erpDealer?.code,
+        erpDealer?.contactPerson,
+        erpDealer?.phone,
+        erpDealer?.zoneName,
+      ]
+          .where((part) => part != null && part.trim().isNotEmpty)
+          .join(' ')
+          .toLowerCase();
+}
 
 /// One product line on the farm form.
 ///
@@ -304,8 +357,16 @@ class _FarmFormScreenState extends State<FarmFormScreen> {
   /// officer's pick above.
   List<BookingFormCompany> _productCompanies = const [];
 
+  /// Dealers stored in this system, feeding the parent dealer
+  /// picker alongside the ERP/Sales dealer master below.
   List<Party> _dealers = const [];
-  Party? _parentParty;
+
+  /// Dealers from the ERP/Sales master. Shown in the same picker
+  /// but recorded through `existing_dealer_id`, since a Sales id
+  /// is not an `mkt_parties` row and cannot become a
+  /// `parent_party_id`.
+  List<MarketingDealer> _erpDealers = const [];
+  ParentDealerOption? _parentDealer;
   MarketingDemoNamed? _capacityUnit;
 
   double? _lat;
@@ -412,10 +473,17 @@ class _FarmFormScreenState extends State<FarmFormScreen> {
     setState(() => _loadingDealers = true);
     // The dealer pool is ('dealer','outlet'): an existing dealer is stored as an
     // outlet, so a bare 'dealer' query would hide it from the parent picker.
-    final result = await _service.listPartiesPool(const ['dealer', 'outlet']);
+    // The ERP/Sales master is fetched alongside it so the picker can offer
+    // both; a failure there degrades to native dealers only.
+    final pool = _service.listPartiesPool(const ['dealer', 'outlet']);
+    final erp = _service.listExistingDealers(limit: 500);
+    final result = await pool;
+    final erpResult = await erp;
     if (!mounted) return;
     setState(() {
       _dealers = result.data ?? const [];
+      _erpDealers =
+          erpResult.success ? (erpResult.data ?? const []) : const [];
       _loadingDealers = false;
     });
   }
@@ -767,7 +835,10 @@ class _FarmFormScreenState extends State<FarmFormScreen> {
       if (_tradeLicense.text.trim().isNotEmpty)
         'trade_license_no': _tradeLicense.text.trim(),
       if (_address.text.trim().isNotEmpty) 'address': _address.text.trim(),
-      if (_parentParty != null) 'parent_party_id': _parentParty!.id,
+      if (_parentDealer?.party != null)
+        'parent_party_id': _parentDealer!.party!.id,
+      if (_parentDealer?.erpDealer != null)
+        'existing_dealer_id': _parentDealer!.erpDealer!.sourceId,
       if (_selectedCompany != null) 'company_id': _selectedCompany!.id,
       if (_selectedCompany != null)
         'company_name': _selectedCompany!.displayName,
@@ -1254,16 +1325,18 @@ class _FarmFormScreenState extends State<FarmFormScreen> {
               child: Center(child: CircularProgressIndicator()),
             )
           else
-            SearchableSelectField<Party>(
+            SearchableSelectField<ParentDealerOption>(
               label: 'Parent dealer',
               icon: Icons.account_tree_outlined,
-              options: _dealers,
-              selected: _parentParty,
+              options: [
+                ..._dealers.map(ParentDealerOption.native),
+                ..._erpDealers.map(ParentDealerOption.erp),
+              ],
+              selected: _parentDealer,
               displayString: (d) => d.displayName,
-              searchText: (d) =>
-                  '${d.displayName} ${d.phone ?? ''}'.toLowerCase(),
-              subtitleFor: (d) => d.phone,
-              onSelected: (d) => setState(() => _parentParty = d),
+              searchText: (d) => d.searchText,
+              subtitleFor: (d) => d.subtitle.isEmpty ? null : d.subtitle,
+              onSelected: (d) => setState(() => _parentDealer = d),
             ),
           const SizedBox(height: 14),
           // Allocated server-side so two officers opening this form at the same

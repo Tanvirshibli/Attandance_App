@@ -1,5 +1,6 @@
 import 'package:employee_attendance/data/marketing_demo_masters.dart';
 import 'package:employee_attendance/models/booking_form_data_models.dart';
+import 'package:employee_attendance/models/marketing_dealer.dart';
 import 'package:employee_attendance/models/marketing_models.dart';
 import 'package:employee_attendance/screens/marketing/farm_form_screen.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -324,6 +325,49 @@ void main() {
         FarmFormScreen.productsInCategory(MarketingDemoMasters.products, empty),
         isEmpty,
       );
+    });
+  });
+
+  group('parent dealer option', () {
+    test('a native dealer shows its phone as the subtitle', () {
+      final option = ParentDealerOption.native(
+        farm(id: 1, name: 'Al Amin Traders', phone: '01711000001'),
+      );
+      expect(option.isErp, isFalse);
+      expect(option.displayName, 'Al Amin Traders');
+      expect(option.subtitle, '01711000001');
+      expect(option.searchText, contains('al amin traders'));
+      expect(option.searchText, contains('01711000001'));
+    });
+
+    test('an ERP dealer is tagged and searchable by code and zone', () {
+      const dealer = MarketingDealer(
+        sourceId: 42,
+        name: 'Kazi Feed Dealers',
+        code: 'DLR-0042',
+        contactPerson: 'Salam',
+        phone: '01711000002',
+        zoneName: 'Dhaka',
+      );
+      final option = ParentDealerOption.erp(dealer);
+      expect(option.isErp, isTrue);
+      expect(option.displayName, 'Kazi Feed Dealers');
+      expect(
+        option.subtitle,
+        'ERP · DLR-0042 · Salam · 01711000002 · Dhaka',
+      );
+      expect(option.searchText, contains('dlr-0042'));
+      expect(option.searchText, contains('dhaka'));
+    });
+
+    test('an ERP dealer without optional fields still shows the tag', () {
+      const dealer = MarketingDealer(sourceId: 7, name: 'Solo Dealer');
+      expect(ParentDealerOption.erp(dealer).subtitle, 'ERP');
+    });
+
+    test('a native dealer without a phone shows a blank subtitle', () {
+      final option = ParentDealerOption.native(farm(id: 2, name: 'No Phone'));
+      expect(option.subtitle, '');
     });
   });
 }

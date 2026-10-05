@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 
 import '../../data/marketing_demo_masters.dart';
 import '../../models/booking_form_data_models.dart';
+import '../../models/marketing_dealer.dart';
 import '../../models/marketing_models.dart';
 import '../../models/zone_scope.dart';
 import '../../services/auth_service.dart';
@@ -109,6 +110,12 @@ class _FarmSurveyFormScreenState extends State<FarmSurveyFormScreen> {
   /// than a handful of hardcoded ones.
   List<BookingFormCompany> _companies = const [];
 
+  /// The ERP/Sales dealer master, used to name the parent dealer
+  /// of a farm whose parent lives only in the ERP. A farm with a
+  /// local parent party needs nothing here — the server already
+  /// joins that dealer's details onto the farm row.
+  List<MarketingDealer> _erpDealers = const [];
+
   @override
   void initState() {
     super.initState();
@@ -161,15 +168,19 @@ class _FarmSurveyFormScreenState extends State<FarmSurveyFormScreen> {
   /// only as the fallback for a farm created before zone tagging. The
   /// company master feeds the DOC and feed company suggestions.
   Future<void> _loadContext() async {
+    final dealers = _service.listExistingDealers(limit: 500);
     final profile = await _authService.getCurrentUserProfile();
     final scope = await ZoneScopeService.instance.load();
     final companies = await MarketingMasterService.instance.companies();
+    final dealerResult = await dealers;
     if (!mounted) return;
     setState(() {
       _officerName = profile?.name ?? '';
       _officerDesignation = profile?.designation ?? '';
       _officerZoneName = _officerZoneFor(scope);
       _companies = companies;
+      _erpDealers =
+          dealerResult.success ? (dealerResult.data ?? const []) : const [];
     });
   }
 
@@ -182,6 +193,23 @@ class _FarmSurveyFormScreenState extends State<FarmSurveyFormScreen> {
 
     for (final name in scope.zoneNames) {
       if (name.isNotEmpty) return name;
+    }
+    return null;
+  }
+
+  /// The farm's parent dealer when that dealer lives only in the
+  /// ERP/Sales master.
+  ///
+  /// Null when the farm has a local parent party — the server joins
+  /// that dealer's details onto the farm row, so they win — or when
+  /// the farm has no parent at all, leaving the read-only fields
+  /// blank as before.
+  MarketingDealer? _erpParentFor(Party farm) {
+    final id = farm.existingDealerId;
+    if (id == null) return null;
+    if ((farm.parentPartyName ?? '').trim().isNotEmpty) return null;
+    for (final dealer in _erpDealers) {
+      if (dealer.sourceId == id) return dealer;
     }
     return null;
   }
@@ -555,9 +583,12 @@ class _FarmSurveyFormScreenState extends State<FarmSurveyFormScreen> {
                             'Farming years',
                             farm.businessYears?.toStringAsFixed(0),
                           ),
-                          _readOnly('Name of dealer', farm.parentPartyName),
-                          _readOnly('Dealer address', farm.parentPartyAddress),
-                          _readOnly('Dealer contact', farm.parentPartyPhone),
+                          _readOnly('Name of dealer',
+                              farm.parentPartyName ?? _erpParentFor(farm)?.name),
+                          _readOnly('Dealer address',
+                              farm.parentPartyAddress ?? _erpParentFor(farm)?.address),
+                          _readOnly('Dealer contact',
+                              farm.parentPartyPhone ?? _erpParentFor(farm)?.phone),
                         ],
                       ),
                     ),
