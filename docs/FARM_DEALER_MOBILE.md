@@ -1,8 +1,10 @@
 # Farm & Dealer Mobile Module
 
-Last updated: October 5, 2026 — **v2.5.3-beta.1+9025**
+Last updated: October 5, 2026 — **v2.5.3-beta.1+9026**
 
 Field data collection for **markets**, **dealers**, and **farms** in Attandance_App, backed by ZKTeco `/api/v1/mobile/marketing/*` (no JWT — same pattern as geo). Employee identity uses profile `canonicalEmployeeId` (`employees.id`).
+
+**v2.5.3-beta.1+9026: Existing dealers and plain farmers show up again.** The parties API filters `party_type` **exactly**, and the Add-Dealer screen stores an "Existing dealer" as an `outlet` — so the dealer list (which asked for `dealer`) silently dropped every one of them, and the farm list dropped every `farmer`. `MarketingService.listPartiesPool([...])` now fetches a pool type-by-type and merges the results; the hub loads `('dealer','outlet')` and `('farm','farmer')`, and the dealer search and the farm form's parent-dealer picker use the dealer pool too. `searchFarms`/`listFarms` already filtered client-side, so they were unaffected.
 
 **v2.5.3-beta.1+9025: Create screens are forms first, with floating legends.** The farm and dealer Add screens no longer hide their form behind a lookup — the detail sections render on open, with the search bar above them as a convenience. The dealer screen regains the **Party type** dropdown (New dealer / Existing dealer); choosing *Existing dealer* reveals the searchable **Existing ERP dealer** picker and attaches `existing_dealer_id`. The **record code** is allocated only at submit (the field reads "Generated on save"), so merely opening a screen no longer burns a sequence number. Every input on both screens carries a **floating legend label** that lifts on focus or fill, instead of a caption line above the field (`_label` now feeds the next field's `labelText`; `_sectionTitle` clears it so a section boundary cannot leak). Product rows: the farm renames its demand placeholder to *Monthly product demand* and puts **Product company** directly under **Product name**; the dealer puts **Product company** and **Competitor company** under **Product name** and merges the separate month and stock inputs into one *Monthly product demand*. The default relation type is `business` on farms and `uses` on dealers. The farm's separate **Capacity limit** input is gone — the **Capacity unit** picker stays.
 
