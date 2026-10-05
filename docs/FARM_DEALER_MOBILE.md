@@ -1,8 +1,10 @@
 # Farm & Dealer Mobile Module
 
-Last updated: October 4, 2026 — **v2.5.3-beta.1+9016**
+Last updated: October 5, 2026 — **v2.5.3-beta.1+9025**
 
 Field data collection for **markets**, **dealers**, and **farms** in Attandance_App, backed by ZKTeco `/api/v1/mobile/marketing/*` (no JWT — same pattern as geo). Employee identity uses profile `canonicalEmployeeId` (`employees.id`).
+
+**v2.5.3-beta.1+9025: Create screens are forms first, with floating legends.** The farm and dealer Add screens no longer hide their form behind a lookup — the detail sections render on open, with the search bar above them as a convenience. The dealer screen regains the **Party type** dropdown (New dealer / Existing dealer); choosing *Existing dealer* reveals the searchable **Existing ERP dealer** picker and attaches `existing_dealer_id`. The **record code** is allocated only at submit (the field reads "Generated on save"), so merely opening a screen no longer burns a sequence number. Every input on both screens carries a **floating legend label** that lifts on focus or fill, instead of a caption line above the field (`_label` now feeds the next field's `labelText`; `_sectionTitle` clears it so a section boundary cannot leak). Product rows: the farm renames its demand placeholder to *Monthly product demand* and puts **Product company** directly under **Product name**; the dealer puts **Product company** and **Competitor company** under **Product name** and merges the separate month and stock inputs into one *Monthly product demand*. The default relation type is `business` on farms and `uses` on dealers. The farm's separate **Capacity limit** input is gone — the **Capacity unit** picker stays.
 
 **v2.5.3-beta.1+9016: The market form opens as a lookup.** `MarketFormScreen` now mirrors the farm and dealer forms — it opens on a collapsible existing-market search: browse the officer's zone, tap a match to open its detail, or **Add new market** to reveal the form. Editing an existing market (opened from `MarketDetailScreen`) still goes straight to the form. The backend gained `GET /markets/{id}` (with inlined `attachments[]`), a `createdByEmployeeId` attribute set on create, an `employee_id` index filter, and `address` in search; the Markets report page gained **Zone** and employee filters, an **Owner** column, and a fuller CSV.
 
