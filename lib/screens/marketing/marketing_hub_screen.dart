@@ -222,12 +222,15 @@ class _MarketingHubScreenState extends State<MarketingHubScreen>
     // matters: a server-side `zone_id` would both drop every record created
     // before zone tagging (zone_id NULL) and take the first N rows from other
     // zones, leaving nothing to show.
-    final farmsResult = await _service.listParties(
-      partyType: 'farm',
+    // The API filters `party_type` exactly, so each pool is fetched type by
+    // type: an "Existing dealer" is stored as an outlet and a plain farmhand as
+    // a farmer, and loading only 'dealer'/'farm' dropped both from the list.
+    final farmsResult = await _service.listPartiesPool(
+      const ['farm', 'farmer'],
       limit: _listLimit,
     );
-    final dealersResult = await _service.listParties(
-      partyType: 'dealer',
+    final dealersResult = await _service.listPartiesPool(
+      const ['dealer', 'outlet'],
       limit: _listLimit,
     );
     final marketsResult = await _service.listMarkets(limit: _listLimit);

@@ -367,8 +367,10 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
 
   Future<void> _loadDealers() async {
     setState(() => _loadingDealers = true);
-    // Parent dealer picker is company-wide (omit employee_id).
-    final result = await _service.listParties(partyType: 'dealer');
+    // Company-wide (omit employee_id). The dealer pool is ('dealer','outlet'):
+    // an existing dealer is stored as an outlet, so a bare 'dealer' query would
+    // hide exactly the rows this search exists to find.
+    final result = await _service.listPartiesPool(const ['dealer', 'outlet']);
     if (!mounted) return;
     setState(() {
       _dealers = result.data ?? const [];

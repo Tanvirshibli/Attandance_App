@@ -410,7 +410,9 @@ class _FarmFormScreenState extends State<FarmFormScreen> {
   /// zone still has to be able to record it.
   Future<void> _loadDealers() async {
     setState(() => _loadingDealers = true);
-    final result = await _service.listParties(partyType: 'dealer');
+    // The dealer pool is ('dealer','outlet'): an existing dealer is stored as an
+    // outlet, so a bare 'dealer' query would hide it from the parent picker.
+    final result = await _service.listPartiesPool(const ['dealer', 'outlet']);
     if (!mounted) return;
     setState(() {
       _dealers = result.data ?? const [];

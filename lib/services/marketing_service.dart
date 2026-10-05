@@ -380,6 +380,37 @@ class MarketingService {
     return _getList(uri, Party.fromJson);
   }
 
+  /// Load several party types at once and merge them into one result.
+  ///
+  /// The API filters `party_type` **exactly** and takes a single value, so a
+  /// "pool" has to be fetched type by type. The dealer pool is
+  /// `('dealer','outlet')` — an officer choosing "Existing dealer" stores the row
+  /// as an `outlet`, which a bare `party_type=dealer` query never returns — and
+  /// the farm pool is `('farm','farmer')`. Succeeds when at least one type came
+  /// back, so one flaky call cannot blank the whole list.
+  Future<ApiResult<List<Party>>> listPartiesPool(
+    List<String> partyTypes, {
+    int? limit,
+  }) async {
+    final merged = <Party>[];
+    var anySuccess = false;
+    String? failureMessage;
+
+    for (final type in partyTypes) {
+      final result = await listParties(partyType: type, limit: limit);
+      if (result.success) {
+        anySuccess = true;
+        merged.addAll(result.data ?? const <Party>[]);
+      } else {
+        failureMessage ??= result.message;
+      }
+    }
+
+    return anySuccess
+        ? ApiResult.ok(merged)
+        : ApiResult.fail(failureMessage ?? 'Could not load parties.');
+  }
+
   Future<ApiResult<Party>> getParty(int partyId) async {
     if (!await isMarketingEnabled()) {
       return ApiResult.fail('feature_disabled');
