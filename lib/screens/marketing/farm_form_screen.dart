@@ -244,7 +244,6 @@ class _FarmFormScreenState extends State<FarmFormScreen> {
   final _address = TextEditingController();
   final _notes = TextEditingController();
   final _capacity = TextEditingController();
-  final _capacityLimit = TextEditingController();
 
   /// `party_type` is fixed. The officer reached this screen from the Farms tab,
   /// so the type is a fact about the record rather than a choice, and it rides
@@ -277,9 +276,9 @@ class _FarmFormScreenState extends State<FarmFormScreen> {
   /// query landed on. Null means nothing is selected yet.
   Party? _selectedMatch;
 
-  /// Set once the officer commits to creating a farm. The detail fields stay
-  /// hidden until then, so the screen opens as a search and not as a form.
-  bool _creating = false;
+  /// The detail fields are always visible. The search bar sits above them as a
+  /// convenience for finding a farm already on file, not as a gate.
+  bool _creating = true;
 
   /// The farm already holding the typed phone, from the on-field uniqueness
   /// check that keeps running after the form is revealed.
@@ -294,7 +293,6 @@ class _FarmFormScreenState extends State<FarmFormScreen> {
   /// failure rather than invented locally — a code guessed on the device can
   /// collide, which is the whole reason it is allocated server-side.
   String? _generatedCode;
-  bool _loadingCode = true;
 
   /// Peoples Poultry & Hatchery Ltd, preselected.
   BookingFormCompany? _selectedCompany;
@@ -339,7 +337,6 @@ class _FarmFormScreenState extends State<FarmFormScreen> {
     await Future.wait([
       _loadFormMasters(),
       _autoFillLocation(),
-      _loadCode(),
       _loadOrgMasters(),
       _loadDealers(),
     ]);
@@ -354,7 +351,6 @@ class _FarmFormScreenState extends State<FarmFormScreen> {
     final result = await _service.nextCode('FMR');
     if (!mounted) return;
     setState(() {
-      _loadingCode = false;
       _generatedCode = result.success ? result.data : null;
     });
   }
@@ -434,7 +430,6 @@ class _FarmFormScreenState extends State<FarmFormScreen> {
     _address.dispose();
     _notes.dispose();
     _capacity.dispose();
-    _capacityLimit.dispose();
     _search.dispose();
     for (final p in _products) {
       p.dispose();
@@ -716,6 +711,11 @@ class _FarmFormScreenState extends State<FarmFormScreen> {
       }
     }
 
+    // Reserve the record code now. It is only consumed when the form is actually
+    // submitted, so merely opening the screen no longer burns a sequence number.
+    await _loadCode();
+    if (!mounted) return;
+
     setState(() => _submitting = true);
 
     final products = <Map<String, dynamic>>[];
@@ -775,8 +775,6 @@ class _FarmFormScreenState extends State<FarmFormScreen> {
       'farm_type': _farmType,
       if (_capacity.text.trim().isNotEmpty)
         'capacity': double.tryParse(_capacity.text.trim()),
-      if (_capacityLimit.text.trim().isNotEmpty)
-        'capacity_limit': double.tryParse(_capacityLimit.text.trim()),
       if (_capacityUnit != null) 'capacity_unit_id': _capacityUnit!.id,
       'created_by_employee_id': employeeId,
       'owner_employee_id': employeeId,
@@ -830,9 +828,15 @@ class _FarmFormScreenState extends State<FarmFormScreen> {
   // Chrome
   // ---------------------------------------------------------------------
 
+  /// Shared input decoration.
+  ///
+  /// [hint] is rendered as a floating legend: it sits as the placeholder and
+  /// lifts above the field once the officer starts typing or focus lands, so
+  /// every input keeps its name visible while it is being filled.
   InputDecoration _decoration({String? hint, String? errorText}) {
     return InputDecoration(
-      hintText: hint,
+      labelText: hint,
+      floatingLabelBehavior: FloatingLabelBehavior.auto,
       errorText: errorText,
       filled: true,
       fillColor: AppColors.surfaceSunk,
@@ -884,11 +888,10 @@ class _FarmFormScreenState extends State<FarmFormScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _label(_creating ? 'Searched for' : 'Search existing farm'),
+        _label('Search existing farm'),
         TextField(
           controller: _search,
           focusNode: _searchFocusNode,
-          readOnly: _creating,
           onTap: _onSearchTap,
           onChanged: _onSearchChanged,
           style: AppType.bodySm.copyWith(color: AppColors.ink),
@@ -900,7 +903,7 @@ class _FarmFormScreenState extends State<FarmFormScreen> {
                 ? const Icon(Icons.arrow_drop_down, size: 22)
                 : IconButton(
                     icon: const Icon(Icons.clear, size: 20),
-                    onPressed: _creating ? null : _resetSearch,
+                    onPressed: _resetSearch,
                   ),
           ),
         ),
@@ -1260,9 +1263,7 @@ class _FarmFormScreenState extends State<FarmFormScreen> {
             label: 'Farm code',
             icon: Icons.qr_code_2_outlined,
             value: _generatedCode,
-            hint: _loadingCode
-                ? 'Generating…'
-                : 'Unavailable — will save without one',
+            hint: _generatedCode == null ? 'Generated on save' : null,
           ),
           const SizedBox(height: 14),
           // The name and phone sit after the code on purpose: the code is the
@@ -1316,40 +1317,11 @@ class _FarmFormScreenState extends State<FarmFormScreen> {
             },
           ),
           const SizedBox(height: 14),
-          // Capacity and its limit are read together, so they sit side by side
-          // rather than as two full-width rows the officer has to remember to
-          // relate.
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _label('Capacity'),
-                    VoiceTextField(
-                      controller: _capacity,
-                      keyboardType: TextInputType.number,
-                      decoration: _decoration(),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _label('Capacity limit'),
-                    VoiceTextField(
-                      controller: _capacityLimit,
-                      keyboardType: TextInputType.number,
-                      decoration: _decoration(),
-                    ),
-                  ],
-                ),
-              ),
-            ],
+          _label('Capacity'),
+          VoiceTextField(
+            controller: _capacity,
+            keyboardType: TextInputType.number,
+            decoration: _decoration(hint: 'Capacity'),
           ),
           const SizedBox(height: 14),
           SearchableSelectField<MarketingDemoNamed>(
@@ -1508,6 +1480,16 @@ class _FarmFormScreenState extends State<FarmFormScreen> {
                       decoration: _decoration(hint: 'Product name (required)'),
                     ),
                     const SizedBox(height: 8),
+                    SearchableSelectField<BookingFormCompany>(
+                      label: 'Product company',
+                      icon: Icons.apartment_outlined,
+                      options: _productCompanies,
+                      selected: row.company,
+                      displayString: (c) => c.displayName,
+                      searchText: (c) => c.displayName.toLowerCase(),
+                      onSelected: (c) => setState(() => row.company = c),
+                    ),
+                    const SizedBox(height: 8),
                     DropdownButtonFormField<String>(
                       initialValue: row.relationType,
                       decoration: _decoration(hint: 'Relation type'),
@@ -1531,16 +1513,6 @@ class _FarmFormScreenState extends State<FarmFormScreen> {
                       onSelected: (u) => setState(() => row.unit = u),
                     ),
                     const SizedBox(height: 8),
-                    SearchableSelectField<BookingFormCompany>(
-                      label: 'Product company',
-                      icon: Icons.apartment_outlined,
-                      options: _productCompanies,
-                      selected: row.company,
-                      displayString: (c) => c.displayName,
-                      searchText: (c) => c.displayName.toLowerCase(),
-                      onSelected: (c) => setState(() => row.company = c),
-                    ),
-                    const SizedBox(height: 8),
                     VoiceTextField(
                       controller: row.brand,
                       decoration: _decoration(hint: 'Brand name'),
@@ -1549,7 +1521,7 @@ class _FarmFormScreenState extends State<FarmFormScreen> {
                     VoiceTextField(
                       controller: row.demand,
                       keyboardType: TextInputType.number,
-                      decoration: _decoration(hint: 'Monthly / demand'),
+                      decoration: _decoration(hint: 'Monthly product demand'),
                     ),
                     const SizedBox(height: 8),
                     SwitchListTile(

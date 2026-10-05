@@ -24,10 +24,9 @@ class _ProductRow {
   final name = TextEditingController();
   final brand = TextEditingController();
   final demand = TextEditingController();
-  final stock = TextEditingController();
   final unitPrice = TextEditingController();
   final notes = TextEditingController();
-  String relationType = 'stock';
+  String relationType = 'uses';
   MarketingDemoProduct? product;
   MarketingDemoNamed? category;
   MarketingDemoNamed? unit;
@@ -39,7 +38,6 @@ class _ProductRow {
     name.dispose();
     brand.dispose();
     demand.dispose();
-    stock.dispose();
     unitPrice.dispose();
     notes.dispose();
   }
@@ -87,7 +85,6 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
   final _search = TextEditingController();
   final _searchFocusNode = FocusNode();
   bool _browsing = false;
-  bool _creating = false;
   Party? _selectedMatch;
 
   /// The employee's own zone, resolved from their HRM profile and shown
@@ -107,7 +104,6 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
   /// guessed on the device can collide, which is the whole reason it is
   /// allocated server-side.
   String? _generatedCode;
-  bool _loadingCode = true;
 
   /// Party already holding the typed phone, when the uniqueness check finds one.
   Party? _phoneClash;
@@ -202,7 +198,6 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
     await Future.wait([
       _loadFormMasters(),
       _autoFillLocation(),
-      _loadCode(),
       _loadOrgMasters(),
       _loadDealers(),
       // The ERP dealer master is one of the two sources the top search draws
@@ -220,7 +215,6 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
     final result = await _service.nextCode(_codePrefix);
     if (!mounted) return;
     setState(() {
-      _loadingCode = false;
       _generatedCode = result.success ? result.data : null;
     });
   }
@@ -540,7 +534,6 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
   /// types. Only a previous selection is dropped — a dealer the officer
   /// already picked stays picked until they pick another or clear.
   void _onSearchChanged(String value) {
-    if (_creating) return;
     if (!_browsing) {
       setState(() => _browsing = true);
       return;
@@ -551,7 +544,6 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
   /// Tapping the field toggles the browse list, so the dropdown the officer
   /// opened can be closed again without leaving the screen.
   void _onSearchTap() {
-    if (_creating) return;
     setState(() => _browsing = !_browsing);
   }
 
@@ -562,7 +554,6 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
   void _startCreating() {
     final typed = _search.text.trim();
     setState(() {
-      _creating = true;
       _browsing = false;
       _searchFocusNode.unfocus();
       if (MarketingService.normalisePhone(typed).length >= 7) {
@@ -587,7 +578,6 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
       }
       _products.clear();
       _search.clear();
-      _creating = false;
       _browsing = false;
       _selectedMatch = null;
       _phoneClash = null;
@@ -667,11 +657,10 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          _label(_creating ? 'Searched for' : 'Search existing dealer'),
+          _label('Search existing dealer'),
           TextField(
             controller: _search,
             focusNode: _searchFocusNode,
-            readOnly: _creating,
             decoration: InputDecoration(
               hintText: hasMatch
                   ? 'Dealer found — tap "Add new dealer" to create a new one'
@@ -683,30 +672,18 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
                       _browsing ? Icons.arrow_drop_up : Icons.arrow_drop_down,
                       size: 22,
                     )
-                  : (_creating
-                      ? null
-                      : IconButton(
-                          icon: const Icon(Icons.clear, size: 20),
-                          onPressed: _resetSearch,
-                        )),
+                  : IconButton(
+                      icon: const Icon(Icons.clear, size: 20),
+                      onPressed: _resetSearch,
+                    ),
             ),
             onChanged: _onSearchChanged,
             onTap: _onSearchTap,
           ),
-          if (!_creating) ...[
-            if (_selectedMatch != null)
-              _buildMatchPanel()
-            else if (_browsing)
-              _buildBrowseResults(),
-          ],
-          if (_creating) ...[
-            const SizedBox(height: 8),
-            _searchNotice(
-              icon: Icons.info_outline,
-              text: 'A new dealer will be created. Existing dealers can be '
-                  'found by tapping "Cancel" and searching again.',
-            ),
-          ],
+          if (_selectedMatch != null)
+            _buildMatchPanel()
+          else if (_browsing)
+            _buildBrowseResults(),
         ],
       ),
     );
@@ -845,7 +822,6 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
   void _useErpDealer(MarketingDealer dealer) {
     _applyExistingDealer(dealer);
     setState(() {
-      _creating = true;
       _browsing = false;
       _searchFocusNode.unfocus();
     });
@@ -1023,6 +999,11 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
       }
     }
 
+    // Reserve the record code now. It is only consumed when the form is actually
+    // submitted, so merely opening the screen no longer burns a sequence number.
+    await _loadCode();
+    if (!mounted) return;
+
     setState(() => _submitting = true);
 
     final products = <Map<String, dynamic>>[];
@@ -1047,10 +1028,6 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
           'monthly_quantity': double.tryParse(row.demand.text.trim()),
         if (row.demand.text.trim().isNotEmpty)
           'demand_qty': double.tryParse(row.demand.text.trim()),
-        if (row.stock.text.trim().isNotEmpty)
-          'current_stock': double.tryParse(row.stock.text.trim()),
-        if (row.stock.text.trim().isNotEmpty)
-          'stock_qty': double.tryParse(row.stock.text.trim()),
         if (row.unitPrice.text.trim().isNotEmpty)
           'unit_price': double.tryParse(row.unitPrice.text.trim()),
         if (row.competitorCompany != null)
@@ -1192,38 +1169,8 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
 
   @override
   Widget build(BuildContext context) {
-    if (!_creating) {
-      return Scaffold(
-        backgroundColor: AppColors.canvas,
-        body: Column(
-          children: [
-            AppHeader(
-              title: 'Add Dealer',
-              subtitle: 'Search for an existing dealer, or add a new one',
-            ),
-            Expanded(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.fromLTRB(
-                  AppSpace.gutter,
-                  AppSpace.md,
-                  AppSpace.gutter,
-                  AppSpace.xl,
-                ),
-                child: Column(
-                  children: [
-                    AppCard(child: _buildSearch()),
-                  ],
-                ),
-              ),
-            ),
-          ],
-        ),
-      );
-    }
-
-    // The form reveals only once the officer commits to creating or the
-    // screen is told up-front that _creating is true. The search bar stays
-    // visible above the form as a read-only reminder of what was looked up.
+    // The form is always visible; the search bar sits above it as a convenience
+    // for finding a dealer already on file, not as a gate.
     return Scaffold(
       backgroundColor: AppColors.canvas,
       body: Column(
@@ -1260,9 +1207,9 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
                           label: 'Dealer code',
                           icon: Icons.qr_code_2_outlined,
                           value: _generatedCode,
-                          hint: _loadingCode
-                              ? 'Generating…'
-                              : 'Unavailable — will save without one',
+                          hint: _generatedCode == null
+                              ? 'Generated on save'
+                              : null,
                         ),
                         const SizedBox(height: 14),
                         // The zone is the officer's own territory and stays
@@ -1654,28 +1601,12 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
                                     decoration: _decoration(hint: 'Brand name'),
                                   ),
                                   const SizedBox(height: 8),
-                                  Row(
-                                    children: [
-                                      Expanded(
-                                        child: VoiceTextField(
-                                          controller: row.demand,
-                                          keyboardType: TextInputType.number,
-                                          decoration: _decoration(
-                                            hint: 'Monthly / demand',
-                                          ),
-                                        ),
-                                      ),
-                                      const SizedBox(width: 8),
-                                      Expanded(
-                                        child: VoiceTextField(
-                                          controller: row.stock,
-                                          keyboardType: TextInputType.number,
-                                          decoration: _decoration(
-                                            hint: 'Stock',
-                                          ),
-                                        ),
-                                      ),
-                                    ],
+                                  VoiceTextField(
+                                    controller: row.demand,
+                                    keyboardType: TextInputType.number,
+                                    decoration: _decoration(
+                                      hint: 'Monthly product demand',
+                                    ),
                                   ),
                                   const SizedBox(height: 8),
                                   VoiceTextField(
