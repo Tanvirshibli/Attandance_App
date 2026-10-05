@@ -673,41 +673,35 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
   /// reminder of what was looked up.
   Widget _buildSearch() {
     final hasMatch = _selectedMatch != null;
-    return Padding(
-      padding: const EdgeInsets.all(12),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          _label('Search existing dealer'),
-          TextField(
-            controller: _search,
-            focusNode: _searchFocusNode,
-            onTap: _onSearchTap,
-            onChanged: _onSearchChanged,
-            style: AppType.bodySm.copyWith(color: AppColors.ink),
-            decoration: _decoration(
-              hint: hasMatch
-                  ? 'Dealer found — tap "Add new dealer" to create a new one'
-                  : 'Tap to browse, or type a name, code or phone…',
-            ).copyWith(
-              prefixIcon: const Icon(Icons.search, size: 20),
-              suffixIcon: _search.text.isEmpty
-                  ? Icon(
-                      _browsing ? Icons.arrow_drop_up : Icons.arrow_drop_down,
-                      size: 22,
-                    )
-                  : IconButton(
-                      icon: const Icon(Icons.clear, size: 20),
-                      onPressed: _resetSearch,
-                    ),
-            ),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _label('Search existing dealer'),
+        TextField(
+          controller: _search,
+          focusNode: _searchFocusNode,
+          onTap: _onSearchTap,
+          onChanged: _onSearchChanged,
+          style: AppType.bodySm.copyWith(color: AppColors.ink),
+          decoration: _decoration(
+            hint: hasMatch
+                ? 'Dealer found — tap "Add new dealer" to create a new one'
+                : 'Tap to browse, or type a name, code or phone…',
+          ).copyWith(
+            prefixIcon: const Icon(Icons.search, size: 20),
+            suffixIcon: _search.text.isEmpty
+                ? const Icon(Icons.arrow_drop_down, size: 22)
+                : IconButton(
+                    icon: const Icon(Icons.clear, size: 20),
+                    onPressed: _resetSearch,
+                  ),
           ),
-          if (_selectedMatch != null)
-            _buildMatchPanel()
-          else if (_browsing)
-            _buildBrowseResults(),
-        ],
-      ),
+        ),
+        if (_selectedMatch != null)
+          _buildMatchPanel()
+        else if (_browsing)
+          _buildBrowseResults(),
+      ],
     );
   }
 
