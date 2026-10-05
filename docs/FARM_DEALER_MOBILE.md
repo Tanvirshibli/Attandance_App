@@ -137,7 +137,7 @@ The first product row is seeded in `_startCreating()` rather than `initState`, f
 | 1 | **Search existing farm** | tap to browse the zone, type to narrow |
 | 2 | **Visit type** | `regular_farm` (default) / `model_farm` / `other_farm` |
 | 3 | **Zone** | read-only, from the HRM profile |
-| 4 | **Parent dealer** | live `mkt_parties` dealer list, searchable |
+| 4 | **Parent dealer** | live `mkt_parties` dealer list **plus the ERP/Sales dealer master**, searchable; ERP entries are tagged `ERP` |
 | 5 | **Farm code** | read-only, server-allocated `FMR-…` |
 | 6 | **Farm name** `*` | seeded by the search; also written as the trade name |
 | 7 | **Phone** `*` | seeded by the search; live uniqueness check |
@@ -324,6 +324,7 @@ The farm visit report's **Zone** is read-only on the same terms, with one differ
 | Market | `MRK` | `GET /marketing/markets/next-code?prefix=MRK` |
 
 - **Allocated server-side under a row lock** (`mkt_marketing_code_sequences`, keyed by prefix + period). A client-side "highest existing + 1" collides the moment two officers open a form in the same second, and that is exactly what the endpoint exists to prevent.
+- **The exception is an existing ERP dealer.** When the dealer form's party type is *Existing dealer* and an ERP dealer is picked, that dealer's own `dealerCode` becomes the record's code verbatim — no sequence number is allocated, so the local outlet and the Sales master share one identifier. A dealer without a code (or any other record type) keeps the server-allocated path.
 - **`prefix` is a whitelist**, not free text, so the endpoint cannot be used to allocate arbitrary codes.
 - **Failure leaves the field empty** ("Unavailable — will save without one") rather than inventing a number on the device. `code` is nullable server-side; a missing code is far better than a duplicate.
 - **Markets keep their existing code on edit.** A saved market's `_effectiveCode` prefers `widget.market.code`, so a correction never renumbers a record people already reference.
@@ -379,7 +380,7 @@ The **Existing ERP dealer** field is a separate thing and has changed twice:
 
 | | Before | After (v2.5.0+97) |
 |---|---|---|
-| Farm form | always visible | **removed** — a farm has no ERP dealer, and the visible field only invited filing a farm against a demo row |
+| Farm form | always visible | **removed as a field** — the farm form's **Parent dealer** picker now lists the local dealers *and* the ERP/Sales master (ERP entries tagged `ERP`); picking an ERP dealer records its Sales id as the farm's `existing_dealer_id` |
 | Dealer form | always visible | **only when party type is Existing dealer** |
 | Source | `MarketingDemoMasters.dealers` — 3 hardcoded rows | live Sales master via `GET /marketing/dealers` |
 
@@ -517,7 +518,7 @@ Searchable company, **zone**, and sector (all **read-only from the employee's sc
 1. **Starts with a collapsible searchable existing-dealer lookup** (same pattern as `FarmFormScreen` — see [Search first](#search-first)): collapsed to one field, expands on tap, and collapses again on a second tap. The browse list shows local dealers plus any matching **ERP dealers**; tapping an ERP dealer attaches its Sales id and prefills the form. A local hit offers a visit report. **Add new dealer** is always shown at the bottom of the list — including when nothing matches — and reveals the form.
 2. Payload **requires** `employee_id` (plus `created_by_employee_id` / `owner_employee_id`).
 3. **Party type is no longer a field.** The form always creates a `dealer` and still sends `party_type: 'dealer'`. New versus existing is decided in the search above: an ERP dealer picked there is sent as `existing_dealer_id`, and a found local dealer offers a visit report instead.
-4. **Dealer code** is allocated server-side and read-only — see [Record codes](#record-codes).
+4. **Dealer code** is allocated server-side and read-only — see [Record codes](#record-codes). The one exception: an *Existing dealer* whose ERP dealer carries a `dealerCode` sends that code verbatim instead of allocating one.
 5. Fields after revealing the form, top to bottom: **zone** (read-only) → **company** → **dealer name** → **trade name** → **market** → **phone** → **alt phone** → **NID** → **trade license** → **email** → **gelender** (known person's name) → **contact person** → **owner name** → **address** / **notes**. **Sector is removed** from this screen; markets are listed directly rather than cascading from sector — see [Organisational selection](#organisational-selection).
 6. **Farm & Credit** section: `business_years`, `credit_limit`, **Customer type** (`dealer`, `direct_farm`, `others`, `all` — searchable dropdown, replaces `payment_mode`), **Business type** (`chicks`, `feed`, `fish`, `poultry_feed`, `all`, `others` — searchable dropdown, replaces `lead_status`).
 7. **Phone** is required for every party and unique within its pool — see [Phone uniqueness](#phone-uniqueness).
@@ -539,7 +540,7 @@ Check-in coords are auto-captured on form open (and retried on submit); no Check
 
 Opened from a farm record (**Post a visit**). Title is **Farm visit report**. One `createFarmSurvey` call; if `visit_id` is omitted the backend creates a completed `mkt_visits` row (`visit_type=survey`) with check-in GPS when sent.
 
-Read-only from the opened farm: farm name, owner, address, contact, **farming years**, **dealer name/address/contact** (from parent party — not editable). Date defaults to today (editable). Reporting officer is the logged-in profile name + designation.
+Read-only from the opened farm: farm name, owner, address, contact, **farming years**, **dealer name/address/contact** (from the parent party — not editable). A farm whose parent dealer lives only in the ERP shows that ERP dealer's name, address and contact instead, resolved from the Sales master the screen fetches; a farm with no parent at all leaves the three fields blank. Date defaults to today (editable). Reporting officer is the logged-in profile name + designation.
 
 Type-to-search autocomplete (`SearchableTextField`) for visit type, breed, DOC company, feed company, shed design, curtain, floor, territory, zone. Typed values are sent to existing string columns; suggestions from `marketing_demo_masters.dart`. Custom text allowed.
 
