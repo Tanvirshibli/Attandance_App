@@ -830,12 +830,23 @@ class _FarmFormScreenState extends State<FarmFormScreen> {
 
   /// Shared input decoration.
   ///
-  /// [hint] is rendered as a floating legend: it sits as the placeholder and
-  /// lifts above the field once the officer starts typing or focus lands, so
-  /// every input keeps its name visible while it is being filled.
-  InputDecoration _decoration({String? hint, String? errorText}) {
+  /// Caption for the next input, set by [_label] and consumed by [_decoration].
+  ///
+  /// These forms are read strictly top-to-bottom, so a caption always immediately
+  /// precedes the field it names. That lets the caption move *inside* the field
+  /// as a Material floating legend — shown as the placeholder, lifting above the
+  /// input on focus or fill — instead of sitting as a separate line above it.
+  /// [_sectionTitle] clears it so a section boundary can never leak a stale
+  /// caption into the first field below.
+  String? _pendingLabel;
+
+  InputDecoration _decoration({String? label, String? hint, String? errorText}) {
+    final legend = label ?? _pendingLabel ?? hint;
+    _pendingLabel = null;
     return InputDecoration(
-      labelText: hint,
+      labelText: legend,
+      // Keep the inline hint only when it adds something the legend does not.
+      hintText: hint == legend ? null : hint,
       floatingLabelBehavior: FloatingLabelBehavior.auto,
       errorText: errorText,
       filled: true,
@@ -847,20 +858,16 @@ class _FarmFormScreenState extends State<FarmFormScreen> {
     );
   }
 
+  /// Caption for the next input. It no longer draws a line above the field — the
+  /// text becomes that field's floating legend (see [_decoration]).
   Widget _label(String text) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: Text(
-        text,
-        style: AppType.meta.copyWith(
-          fontWeight: FontWeight.w500,
-          color: AppColors.inkMuted,
-        ),
-      ),
-    );
+    _pendingLabel = text;
+    return const SizedBox.shrink();
   }
 
   Widget _sectionTitle(String text) {
+    // A section boundary resets any caption the previous section left pending.
+    _pendingLabel = null;
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: Text(

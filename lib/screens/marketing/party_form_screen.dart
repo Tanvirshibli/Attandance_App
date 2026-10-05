@@ -143,6 +143,13 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
   final List<_ProductRow> _products = [];
   final List<XFile> _photos = [];
 
+  /// New dealer vs an existing ERP dealer. Choosing the latter reveals the ERP
+  /// picker and attaches existing_dealer_id to the saved row.
+  static const _dealerPartyTypes = [
+    (label: 'New dealer', value: 'dealer'),
+    (label: 'Existing dealer', value: 'outlet'),
+  ];
+
   static const _relationTypes = [
     'business',
     'uses',
@@ -661,12 +668,15 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
           TextField(
             controller: _search,
             focusNode: _searchFocusNode,
-            decoration: InputDecoration(
-              hintText: hasMatch
+            onTap: _onSearchTap,
+            onChanged: _onSearchChanged,
+            style: AppType.bodySm.copyWith(color: AppColors.ink),
+            decoration: _decoration(
+              hint: hasMatch
                   ? 'Dealer found — tap "Add new dealer" to create a new one'
                   : 'Tap to browse, or type a name, code or phone…',
-              prefixIcon: const Icon(Icons.search),
-              border: const OutlineInputBorder(),
+            ).copyWith(
+              prefixIcon: const Icon(Icons.search, size: 20),
               suffixIcon: _search.text.isEmpty
                   ? Icon(
                       _browsing ? Icons.arrow_drop_up : Icons.arrow_drop_down,
@@ -677,8 +687,6 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
                       onPressed: _resetSearch,
                     ),
             ),
-            onChanged: _onSearchChanged,
-            onTap: _onSearchTap,
           ),
           if (_selectedMatch != null)
             _buildMatchPanel()
@@ -1129,9 +1137,23 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
   }
 
-  InputDecoration _decoration({String? hint}) {
+  /// Caption for the next input, set by [_label] and consumed by [_decoration].
+  ///
+  /// These forms are read strictly top-to-bottom, so a caption always immediately
+  /// precedes the field it names. That lets the caption move *inside* the field
+  /// as a Material floating legend — shown as the placeholder, lifting above the
+  /// input on focus or fill — instead of sitting as a separate line above it.
+  /// [_sectionTitle] clears it so a section boundary can never leak a stale
+  /// caption into the first field below.
+  String? _pendingLabel;
+
+  InputDecoration _decoration({String? label, String? hint}) {
+    final legend = label ?? _pendingLabel;
+    _pendingLabel = null;
     return InputDecoration(
+      labelText: legend,
       hintText: hint,
+      floatingLabelBehavior: FloatingLabelBehavior.auto,
       filled: true,
       fillColor: AppColors.surfaceSunk,
       border: OutlineInputBorder(
@@ -1141,20 +1163,16 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
     );
   }
 
+  /// Caption for the next input. It no longer draws a line above the field — the
+  /// text becomes that field's floating legend (see [_decoration]).
   Widget _label(String text) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: Text(
-        text,
-        style: AppType.meta.copyWith(
-          fontWeight: FontWeight.w500,
-          color: AppColors.inkMuted,
-        ),
-      ),
-    );
+    _pendingLabel = text;
+    return const SizedBox.shrink();
   }
 
   Widget _sectionTitle(String text) {
+    // A section boundary resets any caption the previous section left pending.
+    _pendingLabel = null;
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: Text(
@@ -1196,13 +1214,51 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
                         _sectionTitle('Details'),
-                        // The new/existing choice now lives in the top search:
-                        // finding an existing dealer there offers a visit report
-                        // or an ERP attach, and "Add new dealer" reveals this
-                        // form. The record this form saves is always a new dealer.
-                        //
-                        // Allocated server-side so two officers opening this form
-                        // at the same moment cannot be handed the same code.
+                        // New dealer or an existing ERP dealer. The choice is
+                        // made here; picking an ERP dealer attaches its record,
+                        // so the saved row carries existing_dealer_id.
+                        _label('Party type'),
+                        DropdownButtonFormField<String>(
+                          initialValue: _partyType,
+                          decoration: _decoration(),
+                          items: _dealerPartyTypes
+                              .map(
+                                (t) => DropdownMenuItem(
+                                  value: t.value,
+                                  child: Text(t.label),
+                                ),
+                              )
+                              .toList(),
+                          onChanged: (v) {
+                            if (v == null) return;
+                            setState(() {
+                              _partyType = v;
+                              if (v != 'outlet') {
+                                _selectedExistingDealer = null;
+                              }
+                            });
+                            if (v == 'outlet' && _existingDealers.isEmpty) {
+                              _loadExistingDealers();
+                            }
+                          },
+                        ),
+                        const SizedBox(height: 14),
+                        if (_partyType == 'outlet') ...[
+                          SearchableSelectField<MarketingDealer>(
+                            label: 'Existing ERP dealer',
+                            icon: Icons.storefront_outlined,
+                            options: _existingDealers,
+                            selected: _selectedExistingDealer,
+                            displayString: (d) => d.displayName,
+                            searchText: (d) => d.searchText,
+                            subtitleFor: (d) =>
+                                d.subtitle.isEmpty ? null : d.subtitle,
+                            onSelected: _applyExistingDealer,
+                          ),
+                          const SizedBox(height: 14),
+                        ],
+                        // Allocated server-side at submit, so merely opening the
+                        // form never reserves a code.
                         ReadOnlyField(
                           label: 'Dealer code',
                           icon: Icons.qr_code_2_outlined,
@@ -1546,14 +1602,45 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
                                   VoiceTextField(
                                     controller: row.name,
                                     decoration: _decoration(
-                                      hint: 'Product name (required)',
+                                      label: 'Product name',
+                                    ),
+                                  ),
+                                  const SizedBox(height: 8),
+                                  SearchableSelectField<BookingFormCompany>(
+                                    key: ValueKey(
+                                      'product-company-${row.category?.id}',
+                                    ),
+                                    label: 'Product company',
+                                    icon: Icons.apartment_outlined,
+                                    options: _companiesForCategory(row.category),
+                                    selected: row.company,
+                                    displayString: (c) => c.displayName,
+                                    searchText: (c) =>
+                                        c.displayName.toLowerCase(),
+                                    onSelected: (c) =>
+                                        setState(() => row.company = c),
+                                  ),
+                                  const SizedBox(height: 8),
+                                  SearchableSelectField<BookingFormCompany>(
+                                    key: ValueKey(
+                                      'competitor-company-${row.category?.id}',
+                                    ),
+                                    label: 'Competitor company',
+                                    icon: Icons.handshake_outlined,
+                                    options: _companiesForCategory(row.category),
+                                    selected: row.competitorCompany,
+                                    displayString: (c) => c.displayName,
+                                    searchText: (c) =>
+                                        c.displayName.toLowerCase(),
+                                    onSelected: (c) => setState(
+                                      () => row.competitorCompany = c,
                                     ),
                                   ),
                                   const SizedBox(height: 8),
                                   DropdownButtonFormField<String>(
                                     initialValue: row.relationType,
                                     decoration: _decoration(
-                                      hint: 'Relation type',
+                                      label: 'Relation type',
                                     ),
                                     items: _relationTypes
                                         .map(
@@ -1581,54 +1668,23 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
                                         setState(() => row.unit = u),
                                   ),
                                   const SizedBox(height: 8),
-                                  SearchableSelectField<BookingFormCompany>(
-                                    key: ValueKey(
-                                      'product-company-${row.category?.id}',
-                                    ),
-                                    label: 'Product company',
-                                    icon: Icons.apartment_outlined,
-                                    options: _companiesForCategory(row.category),
-                                    selected: row.company,
-                                    displayString: (c) => c.displayName,
-                                    searchText: (c) =>
-                                        c.displayName.toLowerCase(),
-                                    onSelected: (c) =>
-                                        setState(() => row.company = c),
-                                  ),
-                                  const SizedBox(height: 8),
                                   VoiceTextField(
                                     controller: row.brand,
-                                    decoration: _decoration(hint: 'Brand name'),
+                                    decoration: _decoration(label: 'Brand name'),
                                   ),
                                   const SizedBox(height: 8),
                                   VoiceTextField(
                                     controller: row.demand,
                                     keyboardType: TextInputType.number,
                                     decoration: _decoration(
-                                      hint: 'Monthly product demand',
+                                      label: 'Monthly product demand',
                                     ),
                                   ),
                                   const SizedBox(height: 8),
                                   VoiceTextField(
                                     controller: row.unitPrice,
                                     keyboardType: TextInputType.number,
-                                    decoration: _decoration(hint: 'Unit price'),
-                                  ),
-                                  const SizedBox(height: 8),
-                                  SearchableSelectField<BookingFormCompany>(
-                                    key: ValueKey(
-                                      'competitor-company-${row.category?.id}',
-                                    ),
-                                    label: 'Competitor company',
-                                    icon: Icons.handshake_outlined,
-                                    options: _companiesForCategory(row.category),
-                                    selected: row.competitorCompany,
-                                    displayString: (c) => c.displayName,
-                                    searchText: (c) =>
-                                        c.displayName.toLowerCase(),
-                                    onSelected: (c) => setState(
-                                      () => row.competitorCompany = c,
-                                    ),
+                                    decoration: _decoration(label: 'Unit price'),
                                   ),
                                   const SizedBox(height: 8),
                                   SwitchListTile(
@@ -1644,7 +1700,7 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
                                   VoiceTextField(
                                     controller: row.notes,
                                     decoration: _decoration(
-                                      hint: 'Product notes',
+                                      label: 'Product notes',
                                     ),
                                   ),
                                   if (_products.length > 1)
