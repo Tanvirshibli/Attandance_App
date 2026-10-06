@@ -204,7 +204,7 @@ When `USE_SALES_DEMO_DATA=true`, Post Sale stays on-device demo only.
 | ----- | ----- |
 | `module` | `feed` or `chicks` |
 | `dealerId`, `categoryId`, `subCategoryId`, `childCategoryId`, `bookingPointId` | IDs |
-| `bookingPerson` | Feed: logged-in `canonicalEmployeeId` (intended `users.id` — often a mismatch). Chicks: matched `employeeList[].id` when setup-data lists the user |
+| `bookingPerson` | Feed: the officer's Sales **`users.id`**, resolved on load via `GET /api/v2/user/list?employeeId={canonicalEmployeeId}` (fallback `GET /api/v2/get-my-info`). Chicks: `GET /api/payment-setup-data` → `employeeList[].id`, matched on `employeeId` |
 | `bookingType` | `Sale` or `Sample` (web labels; not `regular`) |
 | `isBookingMoney` | `0` / `1` |
 | `discount`, `discountType` | `Discount` (percent) or `Flat Discount` |
@@ -213,6 +213,13 @@ When `USE_SALES_DEMO_DATA=true`, Post Sale stays on-device demo only.
 | `note` | optional header note |
 | `details[i][productId]`, `unitId`, `qty`, `price`, `note` | one or more lines (`unitId` from the product catalog, falling back to `1`) |
 | **Chicks only** | required `cZoneId`, `isMultiDelivery` (`0`/`1`); optional `deliveryDetails[i][name|phone|roadNo|address|productDetails]`; line `mrp` (defaults to sale price) |
+
+> **`bookingPerson` is a Sales id, never the HRM employee id.** The HRM id the app holds is
+> `users.employeeId`; the feed endpoint wants `users.id` (`Rule::exists('users','id')`) and chicks
+> wants `sales_employees_flat.id`. Sending the HRM id for feed is exactly what produced the bare
+> `{"message":"Validation failed."}` 422. The app now resolves the right id up front and, when it
+> cannot, blocks with a plain "sales account isn't linked" message instead of posting. A 422 body's
+> `errors` text is now surfaced (e.g. "Booking person is required.") rather than the generic message.
 
 #### ⚠️ `details[i][qty]` is **kg**, not bags — for feed
 
