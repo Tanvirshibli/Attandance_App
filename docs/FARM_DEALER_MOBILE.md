@@ -675,7 +675,7 @@ Parties carry no district of their own, so they inherit the district of the mark
 | Visits list | Filtered by zone id and name (no district available). |
 | Market + Party create forms | **Zone is read-only**, resolved from the profile and matched **by name** to the `get-zone` master. Company / market are the officer's own picks and are **not** zone-scoped — see [Organisational selection](#organisational-selection). Sector is no longer picked on the dealer (v2.5.3-beta.1) or market (v2.5.4) form. |
 | Party form market picker | On the dealer form: all markets from the context, listed directly (no sector cascade). |
-| Post sale / Post booking / Receive payment | Dealer dropdowns scoped to the employee's zones **by zone name**. Dealers with no zone are kept — the payload cannot say which zone they belong to. |
+| Post booking / Receive payment | Dealer dropdowns scoped to the employee's zones **by zone name**. Dealers with no zone are kept — the payload cannot say which zone they belong to. (Post sale entry disabled in app; contract unchanged.) |
 
 The market form previously had **no** profile prefill while the party form did; both now prefill the zone by name.
 

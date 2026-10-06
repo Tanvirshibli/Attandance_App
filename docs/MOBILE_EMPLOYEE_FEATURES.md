@@ -2,7 +2,7 @@
 
 Last updated: August 19, 2026
 
-This document describes the employee self-service modules in **Attandance_App**. HRM/ZKTeco APIs are wired where available. **Sales Info reporting and Post Sale create are live** when demo flags are off. **Auth-wise payment report and receive** use the sales host when `payment.enabled` is on. HRM loan/payslip screens still demo by default (see [SALES_AND_PAYMENTS_API_CONTRACT.md](SALES_AND_PAYMENTS_API_CONTRACT.md)).
+This document describes the employee self-service modules in **Attandance_App**. HRM/ZKTeco APIs are wired where available. **Sales Info reporting and Post booking create are live** when demo flags are off. **Post sale entry is temporarily disabled in the app** (screen + `sales-person-sales` contract kept dormant for reintegration). **Auth-wise payment report and receive** use the sales host when `payment.enabled` is on. HRM loan/payslip screens still demo by default (see [SALES_AND_PAYMENTS_API_CONTRACT.md](SALES_AND_PAYMENTS_API_CONTRACT.md)).
 
 ---
 
@@ -24,7 +24,7 @@ On **every cold start and when returning from background**, the app checks notif
 - Leave (single page: balance cards + history report + apply)
 - Payments (dealer auth-wise report + receive payment — live when `payment.enabled`)
 - HR Benefits (payslips, loans, PF, mess, compensation, post payment — demo by default)
-- Sales Info (live overall + module breakdown; Post sale with searchable dealer list)
+- Sales Info (live overall + module breakdown; Post booking with searchable dealer list; Post sale entry temporarily disabled)
 - Vehicles (fleet list → Maintenance / Trips per vehicle; unfiltered)
 - Farm & Dealer (hub **Farms, Dealers and Markets**; top-5 previews; farm visit report; follow-ups)
 - Geo Tracking (Google Maps; status only — no on/off toggle; auto-enabled after first-launch permissions; full-screen map with exit)
@@ -66,10 +66,10 @@ Geo tracking turns on automatically once these are granted (`GeoTrackingService.
 | Vehicle maintenance | Transport `GET /api/get-vehicle-m-history/{id}` (no auth) | **Live** |
 | Vehicle trips | Transport `GET /api/get-trips-list` (no auth; `vehicle_id` query + client filter) | **Live** |
 | Farm & Dealer (marketing) | ZKTeco `/api/v1/mobile/marketing/*` (no JWT; `employee_id` = `canonicalEmployeeId`) | **Wired** (requires `marketing.enabled=true`) |
-| Post sale / booking | Sales `POST /api/sales-person-sales` (egg, fertilizer, liveBird, cullBird) or `POST /api/booking-person-books` (feed, chicks) | **Live** when `USE_SALES_DEMO_DATA=false`; dealers from `GET /api/all-dealer-lists`; booking masters from `GET /api/booking-person-books/form-data` |
+| Post booking | Sales `POST /api/booking-person-books` (feed, chicks) | **Live** when `USE_SALES_DEMO_DATA=false`; dealers from `GET /api/all-dealer-lists`; booking masters from `GET /api/booking-person-books/form-data` (Post sale entry disabled in app; `POST /api/sales-person-sales` contract unchanged) |
 | Auth-wise payment post | Sales `POST /api/auth-wise-payments` (form-data, `payments[]` ADD/SAVE queue) | **Live** when `payment.enabled=true`; setup from `GET /api/payment-setup-data`; dealers from `GET /api/all-dealer-lists` |
 | Payment setup lists | Sales `GET /api/payment-setup-data` | **Live** (banks, receivers, payment types) |
-| All dealer lists | Sales `GET /api/all-dealer-lists` | **Live** (module-filtered searchable dropdown on Post sale) |
+| All dealer lists | Sales `GET /api/all-dealer-lists` | **Live** (module-filtered searchable dropdown on Post booking) |
 | Geo location upload | ZKTeco `POST /api/v1/mobile/geo-location` | **Wired** |
 | App endpoint config | ZKTeco `GET /api/v1/mobile/app-config` | **Wired** |
 | Holidays | HRM `GET /api/v1/mobile/holidays` | **Wired** |
@@ -87,9 +87,9 @@ Handoff for backend teams: **[SALES_AND_PAYMENTS_API_CONTRACT.md](SALES_AND_PAYM
 - Overall KPIs: orders, returns, net/gross sales, net qty
 - Module tabs: Egg | Feed | Fertilizer | Chicks | Live Bird | Cull Bird
 - Per module: summary, Products / Dealers / Sectors, line details
-- **Post sale / booking** FAB opens a sheet:
+- **Post booking** FAB opens `PostBookingScreen` directly:
   - **Post booking** (`PostBookingScreen`) — Feed vs Chicks layouts matching sales web create pages: booking point, feed category cascade, Sale/Sample, dealer (feed list), booking-money + advance, multi-line products, Discount / Flat Discount, chicks **Zone** dropdown from `GET /api/all-dealer-lists` `data.zoneList` (POSTs `cZoneId`) + multi-delivery. POST `booking-person-books` with `Sale`/`Sample` and `Discount`/`Flat Discount`.
-  - **Post sale** (`PostSaleScreen`) — egg / fertilizer / live bird / cull bird order form (`sales-person-sales`).
+  - **Post sale** (`PostSaleScreen`) — temporarily disabled in the app (not reachable from Sales Info); screen + `sales-person-sales` contract kept dormant for reintegration.
 - Receive payment (`PostAuthWisePaymentScreen`) matches the sales web create page: Payment For, rec type, cascading dealer/employee receiver, invoice type, payment mode extras, ADD queue, SAVE. POST maps `paymentMode` 1–8, `paymentType` = bank id, `paymentFor` = type list, dealer vs `employeeId` receivers.
 - Force reporting demo: `--dart-define=USE_SALES_DEMO_DATA=true`
 - Override sales host: `--dart-define=SALES_API_BASE_URL=...`
@@ -129,7 +129,7 @@ Handoff for backend teams: **[SALES_AND_PAYMENTS_API_CONTRACT.md](SALES_AND_PAYM
 - Multi-zone employees see the **union** of every assigned zone — there is no active-zone switcher. The marketing hub names the zones above the previews
 - Rows are matched on zone id, zone **name**, or the districts of an assigned zone, so records created before zone tagging (`zone_id` NULL) are not hidden
 - Zone ids are never compared across systems; only names are
-- Post sale / Post booking / Receive payment dealer lists are scoped by zone name
+- Post booking / Receive payment dealer lists are scoped by zone name
 - No zones assigned, or the zone master unreachable → lists render unfiltered, as before
 - See [FARM_DEALER_MOBILE.md](FARM_DEALER_MOBILE.md#zone-scoping)
 
@@ -143,7 +143,7 @@ Handoff for backend teams: **[SALES_AND_PAYMENTS_API_CONTRACT.md](SALES_AND_PAYM
 
 - Receive payment follows the sales web create page (not the Quick Setting modal): labeled Payment For / rec type / receiver / invoice type / payment mode extras, ADD then SAVE
 - POST fields aligned with web/DB: `paymentMode` 1–8, `paymentType` = bank id, `paymentFor` = type list; dealer vs employee `receiverId`
-- Post booking is a separate screen (Feed vs Chicks); Post sale is egg/fertilizer/liveBird/cullBird only
+- Post booking is a separate screen (Feed vs Chicks); Post sale entry is disabled in the app (egg/fertilizer/liveBird/cullBird contract kept dormant for reintegration)
 
 ### Vehicles fleet hub (v2.2.3+48)
 

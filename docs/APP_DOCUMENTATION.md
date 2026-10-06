@@ -239,8 +239,8 @@ AttendEaseApp
                               │   ├─ PostPaymentScreen / PaymentReportScreen
                               │   └─ ProvidentFundScreen / MessDepositScreen / CompensationScreen
                               ├─ SalesInfoScreen (overview + own postings)
-                              │   ├─ PostBookingScreen (feed / chicks)
-                              │   └─ PostSaleScreen (egg / fertilizer / liveBird / cullBird)
+                              │   └─ PostBookingScreen (feed / chicks)
+                              │       (PostSaleScreen, egg / fertilizer / liveBird / cullBird — entry temporarily disabled; screen kept dormant)
                               └─ GeoTrackingScreen
 ```
 

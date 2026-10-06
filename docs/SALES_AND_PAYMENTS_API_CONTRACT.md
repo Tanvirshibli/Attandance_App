@@ -3,7 +3,7 @@
 **Last updated:** August 15, 2026  
 **Audience:** External sales backend team · pphl_erp (HRM) · ZKTeco Mobile App API admins  
 **App:** `Attandance_App` (Flutter)  
-**Status:** **Sales Info reporting and Post Sale create are live** against `https://sales.peoplesitsolution.online` when `USE_SALES_DEMO_DATA=false` (default). **Auth-wise payment POST** is live when `payment.enabled` is on. HRM loan/payslip screens still demo by default (`USE_PAYMENT_DEMO_DATA=true`).
+**Status:** **Sales Info reporting and Post booking create are live** against `https://sales.peoplesitsolution.online` when `USE_SALES_DEMO_DATA=false` (default). **Post sale entry is temporarily disabled in the app** — the `POST /api/sales-person-sales` contract below is unchanged and kept dormant for reintegration. **Auth-wise payment POST** is live when `payment.enabled` is on. HRM loan/payslip screens still demo by default (`USE_PAYMENT_DEMO_DATA=true`).
 
 ---
 
@@ -13,7 +13,7 @@
 | Module   | Compile-time flag                           | Default        | Live requirement                                      |
 | -------- | ------------------------------------------- | -------------- | ----------------------------------------------------- |
 | Sales reporting | `--dart-define=USE_SALES_DEMO_DATA=true` | `false` (live) | Person-sales GET + HRM eligibility list               |
-| Sales create (Post sale) | `--dart-define=USE_SALES_DEMO_DATA=true` | `false` (live) | `POST /api/sales-person-sales` (egg, fertilizer, liveBird, cullBird) or `POST /api/booking-person-books` (feed, chicks) |
+| Sales create (Post booking) | `--dart-define=USE_SALES_DEMO_DATA=true` | `false` (live) | `POST /api/booking-person-books` (feed, chicks). `POST /api/sales-person-sales` (egg, fertilizer, liveBird, cullBird) contract unchanged; Post sale entry disabled in app pending reintegration |
 | Payments | `--dart-define=USE_PAYMENT_DEMO_DATA=false` | `true` (demo)  | Existing pphl_erp JWT APIs + ZKTeco `payment.enabled` |
 
 
@@ -41,7 +41,7 @@ Person-sales reporting uses **no Authorization header**.
 
 
 
-## Part A — Sales (live person-sales + demo Post Sale)
+## Part A — Sales (live person-sales + live Post booking; Post sale entry disabled)
 
 HRM eligibility gate (JWT):
 
@@ -578,7 +578,7 @@ App config key: `payment.setupData`.
 
 **App mapping (v2.2.3+43):** Payment For → `paymentFor`; Payment Mode enum → `paymentMode` 1–8; Payment Type (bank) → `paymentType`; Dealer receiver → dealer id; Employee receiver → `employeeList[].employeeId`. Banks cannot be split cash/mobile (setup-data has no `isCash` / `isMobileBanking`).
 
-### C.3 All dealer lists (Post sale / Post booking Zone)
+### C.3 All dealer lists (Post booking Zone; Post sale dormant)
 
 `GET {SALES_API_BASE_URL}/api/all-dealer-lists` — **no auth**.
 
@@ -586,7 +586,7 @@ App config key: `sales.allDealers`.
 
 **Success shape:** `data.eggDealList`, `feedDealList`, `fertilizerDealList`, `liveBirdDealList`, `wastageDealList` — each item includes `id`, `tradeName`, `dealerCode`, `zoneName`, etc. Dealer rows may also include nested `zone: { id, zoneName }`.
 
-> **v2.3.0+92:** Dealer dropdowns in Post sale, Post booking and Receive payment are scoped to the employee's zones, matched on the **flat `zoneName` string**. The nested `zone.id` is deliberately ignored — zone ids are assigned independently by HRM, Sales and ZKTeco, so an id from one system is not an id in another. Dealers with no `zoneName` are kept, since the payload cannot say which zone they belong to.
+> **v2.3.0+92:** Dealer dropdowns in Post booking and Receive payment are scoped to the employee's zones, matched on the **flat `zoneName` string**. The nested `zone.id` is deliberately ignored — zone ids are assigned independently by HRM, Sales and ZKTeco, so an id from one system is not an id in another. Dealers with no `zoneName` are kept, since the payload cannot say which zone they belong to.
 
 **`data.zoneList` (v2.2.3+44):** array of `{ "id": 11, "zoneName": "Live Bird (Dhaka)" }`. Post Booking → Chicks shows a searchable **Zone** dropdown from this list and POSTs the selected `id` as `cZoneId`. There is no numeric Zone ID fallback. Until the sales server deploys `zoneList`, the dropdown is empty and chicks booking cannot be posted.
 
