@@ -150,11 +150,11 @@ All API calls are **direct HTTP** — no extra middleware layer:
 
 *Figure 3: Location is captured on a schedule or manually, queued offline if needed, then posted to ZKTeco.*
 
-### 4.5 Sales Info (Live reporting + demo Post Sale)
+### 4.5 Sales Info (Live reporting + Post booking; Post sale entry disabled)
 
 - Live `GET /api/sales-person-sales/{employeeId}` (no auth) with overall + module tabs (egg/feed/fertilizer/chicks/liveBird/cullBird)  
 - Date presets map to `from_date` / `to_date`; HRM eligibility list gates access  
-- **Post sale** form remains demo until a create API exists (`USE_SALES_DEMO_DATA` default `false` for reporting only)  
+- **Post sale** entry is temporarily disabled in the app (screen + `sales-person-sales` contract kept dormant for reintegration); **Post booking** stays live (`USE_SALES_DEMO_DATA` default `false` for reporting only)  
 - Contract: [SALES_AND_PAYMENTS_API_CONTRACT.md](SALES_AND_PAYMENTS_API_CONTRACT.md)  
 
 ### 4.6 Payments hub (Demo → live)
