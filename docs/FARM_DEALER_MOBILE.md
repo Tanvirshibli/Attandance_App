@@ -95,7 +95,7 @@ The hub is a **three-tab page**: Farms, Dealers, Markets. Farms is selected on o
 
 `PartyFormScreen` used to render **both** farm and dealer, split by a single `_isFarm` boolean, so every field change on the farm side moved a control on the dealer side and vice versa. Farm collection has its own field set and its own order now, so it gets its own widget class, its own `_FarmProductRow`, and its own state.
 
-**As of v2.5.3-beta.1**, the dealer form has been **restructured** to mirror the `FarmFormScreen` pattern — it opens on a searchable existing-dealer lookup before revealing the form below. The market form adopted the same lookup-first pattern in **v2.5.3-beta.1+9016**. Only the leaf widgets are shared — `SearchableSelectField`, `ReadOnlyField`, `VoiceTextField`, the `AppCard` / `AppHeader` kit, and the marketing services. The parent form's layout code is not reused, which is the point.
+**As of v2.5.3-beta.1**, the dealer form has been **restructured** to mirror the `FarmFormScreen` pattern — it opens on a searchable existing-dealer lookup before revealing the form below. The market form adopted the same lookup-first pattern in **v2.5.3-beta.1+9016**, and as of **v2.5.4** opens with the form already visible (search bar above it), exactly like the farm and dealer forms. Only the leaf widgets are shared — `SearchableSelectField`, `ReadOnlyField`, `VoiceTextField`, the `AppCard` / `AppHeader` kit, and the marketing services. The parent form's layout code is not reused, which is the point.
 
 ### Search first
 
@@ -229,8 +229,10 @@ Each company carries `hasSectors`. Sectors are still read live from the Sales or
 
 The app also enforces this itself: `MarketingMasterService.sectorsForCompany` returns an empty list for a `source: manual` company rather than matching the `companyId` edge. Local and Sales ids are assigned independently, so a shared number — curated id 1 next to Sales id 1 — must not hand a Sales sector to a curated company.
 
-- **Market form** — sector is required, so the field is **hidden** when the chosen company has no sectors. Leaving an empty required field on screen would dead-end the form at submit with nothing the officer could do. `sector_id` / `sector_name` are simply omitted from the payload.
-- **Dealer form** — sector was already optional; unchanged.
+The only screen that still picks a sector is the **visit form** (`SharedVisitFormScreen`).
+
+- **Market form** — sector was **removed** in v2.5.4. `sector_id` / `sector_name` are omitted from the payload.
+- **Dealer form** — sector was already gone; unchanged.
 - **Farm form** — no sector field since v2.5.4.
 
 `BookingFormCompany.hasSectors` defaults to `true`, so a response missing the flag shows the picker rather than hiding a working one on a bad or older payload.
@@ -256,7 +258,7 @@ Both drop the cached context list, so the change is visible on the next app cold
 
 ## Organisational selection
 
-**v2.5.2+99.** The dealer, farm and market forms show the logged-in officer's **zone read-only**, and let the officer pick their own **company**, then **sector**, then **market**. The zone does not narrow any of them.
+**v2.5.2+99.** The dealer, farm and market forms show the logged-in officer's **zone read-only** and let the officer pick their own **company**. The zone does not narrow it.
 
 ### Why
 
@@ -270,14 +272,14 @@ That whole mechanism is now retired. Mirroring zones, companies and sectors from
 |---|---|---|
 | Zone | HRM profile `zoneId` → Sales `get-zone` | Read-only. A fact about who is filing the record. |
 | Company | ZKTeco `GET /marketing/context` (curated master + Sales gaps), falling back to the Sales `form-data` list | **Required.** The officer picks it. |
-| Sector | N/A on the dealer form — **removed** in v2.5.3-beta.1. Still present on the market form (`MarketFormScreen`). Sales `form-data` sectors, filtered by the chosen company's `companyId` | Not applicable to dealers; optional on a market. |
-| Market | `mkt_markets`, listed directly on the dealer form (no sector cascade); still cascades from sector on the market form | Optional. |
+| Sector | Removed from every create form (dealer in v2.5.3-beta.1, market in v2.5.4). The visit form is the only one left that picks one. | Not applicable to a market. |
+| Market | `mkt_markets`, listed directly on the dealer form | Optional. |
 
-On the dealer form company and market are picked independently — selecting a company does not narrow the market list. On the market form the cascade remains company → sector → market. Changing the company still clears the market on the dealer form.
+On the dealer form company and market are picked independently — selecting a company does not narrow the market list, and changing the company clears the market. The market form picks a company only; it has no cascade.
 
 The sector list follows the **real** `companyId` edge Sales ships on every sector row (`BookingPersonWiseBookingsService::getChicksSectorList`, `getFeedSalesPointList`). The app never guesses a company from a name — that was the old bug.
 
-`MarketingMasterService` (`lib/services/marketing_master_service.dart`) holds the company, sector and market lists, cached for 24 h. `filterSectorsForCompany` and `filterMarketsForSector` are static and pure so the cascade is unit-tested without a network round-trip. `marketsForSector(null)` returns the full unfiltered market list, which the dealer form loads up-front.
+`MarketingMasterService` (`lib/services/marketing_master_service.dart`) holds the company, sector and market lists, cached for 24 h. `filterSectorsForCompany` and `filterMarketsForSector` are static and pure so the cascade is unit-tested without a network round-trip. `marketsForSector(null)` returns the full unfiltered market list, which the dealer form loads up-front; `sectorsForCompany` is now used only by the visit form.
 
 ### Why the zone stopped filtering
 
@@ -300,14 +302,14 @@ The app posts `company_name` and `sector_name` alongside the ids. The webapp rep
 | Zone resolves | Shown read-only, filed with the record |
 | Zone does not resolve | *"Not set — ask an admin to set your zone"*, and submit is blocked |
 | Company not picked | Submit blocked with a clear message |
-| Sector / market not picked | Key omitted from the payload |
+| Market not picked | Key omitted from the payload |
 | Org master unreachable | Empty picker rather than a hung form |
 
 ### Rendering
 
 `ReadOnlyField` (`lib/widgets/ui/read_only_field.dart`) still renders the **Zone**, the server-allocated **Code**, and a farm's **Party type**: a sunk `AppColors.surfaceSunk` box, `AppColors.inkFaint` text, **no mic**, **no tap handler**, and a small `Icons.lock_outline` suffix. A `SearchableSelectField` with `enabled: false` would still render as something tappable; this renders as a settled fact.
 
-Company, sector and market are `SearchableSelectField`s. Sector stays disabled with the hint *"Pick a company first"* until a company is chosen, and market stays disabled with *"Pick a sector first"* until a sector is — so the cascade is visible before the officer touches anything.
+Company and market are `SearchableSelectField`s. The market form offers only a company; on the dealer form the two are picked independently, with no cascade between them.
 
 The farm visit report's **Zone** is read-only on the same terms, with one difference: **the farm's own zone wins** when it has one (the report is about that farm, not the officer), falling back to the officer's zone for a farm created before zone tagging.
 
@@ -507,7 +509,7 @@ Server-generated `public_id` / `visit_no` stay off create forms. Visit `client_u
 
 ### Create / edit market (market survey)
 
-Searchable company, **zone**, and sector (all **read-only from the employee's scope** since v2.4.0+94); status `active` / `inactive`; name, **phone** (required + unique), **code** (allocated, read-only), geo address fields, notes, and a photo gallery. Market-intelligence fields: `feed_share_percent`, `chicks_share_percent`, `product_types` (multi-select chips), `feed_dealer_count`, `chicks_dealer_count`, `broiler_farm_count`, `layer_farm_count`, `color_farm_count`, `cock_farm_count`, plus dynamic **competitor rows** (`name` + `share_percent`). On open, app auto-fills `lat`/`lng` and best-effort geo/address from reverse geocode (editable). No Capture GPS button. → `POST /markets` create; **Edit market** on the detail screen → `PUT /markets/{id}` (partial fields; `updated_by_employee_id` stamped). There is **no market-visit flow** — markets are records, not visits.
+**v2.5.4.** Opens **search-first with the form already visible** — the same top search bar and sunk results panel as the Add Farm and Add Dealer screens — so the officer can find an existing market or file a new one without a separate lookup step. Picks a searchable **company** and shows the **zone** read-only; status `active` / `inactive`; name, **phone** (required + unique), **code** (allocated, read-only), geo address fields, notes, and a photo gallery. **No sector** (removed in v2.5.4). Market-intelligence fields: `feed_share_percent`, `chicks_share_percent`, `product_types` (multi-select chips), `feed_dealer_count`, `chicks_dealer_count`, `broiler_farm_count`, `layer_farm_count`, `color_farm_count`, `cock_farm_count`, plus dynamic **competitor rows** (`name` + `share_percent`). On open, app auto-fills `lat`/`lng` and best-effort geo/address from reverse geocode (editable). No Capture GPS button. → `POST /markets` create; **Edit market** on the detail screen → `PUT /markets/{id}` (partial fields; `updated_by_employee_id` stamped). There is **no market-visit flow** — markets are records, not visits.
 
 > **Market photos (v2.4.0+94).** Uploads use `attachable_type=market`. This required widening the backend whitelist — `MktMarket` already declared an `attachments()` morph relation, but the type was rejected by validation.
 
@@ -671,8 +673,8 @@ Parties carry no district of their own, so they inherit the district of the mark
 | Marketing hub previews | Farms, dealers and markets, each the union of every assigned zone. A strip above them names the zones and lists their districts. |
 | Markets / Parties list screens | Full lists, filtered. An empty result names the zones rather than looking like a loading bug. |
 | Visits list | Filtered by zone id and name (no district available). |
-| Market + Party create forms | **Zone is read-only**, resolved from the profile and matched **by name** to the `get-zone` master. Company / market are the officer's own picks and are **not** zone-scoped — see [Organisational selection](#organisational-selection). Sector is no longer picked on the dealer form as of v2.5.3-beta.1. |
-| Party form market picker | On the dealer form: all markets from the context, listed directly (no sector cascade). On the market form: markets belonging to the chosen sector. |
+| Market + Party create forms | **Zone is read-only**, resolved from the profile and matched **by name** to the `get-zone` master. Company / market are the officer's own picks and are **not** zone-scoped — see [Organisational selection](#organisational-selection). Sector is no longer picked on the dealer (v2.5.3-beta.1) or market (v2.5.4) form. |
+| Party form market picker | On the dealer form: all markets from the context, listed directly (no sector cascade). |
 | Post sale / Post booking / Receive payment | Dealer dropdowns scoped to the employee's zones **by zone name**. Dealers with no zone are kept — the payload cannot say which zone they belong to. |
 
 The market form previously had **no** profile prefill while the party form did; both now prefill the zone by name.

@@ -109,7 +109,7 @@ Handoff for backend teams: **[SALES_AND_PAYMENTS_API_CONTRACT.md](SALES_AND_PAYM
 - Farm record: visit-report list + **Post a visit** (paper farm visit report). Dealer record: visit list + **Post a visit** (stock/order visit form). Market record: parties in that market
 - Create forms collect the **full Phase-1 field set** the current marketing API accepts (v2.2.3+59). Farm visit report paper fields ship in **v2.2.3+60**. ID fields are type-to-search (`SearchableSelectField`)
 - Live lists for `market_id` / parent party / `dealer_party_id` / `visit_id` (FK-checked). Demo catalog for ERP dealer, product, unit, assigned employee, breed, DOC/feed, shed, territory, and zone until live master APIs exist
-- Party create: `employee_id` required; **Company/Sector** from Sales `GET /api/booking-person-books/form-data` (demo fallback if empty); farms can link parent dealer; products, photos
+- Party create: `employee_id` required; **Company** from Sales `GET /api/booking-person-books/form-data` (demo fallback if empty); farms can link parent dealer; products, photos
 - Create forms **auto-fill GPS + address** (no Capture GPS / Check-in GPS buttons); dealer visits start `in_progress` with auto check-in; farm visit report auto-creates a completed survey visit when `visit_id` is omitted
 - ZKTeco `/api/v1/mobile/marketing/*` including `GET /farm-surveys/{id}` and `visits/{id}/check-in|check-out` (no JWT); flag `marketing.enabled`
 - Attachments stay photos only (`photos[]`). See [FARM_DEALER_MOBILE.md](FARM_DEALER_MOBILE.md) for endpoint keys and payloads
