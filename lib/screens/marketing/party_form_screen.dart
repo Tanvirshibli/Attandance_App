@@ -722,87 +722,117 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
     final query = _search.text.trim();
     final isEmpty = visible.isEmpty && erp.isEmpty;
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        if (isEmpty)
-          _searchNotice(
-            icon: Icons.search_off,
-            text: query.isEmpty
-                ? 'No dealers have been recorded yet.'
-                : 'No dealers match "$query".',
-          ),
-        if (visible.isNotEmpty) ...[
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            child: Text(
-              '${visible.length} dealer${visible.length == 1 ? '' : 's'} found',
-              style: const TextStyle(
-                fontSize: 12,
-                color: AppColors.inkMuted,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ),
-          ListView.separated(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            itemCount: visible.length,
-            separatorBuilder: (_, _) => const Divider(height: 1),
-            itemBuilder: (_, i) => _dealerRow(visible[i]),
-          ),
-        ],
-        if (erp.isNotEmpty) ...[
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-            child: Text(
-              '${erp.length} from the ERP dealer master',
-              style: const TextStyle(
-                fontSize: 12,
-                color: AppColors.inkMuted,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ),
-          ListView.separated(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            itemCount: erp.length,
-            separatorBuilder: (_, _) => const Divider(height: 1),
-            itemBuilder: (_, i) => _erpDealerRow(erp[i]),
-          ),
-        ],
-        const SizedBox(height: 8),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          child: FilledButton.icon(
-            onPressed: _startCreating,
-            icon: const Icon(Icons.add, size: 18),
-            label: const Text('Add new dealer'),
-          ),
+    if (isEmpty) {
+      return _searchNotice(
+        icon: Icons.search_off,
+        tone: AppColors.inkMuted,
+        title: 'No dealer found',
+        detail: query.isEmpty
+            ? 'No dealers have been recorded yet.'
+            : 'Nothing matches "$query".',
+        action: FilledButton.icon(
+          onPressed: _startCreating,
+          icon: const Icon(Icons.add, size: 18),
+          label: const Text('Add new dealer'),
         ),
-      ],
+      );
+    }
+
+    final total = _dealers.length + _existingDealers.length;
+    final matched = visible.length + erp.length;
+
+    return Container(
+      margin: const EdgeInsets.only(top: 12),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceSunk,
+        borderRadius: BorderRadius.circular(AppRadius.md),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 10, 8, 6),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    query.isEmpty
+                        ? '$matched dealer${matched == 1 ? '' : 's'} found'
+                        : '$matched of $total dealer${total == 1 ? '' : 's'} match',
+                    style: AppType.meta.copyWith(
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.inkMuted,
+                    ),
+                  ),
+                ),
+                TextButton.icon(
+                  onPressed: _startCreating,
+                  icon: const Icon(Icons.add, size: 18),
+                  label: const Text('Add new dealer'),
+                ),
+              ],
+            ),
+          ),
+          const Divider(height: 1),
+          if (visible.isNotEmpty)
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxHeight: 260),
+              child: ListView.builder(
+                shrinkWrap: true,
+                primary: false,
+                padding: EdgeInsets.zero,
+                itemCount: visible.length,
+                itemBuilder: (_, i) => _dealerRow(visible[i]),
+              ),
+            ),
+          if (erp.isNotEmpty) ...[
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
+              child: Text(
+                '${erp.length} from the ERP dealer master',
+                style: AppType.meta.copyWith(color: AppColors.inkMuted),
+              ),
+            ),
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxHeight: 260),
+              child: ListView.builder(
+                shrinkWrap: true,
+                primary: false,
+                padding: EdgeInsets.zero,
+                itemCount: erp.length,
+                itemBuilder: (_, i) => _erpDealerRow(erp[i]),
+              ),
+            ),
+          ],
+        ],
+      ),
     );
   }
 
   /// A single row in the browse list.
   Widget _dealerRow(Party dealer) {
     return ListTile(
-      leading: CircleAvatar(
-        backgroundColor: AppColors.primary.withValues(alpha: 0.15),
-        child: const Icon(Icons.storefront_outlined, color: AppColors.primary),
-      ),
+      dense: true,
       title: Text(
         dealer.displayName,
+        style: AppType.bodySm,
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
       ),
       subtitle: Text(
-        '${dealer.code ?? ''} • ${dealer.phone ?? ''}',
+        [dealer.code, dealer.phone]
+            .where((p) => p != null && p.trim().isNotEmpty)
+            .join(' · '),
+        style: AppType.meta.copyWith(color: AppColors.inkMuted),
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
       ),
-      trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+      trailing: const Icon(
+        Icons.chevron_right,
+        size: 20,
+        color: AppColors.inkFaint,
+      ),
       onTap: () {
         setState(() => _selectedMatch = dealer);
         _searchFocusNode.unfocus();
@@ -815,21 +845,24 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
   /// went — one place in the search decides new versus existing.
   Widget _erpDealerRow(MarketingDealer dealer) {
     return ListTile(
-      leading: CircleAvatar(
-        backgroundColor: AppColors.primary.withValues(alpha: 0.15),
-        child: const Icon(Icons.business_outlined, color: AppColors.primary),
-      ),
+      dense: true,
       title: Text(
         dealer.displayName,
+        style: AppType.bodySm,
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
       ),
       subtitle: Text(
         dealer.subtitle.isEmpty ? 'ERP dealer' : dealer.subtitle,
+        style: AppType.meta.copyWith(color: AppColors.inkMuted),
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
       ),
-      trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+      trailing: const Icon(
+        Icons.chevron_right,
+        size: 20,
+        color: AppColors.inkFaint,
+      ),
       onTap: () => _useErpDealer(dealer),
     );
   }
@@ -844,7 +877,8 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
   }
 
   /// Panel shown when a dealer match is tapped — shows what was found and
-  /// offers a visit report or the option to create a new one anyway.
+  /// offers a visit report or the option to create a new one anyway. Uses the
+  /// success-toned [_searchNotice] banner, matching the Add Farm screen.
   Widget _buildMatchPanel() {
     final match = _selectedMatch!;
     final code = match.code;
@@ -852,41 +886,37 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
     final zone = match.zoneName;
     final market = match.marketName;
 
-    return Padding(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
+    return _searchNotice(
+      icon: Icons.check_circle_outline,
+      tone: AppColors.success,
+      title: 'Dealer already exists',
+      detail: match.name,
+      action: null,
+      extra: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            match.displayName,
-            style: TextStyle(
-              fontWeight: FontWeight.bold,
-              fontSize: 16,
-              color: AppColors.primary,
-            ),
-          ),
-          const SizedBox(height: 8),
           if (code != null && code.isNotEmpty)
-            _matchLine(Icons.qr_code_2_outlined, 'Code: $code'),
+            _matchLine(Icons.qr_code_2_outlined, code),
           if (phone != null && phone.isNotEmpty)
-            _matchLine(Icons.phone_outlined, 'Phone: $phone'),
+            _matchLine(Icons.phone_outlined, phone),
           if (market != null && market.isNotEmpty)
-            _matchLine(Icons.store_mall_directory, 'Market: $market'),
+            _matchLine(Icons.store_mall_directory, market),
           if (zone != null && zone.isNotEmpty)
-            _matchLine(Icons.map_outlined, 'Zone: $zone'),
-          const SizedBox(height: 16),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
+            _matchLine(Icons.map_outlined, zone),
+          const SizedBox(height: 12),
+          Row(
             children: [
-              TextButton.icon(
-                onPressed: () => _postVisit(match),
-                icon: const Icon(Icons.post_add),
-                label: const Text('Post a visit report'),
+              Expanded(
+                child: FilledButton.icon(
+                  onPressed: () => _postVisit(match),
+                  icon: const Icon(Icons.assignment_outlined, size: 18),
+                  label: const Text('Post a visit report'),
+                ),
               ),
-              TextButton.icon(
+              const SizedBox(width: 8),
+              OutlinedButton(
                 onPressed: _resetSearch,
-                icon: const Icon(Icons.refresh),
-                label: const Text('Cancel'),
+                child: const Text('Cancel'),
               ),
             ],
           ),
@@ -901,50 +931,83 @@ class _PartyFormScreenState extends State<PartyFormScreen> {
     );
   }
 
-  Widget _matchLine(IconData icon, String text) => Padding(
-        padding: const EdgeInsets.symmetric(vertical: 2),
-        child: Row(
-          children: [
-            Icon(icon, size: 15, color: AppColors.inkMuted),
-            const SizedBox(width: 6),
-            Expanded(
-              child: Text(
-                text,
-                style: TextStyle(
-                  fontSize: 12,
-                  color: AppColors.inkMuted,
-                ),
-              ),
-            ),
-          ],
-        ),
-      );
-
-  /// A thin coloured banner used for notices inside the search flow.
-  Widget _searchNotice({IconData? icon, required String text}) {
-    return Container(
-      margin: const EdgeInsets.fromLTRB(16, 8, 16, 12),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      decoration: BoxDecoration(
-        color: AppColors.primary.withValues(alpha: 0.08),
-        borderRadius: BorderRadius.circular(6),
-      ),
+  Widget _matchLine(IconData icon, String text) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 4),
       child: Row(
         children: [
-          if (icon != null) ...[
-            Icon(icon, size: 16, color: AppColors.primary),
-            const SizedBox(width: 8),
-          ],
+          Icon(icon, size: 15, color: AppColors.inkFaint),
+          const SizedBox(width: 6),
           Expanded(
             child: Text(
               text,
-              style: TextStyle(
-                fontSize: 12,
-                color: AppColors.primary,
-              ),
+              style: AppType.meta.copyWith(color: AppColors.inkMuted),
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  /// A coloured banner used for notices inside the search flow, matching the
+  /// styling on the Add Farm screen.
+  Widget _searchNotice({
+    required IconData icon,
+    required Color tone,
+    required String title,
+    required String detail,
+    required Widget? action,
+    Widget? extra,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 12),
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(AppSpace.md),
+        decoration: BoxDecoration(
+          color: tone.withValues(alpha: 0.07),
+          borderRadius: BorderRadius.circular(AppRadius.md),
+          border: Border.all(color: tone.withValues(alpha: 0.28)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(icon, size: 18, color: tone),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        title,
+                        style: AppType.bodySm.copyWith(
+                          fontWeight: FontWeight.w600,
+                          color: tone,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        detail,
+                        style: AppType.meta.copyWith(color: AppColors.inkMuted),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            if (extra != null) ...[
+              const SizedBox(height: 12),
+              extra,
+            ],
+            if (action != null) ...[
+              const SizedBox(height: 12),
+              Align(alignment: Alignment.centerLeft, child: action),
+            ],
+          ],
+        ),
       ),
     );
   }
