@@ -773,26 +773,11 @@ class _MarketFormScreenState extends State<MarketFormScreen> {
     }
 
     final visible = _visibleMarkets;
+    final total = _zoneMarkets.length;
     final query = _search.text.trim();
 
-    if (visible.isEmpty) {
-      return _searchNotice(
-        icon: Icons.search_off,
-        tone: AppColors.inkMuted,
-        title: 'No market found',
-        detail: query.isEmpty
-            ? 'No markets in your zone yet.'
-            : 'Nothing matches "$query".',
-        action: FilledButton.icon(
-          onPressed: _startCreating,
-          icon: const Icon(Icons.add, size: 18),
-          label: const Text('Add new market'),
-        ),
-      );
-    }
-
-    final total = _zoneMarkets.length;
-
+    // Always the farm screen's sunken panel — header row, divider, rows — so
+    // the section reads the same whether or not the zone has markets.
     return Container(
       margin: const EdgeInsets.only(top: 12),
       decoration: BoxDecoration(
@@ -829,16 +814,29 @@ class _MarketFormScreenState extends State<MarketFormScreen> {
             ),
           ),
           const Divider(height: 1),
-          ConstrainedBox(
-            constraints: const BoxConstraints(maxHeight: 260),
-            child: ListView.builder(
-              shrinkWrap: true,
-              primary: false,
-              padding: EdgeInsets.zero,
-              itemCount: visible.length,
-              itemBuilder: (context, index) => _marketRow(visible[index]),
+          if (visible.isEmpty)
+            // Empty state stays inside the same panel, so the section keeps
+            // the farm screen's look instead of a bordered notice.
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 14, 12, 14),
+              child: Text(
+                query.isEmpty
+                    ? 'No markets in your zone yet.'
+                    : 'Nothing matches "$query".',
+                style: AppType.meta.copyWith(color: AppColors.inkMuted),
+              ),
+            )
+          else
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxHeight: 260),
+              child: ListView.builder(
+                shrinkWrap: true,
+                primary: false,
+                padding: EdgeInsets.zero,
+                itemCount: visible.length,
+                itemBuilder: (context, index) => _marketRow(visible[index]),
+              ),
             ),
-          ),
         ],
       ),
     );
