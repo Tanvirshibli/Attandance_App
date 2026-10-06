@@ -8,7 +8,8 @@ import '../services/sales_service.dart';
 import '../widgets/filter_chip_row.dart';
 import '../widgets/ui/ui.dart';
 import 'post_booking_screen.dart';
-import 'post_sale_screen.dart';
+// Sales posting (PostSaleScreen: egg / fertilizer / live bird / cull bird)
+// is temporarily disabled — will be reintegrated later. Booking stays live.
 
 class SalesInfoScreen extends StatefulWidget {
   const SalesInfoScreen({super.key});
@@ -202,61 +203,28 @@ class _SalesInfoScreenState extends State<SalesInfoScreen>
     await _loadSales();
   }
 
+  // TEMPORARILY DISABLED: Post sale entry (egg / fertilizer / live bird /
+  // cull bird) is not implemented yet. Booking-only for now; restore the
+  // bottom-sheet menu + PostSaleScreen branch when reintegrating.
   Future<void> _openPostMenu() async {
-    final choice = await showModalBottomSheet<String>(
-      context: context,
-      builder: (context) {
-        return SafeArea(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              ListTile(
-                leading: const Icon(Icons.book_online_outlined),
-                title: Text('Post booking', style: AppType.body),
-                subtitle: Text(
-                  'Feed / chicks',
-                  style: AppType.meta,
-                ),
-                onTap: () => Navigator.pop(context, 'booking'),
-              ),
-              ListTile(
-                leading: const Icon(Icons.point_of_sale_outlined),
-                title: Text('Post sale', style: AppType.body),
-                subtitle: Text(
-                  'Egg / fertilizer / live bird / cull bird',
-                  style: AppType.meta,
-                ),
-                onTap: () => Navigator.pop(context, 'sale'),
-              ),
-            ],
-          ),
-        );
-      },
-    );
-    if (!mounted || choice == null) return;
-
     final saved = await Navigator.of(context).push<bool>(
       MaterialPageRoute(
-        builder: (_) => choice == 'booking'
-            ? const PostBookingScreen()
-            : const PostSaleScreen(),
+        builder: (_) => const PostBookingScreen(),
       ),
     );
-    if (saved == true && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            _salesService.useCreateDemo
-                ? 'Demo saved (live sales disabled).'
-                : choice == 'booking'
-                    ? 'Booking submitted successfully.'
-                    : 'Sale submitted successfully.',
-            style: AppType.body,
-          ),
+    if (!mounted || saved != true) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          _salesService.useCreateDemo
+              ? 'Demo saved (live sales disabled).'
+              : 'Booking submitted successfully.',
+          style: AppType.body,
         ),
-      );
-      await _loadSales();
-    }
+      ),
+    );
+    await _loadSales();
   }
 
   @override
@@ -270,7 +238,7 @@ class _SalesInfoScreenState extends State<SalesInfoScreen>
               foregroundColor: Colors.white,
               icon: const Icon(Icons.add),
               label: Text(
-                'Post sale / booking',
+                'Post booking',
                 style: AppType.body.copyWith(fontWeight: FontWeight.w600),
               ),
             )
