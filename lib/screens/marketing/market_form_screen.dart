@@ -82,13 +82,10 @@ class _MarketFormScreenState extends State<MarketFormScreen> {
   /// wins — a saved record is never re-scoped to whoever opens it.
   MarketingDemoNamed? _employeeZone;
 
-  /// Company and sector are the officer's own picks, with the sector list
-  /// narrowing to the chosen company. A market belongs to exactly one of each,
-  /// so both are required here.
+  /// The officer's own pick. A market belongs to exactly one company. Sector is
+  /// no longer chosen on this form.
   BookingFormCompany? _selectedCompany;
-  BookingFormSector? _selectedSector;
   List<BookingFormCompany> _companies = const [];
-  List<BookingFormSector> _sectors = const [];
 
   /// Server-allocated `MRK-09260001`. Null on failure rather than invented on
   /// the device.
@@ -124,16 +121,6 @@ class _MarketFormScreenState extends State<MarketFormScreen> {
 
   bool get _isEdit => widget.market != null;
 
-  /// Whether the sector picker belongs on this form right now.
-  ///
-  /// A market sits under one company and one sector, so sector is required —
-  /// except when the chosen company has no sectors in the Sales org master at
-  /// all. That happens for the curated Bangladesh companies (Kazi Farms, CP
-  /// Bangladesh, ACI Godrej and the rest), which are not part of that master.
-  /// The picker is hidden in that case and the sector key is omitted from the
-  /// payload, rather than showing a required field with nothing in it.
-  bool get _showSector => _selectedCompany?.hasSectors ?? true;
-
   /// The code to submit.
   ///
   /// A saved market keeps the code it already has — renumbering it would break
@@ -147,8 +134,9 @@ class _MarketFormScreenState extends State<MarketFormScreen> {
   @override
   void initState() {
     super.initState();
-    // Edit opens straight on the form; create opens on the lookup.
-    _creating = _isEdit;
+    // The form is visible on open, like the farm and dealer forms; the search
+    // bar sits above it as a convenience for finding a market already on file.
+    _creating = true;
     _prefillFromMarket();
     _loadEmployee();
     _autoFillLocation();
@@ -238,8 +226,8 @@ class _MarketFormScreenState extends State<MarketFormScreen> {
 
   /// Resolves the employee's zone from their HRM profile.
   ///
-  /// The zone is shown read-only; it no longer decides which company or sector
-  /// the officer may pick.
+  /// The zone is shown read-only; it no longer decides which company the
+  /// officer may pick.
   Future<void> _loadZone() async {
     final scope = await ZoneScopeService.instance.load();
     if (!mounted || scope == null) return;
@@ -259,33 +247,11 @@ class _MarketFormScreenState extends State<MarketFormScreen> {
     return null;
   }
 
-  /// Loads the company list and, until one is chosen, the full sector list.
+  /// Loads the company list.
   Future<void> _loadOrgMasters() async {
     final companies = await MarketingMasterService.instance.companies();
-    final sectors = await MarketingMasterService.instance.sectorsForCompany(
-      null,
-    );
     if (!mounted) return;
-    setState(() {
-      _companies = companies;
-      _sectors = sectors;
-    });
-  }
-
-  /// The sector list narrows to the chosen company.
-  Future<void> _onCompanySelected(BookingFormCompany? company) async {
-    setState(() {
-      _selectedCompany = company;
-      // A sector from the previous company would file the market under a
-      // pairing that cannot exist.
-      _selectedSector = null;
-    });
-
-    final sectors = await MarketingMasterService.instance.sectorsForCompany(
-      company?.id,
-    );
-    if (!mounted) return;
-    setState(() => _sectors = sectors);
+    setState(() => _companies = companies);
   }
 
   Future<void> _autoFillLocation() async {
@@ -425,8 +391,6 @@ class _MarketFormScreenState extends State<MarketFormScreen> {
       if (_selectedCompany != null) 'company_id': _selectedCompany!.id,
       if (_selectedCompany != null)
         'company_name': _selectedCompany!.displayName,
-      if (_selectedSector != null) 'sector_id': _selectedSector!.id,
-      if (_selectedSector != null) 'sector_name': _selectedSector!.name,
       if (_employeeZone != null) 'zone_id': _employeeZone!.id,
       if (_employeeZone != null) 'zone_name': _employeeZone!.name,
       if (_division.text.trim().isNotEmpty)
@@ -507,17 +471,9 @@ class _MarketFormScreenState extends State<MarketFormScreen> {
       );
       return;
     }
-    // A market sits under exactly one company and one sector, so both are
-    // required here — unlike a dealer, where the sector only narrows further.
+    // A market sits under exactly one company.
     if (_selectedCompany == null) {
       _snack('Choose the company this market belongs to.');
-      return;
-    }
-    // Only enforced when the picker is actually on screen. A company with no
-    // sectors in the master has no sector to choose, and blocking there would
-    // be a dead end with nothing the officer could do about it.
-    if (_showSector && _selectedSector == null) {
-      _snack('Choose the sector this market belongs to.');
       return;
     }
     if (_lat == null || _lng == null) {
@@ -725,7 +681,6 @@ class _MarketFormScreenState extends State<MarketFormScreen> {
   /// Tapping the field toggles the browse list, so the dropdown the officer
   /// opened can be closed again without leaving the screen.
   void _onSearchTap() {
-    if (_creating) return;
     setState(() => _browsing = !_browsing);
     if (_browsing && !_marketsLoaded) _loadZoneMarkets();
   }
@@ -769,44 +724,43 @@ class _MarketFormScreenState extends State<MarketFormScreen> {
     await _loadZoneMarkets();
   }
 
+  /// The top search bar — same look and behaviour as the Add Farm and Add
+  /// Dealer screens. The officer browses the zone's markets or types to narrow
+  /// them; picking one opens its detail, "Add new market" reveals the form.
   Widget _buildSearch() {
-    return Padding(
-      padding: const EdgeInsets.all(12),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          _label(_creating ? 'Searched for' : 'Search existing market'),
-          TextField(
-            controller: _search,
-            focusNode: _searchFocusNode,
-            readOnly: _creating,
-            decoration: InputDecoration(
-              hintText: 'Tap to browse, or type a name, code or phone…',
-              prefixIcon: const Icon(Icons.search),
-              border: const OutlineInputBorder(),
-              suffixIcon: _search.text.isEmpty
-                  ? Icon(
-                      _browsing ? Icons.arrow_drop_up : Icons.arrow_drop_down,
-                      size: 22,
-                    )
-                  : (_creating
-                        ? null
-                        : IconButton(
-                            icon: const Icon(Icons.clear, size: 20),
-                            onPressed: _resetSearch,
-                          )),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        TextField(
+          controller: _search,
+          focusNode: _searchFocusNode,
+          onTap: _onSearchTap,
+          onChanged: _onSearchChanged,
+          style: AppType.bodySm.copyWith(color: AppColors.ink),
+          decoration: InputDecoration(
+            labelText: 'Search existing market',
+            hintText: 'Tap to browse, or type a name, code or phone…',
+            floatingLabelBehavior: FloatingLabelBehavior.auto,
+            filled: true,
+            fillColor: AppColors.surfaceSunk,
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide.none,
             ),
-            onChanged: _onSearchChanged,
-            onTap: _onSearchTap,
+            prefixIcon: const Icon(Icons.search, size: 20),
+            suffixIcon: _search.text.isEmpty
+                ? const Icon(Icons.arrow_drop_down, size: 22)
+                : IconButton(
+                    icon: const Icon(Icons.clear, size: 20),
+                    onPressed: _resetSearch,
+                  ),
           ),
-          if (!_creating) ...[
-            if (_selectedMatch != null)
-              _buildMatchPanel(_selectedMatch!)
-            else if (_browsing)
-              _buildBrowseResults(),
-          ],
-        ],
-      ),
+        ),
+        if (_selectedMatch != null)
+          _buildMatchPanel(_selectedMatch!)
+        else if (_browsing)
+          _buildBrowseResults(),
+      ],
     );
   }
 
@@ -821,69 +775,95 @@ class _MarketFormScreenState extends State<MarketFormScreen> {
     final visible = _visibleMarkets;
     final query = _search.text.trim();
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        if (visible.isEmpty)
-          _searchNotice(
-            icon: Icons.search_off,
-            text: query.isEmpty
-                ? 'No markets in your zone yet.'
-                : 'No markets match "$query".',
-          )
-        else ...[
+    if (visible.isEmpty) {
+      return _searchNotice(
+        icon: Icons.search_off,
+        tone: AppColors.inkMuted,
+        title: 'No market found',
+        detail: query.isEmpty
+            ? 'No markets in your zone yet.'
+            : 'Nothing matches "$query".',
+        action: FilledButton.icon(
+          onPressed: _startCreating,
+          icon: const Icon(Icons.add, size: 18),
+          label: const Text('Add new market'),
+        ),
+      );
+    }
+
+    final total = _zoneMarkets.length;
+
+    return Container(
+      margin: const EdgeInsets.only(top: 12),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceSunk,
+        borderRadius: BorderRadius.circular(AppRadius.md),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            child: Text(
-              '${visible.length} market${visible.length == 1 ? '' : 's'} found',
-              style: const TextStyle(
-                fontSize: 12,
-                color: AppColors.inkMuted,
-                fontWeight: FontWeight.w600,
-              ),
+            padding: const EdgeInsets.fromLTRB(12, 10, 8, 6),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    query.isEmpty
+                        ? '${visible.length} '
+                              '${visible.length == 1 ? 'market' : 'markets'} in your zone'
+                        : '${visible.length} of $total '
+                              '${total == 1 ? 'market' : 'markets'} match',
+                    style: AppType.meta.copyWith(
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.inkMuted,
+                    ),
+                  ),
+                ),
+                TextButton.icon(
+                  onPressed: _startCreating,
+                  icon: const Icon(Icons.add, size: 18),
+                  label: const Text('Add new market'),
+                ),
+              ],
             ),
           ),
-          ListView.separated(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            itemCount: visible.length,
-            separatorBuilder: (_, _) => const Divider(height: 1),
-            itemBuilder: (_, i) => _marketRow(visible[i]),
+          const Divider(height: 1),
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxHeight: 260),
+            child: ListView.builder(
+              shrinkWrap: true,
+              primary: false,
+              padding: EdgeInsets.zero,
+              itemCount: visible.length,
+              itemBuilder: (context, index) => _marketRow(visible[index]),
+            ),
           ),
         ],
-        const SizedBox(height: 8),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          child: FilledButton.icon(
-            onPressed: _startCreating,
-            icon: const Icon(Icons.add, size: 18),
-            label: const Text('Add new market'),
-          ),
-        ),
-      ],
+      ),
     );
   }
 
   Widget _marketRow(Market market) {
     return ListTile(
-      leading: CircleAvatar(
-        backgroundColor: AppColors.secondary.withValues(alpha: 0.15),
-        child: const Icon(
-          Icons.store_mall_directory_outlined,
-          color: AppColors.secondary,
-        ),
-      ),
+      dense: true,
       title: Text(
         market.displayName,
+        style: AppType.bodySm,
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
       ),
       subtitle: Text(
         market.locationLine.isEmpty ? 'No location' : market.locationLine,
+        style: AppType.meta.copyWith(color: AppColors.inkMuted),
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
       ),
-      trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+      trailing: const Icon(
+        Icons.chevron_right,
+        size: 20,
+        color: AppColors.inkFaint,
+      ),
       onTap: () {
         setState(() => _selectedMatch = market);
         _searchFocusNode.unfocus();
@@ -891,86 +871,65 @@ class _MarketFormScreenState extends State<MarketFormScreen> {
     );
   }
 
+  /// The market this search has landed on: uses the success-toned notice banner
+  /// and the same layout as the farm and dealer forms' match panels.
   Widget _buildMatchPanel(Market market) {
-    return Padding(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
+    return _searchNotice(
+      icon: Icons.check_circle_outline,
+      tone: AppColors.success,
+      title: 'Market already exists',
+      detail: market.displayName,
+      action: null,
+      extra: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            market.displayName,
-            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+          if ((market.phone ?? '').isNotEmpty)
+            _matchLine(Icons.phone_outlined, market.phone!),
+          if ((market.code ?? '').isNotEmpty)
+            _matchLine(Icons.qr_code_2_outlined, market.code!),
+          if (market.locationLine.isNotEmpty)
+            _matchLine(Icons.place_outlined, market.locationLine),
+          if ((market.zoneName ?? '').isNotEmpty)
+            _matchLine(Icons.map_outlined, market.zoneName!),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: FilledButton.icon(
+                  onPressed: () => _openMarket(market),
+                  icon: const Icon(Icons.open_in_new, size: 18),
+                  label: const Text('Open market'),
+                ),
+              ),
+              const SizedBox(width: 8),
+              OutlinedButton(
+                onPressed: _resetSearch,
+                child: const Text('Cancel'),
+              ),
+            ],
           ),
           const SizedBox(height: 8),
-          if ((market.phone ?? '').isNotEmpty)
-            _matchLine(Icons.phone_outlined, 'Phone', market.phone!),
-          if ((market.code ?? '').isNotEmpty)
-            _matchLine(Icons.qr_code_2_outlined, 'Code', market.code!),
-          if (market.locationLine.isNotEmpty)
-            _matchLine(Icons.place_outlined, 'Location', market.locationLine),
-          if ((market.zoneName ?? '').isNotEmpty)
-            _matchLine(Icons.map_outlined, 'Zone', market.zoneName!),
-          const SizedBox(height: 16),
           FilledButton.icon(
-            onPressed: () => _openMarket(market),
-            icon: const Icon(Icons.open_in_new, size: 18),
-            label: const Text('Open market'),
-          ),
-          TextButton.icon(
-            onPressed: _resetSearch,
-            icon: const Icon(Icons.refresh),
-            label: const Text('Cancel'),
-          ),
-          TextButton.icon(
             onPressed: _startCreating,
-            icon: const Icon(Icons.add),
-            label: const Text('Add new market instead'),
+            icon: const Icon(Icons.add, size: 18),
+            label: const Text('Add new market'),
           ),
         ],
       ),
     );
   }
 
-  Widget _matchLine(IconData icon, String label, String value) => Padding(
-    padding: const EdgeInsets.symmetric(vertical: 2),
-    child: Row(
-      children: [
-        Icon(icon, size: 14, color: AppColors.inkMuted),
-        const SizedBox(width: 6),
-        Text(
-          '$label: ',
-          style: const TextStyle(color: AppColors.inkMuted, fontSize: 12),
-        ),
-        Expanded(
-          child: Text(
-            value,
-            style: const TextStyle(fontSize: 12),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
-        ),
-      ],
-    ),
-  );
-
-  Widget _searchNotice({IconData? icon, required String text}) {
-    return Container(
-      margin: const EdgeInsets.fromLTRB(16, 8, 16, 12),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      decoration: BoxDecoration(
-        color: AppColors.secondary.withValues(alpha: 0.08),
-        borderRadius: BorderRadius.circular(6),
-      ),
+  Widget _matchLine(IconData icon, String text) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 4),
       child: Row(
         children: [
-          if (icon != null) ...[
-            Icon(icon, size: 16, color: AppColors.secondary),
-            const SizedBox(width: 8),
-          ],
+          Icon(icon, size: 15, color: AppColors.inkFaint),
+          const SizedBox(width: 6),
           Expanded(
             child: Text(
               text,
-              style: const TextStyle(fontSize: 12, color: AppColors.secondary),
+              style: AppType.meta.copyWith(color: AppColors.inkMuted),
             ),
           ),
         ],
@@ -978,10 +937,75 @@ class _MarketFormScreenState extends State<MarketFormScreen> {
     );
   }
 
+  /// A coloured banner used for notices inside the search flow, matching the
+  /// styling on the Add Farm screen.
+  Widget _searchNotice({
+    required IconData icon,
+    required Color tone,
+    required String title,
+    required String detail,
+    required Widget? action,
+    Widget? extra,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 12),
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(AppSpace.md),
+        decoration: BoxDecoration(
+          color: tone.withValues(alpha: 0.07),
+          borderRadius: BorderRadius.circular(AppRadius.md),
+          border: Border.all(color: tone.withValues(alpha: 0.28)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(icon, size: 18, color: tone),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        title,
+                        style: AppType.bodySm.copyWith(
+                          fontWeight: FontWeight.w600,
+                          color: tone,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        detail,
+                        style: AppType.meta.copyWith(color: AppColors.inkMuted),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            if (extra != null) ...[
+              const SizedBox(height: 12),
+              extra,
+            ],
+            if (action != null) ...[
+              const SizedBox(height: 12),
+              Align(alignment: Alignment.centerLeft, child: action),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    // Lookup-first, like the farm and dealer forms: the officer searches for an
-    // existing market and only commits to a new one when there is no match.
+    // The form is visible from the start, exactly like the farm and dealer
+    // forms: the search bar sits above it as a convenience for finding a market
+    // already on file, never as a gate. Cancelling the lookup drops back to a
+    // search-only screen until the officer commits again.
     if (!_creating) {
       return Scaffold(
         backgroundColor: AppColors.canvas,
@@ -994,12 +1018,13 @@ class _MarketFormScreenState extends State<MarketFormScreen> {
             Expanded(
               child: SingleChildScrollView(
                 padding: const EdgeInsets.fromLTRB(
+                  AppSpace.gutter,
                   AppSpace.md,
-                  AppSpace.md,
-                  AppSpace.md,
+                  AppSpace.gutter,
                   AppSpace.xl,
                 ),
                 child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [AppCard(child: _buildSearch())],
                 ),
               ),
@@ -1014,23 +1039,24 @@ class _MarketFormScreenState extends State<MarketFormScreen> {
       body: Column(
         children: [
           AppHeader(
-            title: _isEdit ? 'Market survey — edit' : 'New Market',
+            title: _isEdit ? 'Market survey — edit' : 'Add Market',
             subtitle: _isEdit
                 ? 'Update market intel & location'
-                : 'Location & geo hierarchy',
+                : 'Find an existing market, or add a new one',
           ),
           Expanded(
             child: SingleChildScrollView(
               padding: const EdgeInsets.fromLTRB(
+                AppSpace.gutter,
                 AppSpace.md,
-                AppSpace.md,
-                AppSpace.md,
+                AppSpace.gutter,
                 AppSpace.xl,
               ),
               child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  // The lookup stays at the top once a new market is being
-                  // written, read-only, as a reminder of what was searched.
+                  // The lookup stays at the top as a convenience for finding a
+                  // market already on file, never as a gate on the form below.
                   if (!_isEdit) ...[
                     AppCard(child: _buildSearch()),
                     const SizedBox(height: 12),
@@ -1071,9 +1097,8 @@ class _MarketFormScreenState extends State<MarketFormScreen> {
                         ),
                         const SizedBox(height: 12),
                         // The zone is the officer's own territory and stays
-                        // read-only. Company and sector are theirs to pick, the
-                        // sector narrowing to the company — a market belongs to
-                        // exactly one of each, so both are required.
+                        // read-only. The company is theirs to pick — a market
+                        // belongs to exactly one.
                         ReadOnlyField(
                           label: 'Zone',
                           icon: Icons.map_outlined,
@@ -1090,34 +1115,10 @@ class _MarketFormScreenState extends State<MarketFormScreen> {
                           selected: _selectedCompany,
                           displayString: (c) => c.displayName,
                           searchText: (c) => c.displayName.toLowerCase(),
-                          onSelected: _onCompanySelected,
+                          onSelected: (c) =>
+                              setState(() => _selectedCompany = c),
                         ),
                         const SizedBox(height: 12),
-                        // Hidden rather than disabled when the chosen company has
-                        // no sectors. Sectors are still read live from the Sales
-                        // org master, and the curated Bangladesh company master
-                        // is not part of it — so a company like Kazi Farms has no
-                        // `companyId` on any sector row and this picker would
-                        // offer nothing. Sector is required on a market, so
-                        // leaving an empty required field on screen would
-                        // dead-end the form at submit with no way to explain why.
-                        if (_showSector) ...[
-                          SearchableSelectField<BookingFormSector>(
-                            label: 'Sector *',
-                            icon: Icons.hub_outlined,
-                            options: _sectors,
-                            selected: _selectedSector,
-                            enabled: _selectedCompany != null,
-                            hintText: _selectedCompany == null
-                                ? 'Pick a company first'
-                                : 'Tap to pick or type…',
-                            displayString: (s) => s.name,
-                            searchText: (s) => s.searchText,
-                            onSelected: (s) =>
-                                setState(() => _selectedSector = s),
-                          ),
-                          const SizedBox(height: 12),
-                        ],
                         _label('Status'),
                         DropdownButtonFormField<String>(
                           initialValue: _status,
