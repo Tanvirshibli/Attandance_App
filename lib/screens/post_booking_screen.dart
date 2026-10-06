@@ -137,8 +137,12 @@ class _PostBookingScreenState extends State<PostBookingScreen> {
   /// kg-per-bag and unit per product, from `fetchProductCatalog`. Null when the
   /// catalog could not be loaded, in which case quantities are read as kg.
   SalesProductCatalog? _productCatalog;
-  int? _canonicalEmployeeId;
   int? _chicksBookingPersonId;
+
+  /// The Sales `users.id` for the logged-in officer — feed's `bookingPerson`.
+  /// Resolved once via [SalesService.fetchMySalesUserId]; null means the sales
+  /// account is not linked and a feed booking cannot be posted.
+  int? _salesUserId;
 
   BookingFormSector? _bookingPoint;
   BookingFormCategory? _category;
@@ -228,11 +232,17 @@ class _PostBookingScreenState extends State<PostBookingScreen> {
       }
     }
 
+    // Feed needs the Sales `users.id`; the HRM id lives in `users.employeeId`,
+    // which the booking endpoint rejects with a 422. Resolved here so the submit
+    // guard can tell the officer when their sales account is unlinked.
+    final salesUserResult = await _salesService.fetchMySalesUserId(canonical);
+    if (!mounted) return;
+
     if (!formResult.success || formResult.data == null) {
       setState(() {
         _loading = false;
         _loadError = formResult.message ?? 'Could not load booking form data.';
-        _canonicalEmployeeId = canonical;
+        _salesUserId = salesUserResult.data;
       });
       return;
     }
@@ -245,8 +255,8 @@ class _PostBookingScreenState extends State<PostBookingScreen> {
           : (scope == null
               ? dealerResult.data
               : dealerResult.data!.scopedTo(scope.zoneNames));
-      _canonicalEmployeeId = canonical;
       _chicksBookingPersonId = chicksPerson;
+      _salesUserId = salesUserResult.data;
       _applyProductCatalog(catalogResult.data);
       if (dealerResult.success != true) {
         _loadError = dealerResult.message;
@@ -379,11 +389,16 @@ class _PostBookingScreenState extends State<PostBookingScreen> {
       _snack('Form data is not loaded.');
       return;
     }
-    final bookingPerson = _isFeed
-        ? _canonicalEmployeeId
-        : (_chicksBookingPersonId ?? _canonicalEmployeeId);
+    // Feed: the Sales `users.id`. Chicks: the matched `sales_employees_flat.id`.
+    // Never fall back to the HRM employee id — the backend validates both
+    // against tables that id does not live in, so it only produces a 422.
+    final bookingPerson = _isFeed ? _salesUserId : _chicksBookingPersonId;
     if (bookingPerson == null || bookingPerson <= 0) {
-      _snack('Please login again.');
+      _snack(
+        _isFeed
+            ? 'Your sales account isn\'t linked. Please contact an admin.'
+            : 'Could not match your sales employee record. Please contact an admin.',
+      );
       return;
     }
     if (_dealer == null) {
@@ -567,9 +582,10 @@ class _PostBookingScreenState extends State<PostBookingScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        if (_canonicalEmployeeId != null)
+                        if ((_isFeed ? _salesUserId : _chicksBookingPersonId) !=
+                            null)
                           Text(
-                            'Booking person ID: ${_isFeed ? _canonicalEmployeeId : (_chicksBookingPersonId ?? _canonicalEmployeeId)}',
+                            'Booking person ID: ${_isFeed ? _salesUserId : _chicksBookingPersonId}',
                             style: AppType.meta.copyWith(color: AppColors.inkMuted),
                           ),
                         if (_loading) ...[

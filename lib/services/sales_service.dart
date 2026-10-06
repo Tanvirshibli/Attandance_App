@@ -33,6 +33,7 @@ class SalesService {
   BookingFormData? _cachedBookingFormData;
   List<SalesZone>? _cachedZoneList;
   SalesProductCatalog? _cachedProductCatalog;
+  int? _cachedSalesUserId;
 
   bool get useDemoData => AppConfig.useSalesDemoData;
 
@@ -598,11 +599,28 @@ class SalesService {
     return ApiResult.fail('Use createSalesPersonOrder for live posting.');
   }
 
-  String? _messageFromBody(String body) {
+  String? _messageFromBody(String body) => submitErrorMessage(body);
+
+  /// The message to show for a failed submit body.
+  ///
+  /// A 422 from the booking validator puts the useful text on `errors`
+  /// ("Booking person is required.") while `message` is the generic
+  /// "Validation failed." — prefers the field error so the toast is actionable.
+  static String? submitErrorMessage(String body) {
     try {
       final decoded = jsonDecode(body);
-      if (decoded is Map && decoded['message'] != null) {
-        return decoded['message'].toString();
+      if (decoded is Map) {
+        final errors = decoded['errors'];
+        if (errors is Map) {
+          for (final value in errors.values) {
+            final first = value is List && value.isNotEmpty ? value.first : value;
+            final text = first?.toString().trim();
+            if (text != null && text.isNotEmpty) return text;
+          }
+        }
+        if (decoded['message'] != null) {
+          return decoded['message'].toString();
+        }
       }
     } catch (_) {}
     return null;
@@ -677,6 +695,111 @@ class SalesService {
     } catch (error) {
       return ApiResult.fail('Network error: $error');
     }
+  }
+
+  /// The logged-in officer's Sales `users.id` — the value the feed booking
+  /// endpoint wants for `bookingPerson`.
+  ///
+  /// The HRM employee id the app holds lives in the Sales `users.employeeId`
+  /// column, **not** `users.id`, so sending it straight to
+  /// `POST /api/booking-person-books` fails the backend's `exists:users,id`
+  /// rule with a 422 "Validation failed." (Chicks needs
+  /// `sales_employees_flat.id` instead, which `payment-setup-data` already
+  /// gives us — this is feed only.)
+  ///
+  /// Source: `GET /api/v2/user/list?employeeId=` (`UserController::allUser`,
+  /// filters `users.employeeId`), falling back to `GET /api/v2/get-my-info`
+  /// (`UserController::getSelf`). Both sit under `jwt.verify` — the same group
+  /// as the product catalog the app already calls — so the existing token works.
+  Future<ApiResult<int>> fetchMySalesUserId(int? canonicalEmployeeId) async {
+    if (_cachedSalesUserId != null) {
+      return ApiResult.ok(_cachedSalesUserId!);
+    }
+
+    if (useDemoData) {
+      final demo = (canonicalEmployeeId != null && canonicalEmployeeId > 0)
+          ? canonicalEmployeeId
+          : 1;
+      _cachedSalesUserId = demo;
+      return ApiResult.ok(demo);
+    }
+
+    final token = await _authService.getToken();
+    if (token == null || token.isEmpty) {
+      return ApiResult.fail('Please login to continue.');
+    }
+
+    final base = await _salesApiBase();
+    final headers = {
+      'Accept': 'application/json',
+      'Authorization': 'Bearer $token',
+      'User-Agent': 'PPHLAttendance/2.2 (Android; Flutter)',
+    };
+
+    try {
+      if (canonicalEmployeeId != null && canonicalEmployeeId > 0) {
+        final uri = Uri.parse(
+          '$base/api/v2/user/list?employeeId=$canonicalEmployeeId',
+        );
+        final response = await http
+            .get(uri, headers: headers)
+            .timeout(const Duration(seconds: 30));
+        final id = salesUserIdFromList(response.body);
+        if (id != null && id > 0) {
+          _cachedSalesUserId = id;
+          return ApiResult.ok(id);
+        }
+      }
+
+      final meResponse = await http
+          .get(Uri.parse('$base/api/v2/get-my-info'), headers: headers)
+          .timeout(const Duration(seconds: 30));
+      final id = salesUserIdFromMe(meResponse.body);
+      if (id != null && id > 0) {
+        _cachedSalesUserId = id;
+        return ApiResult.ok(id);
+      }
+    } catch (error) {
+      return ApiResult.fail('Network error: $error');
+    }
+
+    return ApiResult.fail(
+      'Your sales account isn\'t linked. Please contact an admin.',
+    );
+  }
+
+  /// `data[].id` from `GET /api/v2/user/list` — the Sales `users.id`.
+  static int? salesUserIdFromList(String body) {
+    try {
+      final decoded = jsonDecode(body);
+      final data = decoded is Map ? decoded['data'] : null;
+      if (data is List) {
+        for (final entry in data) {
+          if (entry is Map) {
+            final id = _asPositiveInt(entry['id']);
+            if (id != null) return id;
+          }
+        }
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  /// `user.id` from `GET /api/v2/get-my-info` — the Sales `users.id`.
+  static int? salesUserIdFromMe(String body) {
+    try {
+      final decoded = jsonDecode(body);
+      final user = decoded is Map ? decoded['user'] : null;
+      if (user is Map) {
+        return _asPositiveInt(user['id']);
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  static int? _asPositiveInt(Object? value) {
+    final parsed = value is int ? value : int.tryParse(value?.toString() ?? '');
+    return (parsed != null && parsed > 0) ? parsed : null;
   }
 }
 
