@@ -6,6 +6,7 @@ import '../../models/zone_scope.dart';
 import '../../services/marketing_service.dart';
 import '../../services/zone_scope_service.dart';
 import '../../widgets/filter_chip_row.dart';
+import '../../widgets/marketing_photo_widgets.dart';
 import '../../widgets/ui/ui.dart';
 import '../../widgets/voice_input_field.dart';
 import 'party_detail_screen.dart';
@@ -268,25 +269,33 @@ class _PartyListScreenState extends State<PartyListScreen> {
                                 padding: const EdgeInsets.all(14),
                                 child: Row(
                                   children: [
-                                    Container(
-                                      width: 48,
-                                      height: 48,
-                                      decoration: BoxDecoration(
-                                        color: (party.isFarm
-                                                ? AppColors.accent
-                                                : AppColors.primary)
-                                            .withValues(alpha: 0.12),
-                                        borderRadius: BorderRadius.circular(14),
+                                    if (marketingPhotoUrls(party.attachments)
+                                        .isNotEmpty)
+                                      MarketingThumb(
+                                        attachments: party.attachments,
+                                        size: 48,
+                                      )
+                                    else
+                                      Container(
+                                        width: 48,
+                                        height: 48,
+                                        decoration: BoxDecoration(
+                                          color: (party.isFarm
+                                                  ? AppColors.accent
+                                                  : AppColors.primary)
+                                              .withValues(alpha: 0.12),
+                                          borderRadius:
+                                              BorderRadius.circular(14),
+                                        ),
+                                        child: Icon(
+                                          party.isFarm
+                                              ? Icons.agriculture_outlined
+                                              : Icons.storefront_outlined,
+                                          color: party.isFarm
+                                              ? AppColors.accent
+                                              : AppColors.primary,
+                                        ),
                                       ),
-                                      child: Icon(
-                                        party.isFarm
-                                            ? Icons.agriculture_outlined
-                                            : Icons.storefront_outlined,
-                                        color: party.isFarm
-                                            ? AppColors.accent
-                                            : AppColors.primary,
-                                      ),
-                                    ),
                                     const SizedBox(width: 12),
                                     Expanded(
                                       child: Column(

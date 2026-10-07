@@ -7,6 +7,7 @@ import '../../models/zone_scope.dart';
 import '../../services/marketing_service.dart';
 import '../../services/permission_service.dart';
 import '../../services/zone_scope_service.dart';
+import '../../widgets/marketing_photo_widgets.dart';
 import '../../widgets/ui/ui.dart';
 import 'farm_form_screen.dart';
 import 'followup_form_screen.dart';
@@ -765,7 +766,9 @@ class _RecordGrid<T> extends StatelessWidget {
           maxCrossAxisExtent: 190,
           mainAxisSpacing: AppSpace.sm,
           crossAxisSpacing: AppSpace.sm,
-          childAspectRatio: 0.78,
+          // Taller than the old 0.78 so a cover photo fits the tile header
+          // without squeezing the text below it.
+          childAspectRatio: 0.68,
         ),
         itemCount: items.length,
         itemBuilder: (context, index) {
@@ -806,22 +809,27 @@ class _PartyGridTile extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Icon(
-                party.isFarm ? AppIcons.farms : AppIcons.store,
-                size: 20,
-                color: color,
-              ),
-              const Spacer(),
-              // AppIcons.* are getters, so this cannot be const.
-              AppIcon(
-                AppIcons.chevron,
-                size: 16,
-                color: AppColors.inkFaint,
-              ),
-            ],
-          ),
+          // The record's own uploads take over the tile header; the tinted
+          // icon row stays for records with no photos.
+          if (marketingPhotoUrls(party.attachments).isEmpty)
+            Row(
+              children: [
+                Icon(
+                  party.isFarm ? AppIcons.farms : AppIcons.store,
+                  size: 20,
+                  color: color,
+                ),
+                const Spacer(),
+                // AppIcons.* are getters, so this cannot be const.
+                AppIcon(
+                  AppIcons.chevron,
+                  size: 16,
+                  color: AppColors.inkFaint,
+                ),
+              ],
+            )
+          else
+            MarketingCover(attachments: party.attachments),
           const SizedBox(height: AppSpace.xs),
           Expanded(
             child: Text(
@@ -891,17 +899,20 @@ class _MarketGridTile extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Icon(AppIcons.store, size: 20, color: color),
-              const Spacer(),
-              AppIcon(
-                AppIcons.chevron,
-                size: 16,
-                color: AppColors.inkFaint,
-              ),
-            ],
-          ),
+          if (marketingPhotoUrls(market.attachments).isEmpty)
+            Row(
+              children: [
+                Icon(AppIcons.store, size: 20, color: color),
+                const Spacer(),
+                AppIcon(
+                  AppIcons.chevron,
+                  size: 16,
+                  color: AppColors.inkFaint,
+                ),
+              ],
+            )
+          else
+            MarketingCover(attachments: market.attachments),
           const SizedBox(height: AppSpace.xs),
           Expanded(
             child: Text(

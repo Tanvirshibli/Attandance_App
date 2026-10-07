@@ -7,6 +7,7 @@ import '../../services/auth_service.dart';
 import '../../services/marketing_service.dart';
 import '../../services/zone_scope_service.dart';
 import '../../widgets/filter_chip_row.dart';
+import '../../widgets/marketing_photo_widgets.dart';
 import '../../widgets/ui/ui.dart';
 
 class VisitListScreen extends StatefulWidget {
@@ -170,6 +171,15 @@ class _VisitListScreenState extends State<VisitListScreen> {
                               children: [
                                 Row(
                                   children: [
+                                    if (marketingPhotoUrls(visit.attachments)
+                                        .isNotEmpty) ...[
+                                      MarketingThumb(
+                                        attachments: visit.attachments,
+                                        size: 48,
+                                        radius: 12,
+                                      ),
+                                      const SizedBox(width: 10),
+                                    ],
                                     Expanded(
                                       child: Text(
                                         visit.partyName ??

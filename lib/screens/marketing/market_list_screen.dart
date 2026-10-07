@@ -5,6 +5,7 @@ import '../../models/marketing_models.dart';
 import '../../models/zone_scope.dart';
 import '../../services/marketing_service.dart';
 import '../../services/zone_scope_service.dart';
+import '../../widgets/marketing_photo_widgets.dart';
 import '../../widgets/ui/ui.dart';
 import '../../widgets/voice_input_field.dart';
 import 'market_detail_screen.dart';
@@ -184,9 +185,26 @@ class _MarketListScreenState extends State<MarketListScreen> {
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    Text(
-                                      m.displayName,
-                                      style: AppType.h3.copyWith(fontWeight: FontWeight.w600),
+                                    Row(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        if (marketingPhotoUrls(m.attachments)
+                                            .isNotEmpty) ...[
+                                          MarketingThumb(
+                                            attachments: m.attachments,
+                                            size: 56,
+                                            radius: 16,
+                                          ),
+                                          const SizedBox(width: 12),
+                                        ],
+                                        Expanded(
+                                          child: Text(
+                                            m.displayName,
+                                            style: AppType.h3.copyWith(fontWeight: FontWeight.w600),
+                                          ),
+                                        ),
+                                      ],
                                     ),
                                     if (loc.isNotEmpty) ...[
                                       const SizedBox(height: 4),
