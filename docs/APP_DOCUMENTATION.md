@@ -57,6 +57,8 @@
 
 > August 26, 2026 Attendance button visibility fix (v2.2.3+82): Improved attendance record validation in `AttendanceRequestRecord` model with defensive null checks for `requestedInTime` and `requestedOutTime` fields. Check-in/check-out buttons now render correctly even when backend dump recovery operations leave time fields in inconsistent states. Fixed null fallback in home screen to show Check In button when no attendance record exists for today.
 
+> October 7, 2026 Farm/Dealer detail tabs + dealer-visit fix (v2.5.3-beta.1+9034): The farm and dealer detail pages (`PartyDetailScreen`) now hold their records in **two tabs** below **Post a visit** / **New follow-up** — the existing record list (**Visit reports** on farms, **Visits** on dealers) and a new **Follow-ups** tab for that party — under a pinned `TabBar` inside a `NestedScrollView`; each tab scrolls and pull-to-refreshes on its own. The dealer visit form's **Sector** picker is removed (it was the last screen still picking one) and its `client_uuid` is now a real UUID v4 — the previous `mkt-<hex>` id passed API validation and then failed the backend's Postgres `uuid` column insert, which surfaced as a server error on every dealer-visit save. A dealer's saved market is now carried into the visit even when it falls outside the officer's zone-scoped picker list. See `docs/FARM_DEALER_MOBILE.md`.
+
 ---
 
 ## Table of Contents

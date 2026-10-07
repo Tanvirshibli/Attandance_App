@@ -1,8 +1,10 @@
 # Farm & Dealer Mobile Module
 
-Last updated: October 5, 2026 — **v2.5.3-beta.1+9026**
+Last updated: October 7, 2026 — **v2.5.3-beta.1+9034**
 
 Field data collection for **markets**, **dealers**, and **farms** in Attandance_App, backed by ZKTeco `/api/v1/mobile/marketing/*` (no JWT — same pattern as geo). Employee identity uses profile `canonicalEmployeeId` (`employees.id`).
+
+**v2.5.3-beta.1+9034: Dealer visits save again; sector gone; detail pages have tabs.** Every dealer-visit save used to end in a server error: the form sent `client_uuid` as `mkt-<hex>`, the backend column is a Postgres `uuid`, and the insert failed with `SQLSTATE 22P02` — which the app maps to "Server is unreachable". `marketingNewClientUuid()` now returns a real UUID v4. The visit form's **Sector** picker is gone — the dealer form dropped sector in v2.5.3-beta.1 and the market form in v2.5.4, so it had nothing left to offer — and the payload no longer carries `sector_id`. A dealer's saved **market** is now fetched by id (`getMarket`) when it sits outside the officer's zone-scoped picker list, so the visit keeps that link instead of silently dropping it. The farm and dealer detail pages gained a second tab: **Visit reports** (farm) / **Visits** (dealer) hold the record list, and **Follow-ups** holds that party's follow-ups — tapping one marks it completed with the hub's dialog. Each tab scrolls and pull-to-refreshes on its own, under a pinned tab bar. See [Party detail tabs](#party-detail-tabs).
 
 **v2.5.3-beta.1+9026: Existing dealers and plain farmers show up again.** The parties API filters `party_type` **exactly**, and the Add-Dealer screen stores an "Existing dealer" as an `outlet` — so the dealer list (which asked for `dealer`) silently dropped every one of them, and the farm list dropped every `farmer`. `MarketingService.listPartiesPool([...])` now fetches a pool type-by-type and merges the results; the hub loads `('dealer','outlet')` and `('farm','farmer')`, and the dealer search and the farm form's parent-dealer picker use the dealer pool too. `searchFarms`/`listFarms` already filtered client-side, so they were unaffected.
 
@@ -84,6 +86,8 @@ The hub is a **three-tab page**: Farms, Dealers, Markets. Farms is selected on o
 | Farm party → Post a visit | `FarmSurveyFormScreen` | `POST /farm-surveys` |
 | Dealer party → Post a visit | `DealerVisitFormScreen` | `POST /visits` |
 | Market detail → Post a visit | `MarketVisitFormScreen` (pick party in market) | `POST /visits` |
+
+The farm and dealer record pages (`PartyDetailScreen`) hold their records in a **pinned two-tab section** below the action pills — **Visit reports** (farm surveys) or **Visits** (dealer visits), and **Follow-ups** for that party. Each tab is its own scroll view with its own pull-to-refresh. See [Party detail tabs](#party-detail-tabs).
 
 ---
 
@@ -229,11 +233,12 @@ Each company carries `hasSectors`. Sectors are still read live from the Sales or
 
 The app also enforces this itself: `MarketingMasterService.sectorsForCompany` returns an empty list for a `source: manual` company rather than matching the `companyId` edge. Local and Sales ids are assigned independently, so a shared number — curated id 1 next to Sales id 1 — must not hand a Sales sector to a curated company.
 
-The only screen that still picks a sector is the **visit form** (`SharedVisitFormScreen`).
+No screen picks a sector any more — the dealer visit form was the last one, and it dropped the picker in v2.5.3-beta.1+9034 (the payload no longer carries `sector_id`).
 
 - **Market form** — sector was **removed** in v2.5.4. `sector_id` / `sector_name` are omitted from the payload.
 - **Dealer form** — sector was already gone; unchanged.
 - **Farm form** — no sector field since v2.5.4.
+- **Dealer visit form** — removed in v2.5.3-beta.1+9034. `MarketingMasterService.sectorsForCompany` / `filterSectorsForCompany` now have no screen caller; only `test/marketing_master_cascade_test.dart` exercises them.
 
 `BookingFormCompany.hasSectors` defaults to `true`, so a response missing the flag shows the picker rather than hiding a working one on a bad or older payload.
 
@@ -272,14 +277,14 @@ That whole mechanism is now retired. Mirroring zones, companies and sectors from
 |---|---|---|
 | Zone | HRM profile `zoneId` → Sales `get-zone` | Read-only. A fact about who is filing the record. |
 | Company | ZKTeco `GET /marketing/context` (curated master + Sales gaps), falling back to the Sales `form-data` list | **Required.** The officer picks it. |
-| Sector | Removed from every create form (dealer in v2.5.3-beta.1, market in v2.5.4). The visit form is the only one left that picks one. | Not applicable to a market. |
+| Sector | **Removed from every screen** — dealer form in v2.5.3-beta.1, market form in v2.5.4, and the dealer visit form in v2.5.3-beta.1+9034, the last one that picked it. Nothing is filed against a sector. | Not applicable. |
 | Market | `mkt_markets`, listed directly on the dealer form | Optional. |
 
 On the dealer form company and market are picked independently — selecting a company does not narrow the market list, and changing the company clears the market. The market form picks a company only; it has no cascade.
 
 The sector list follows the **real** `companyId` edge Sales ships on every sector row (`BookingPersonWiseBookingsService::getChicksSectorList`, `getFeedSalesPointList`). The app never guesses a company from a name — that was the old bug.
 
-`MarketingMasterService` (`lib/services/marketing_master_service.dart`) holds the company, sector and market lists, cached for 24 h. `filterSectorsForCompany` and `filterMarketsForSector` are static and pure so the cascade is unit-tested without a network round-trip. `marketsForSector(null)` returns the full unfiltered market list, which the dealer form loads up-front; `sectorsForCompany` is now used only by the visit form.
+`MarketingMasterService` (`lib/services/marketing_master_service.dart`) holds the company, sector and market lists, cached for 24 h. `filterSectorsForCompany` and `filterMarketsForSector` are static and pure so the cascade is unit-tested without a network round-trip. `marketsForSector(null)` returns the full unfiltered market list, which the dealer form loads up-front; `sectorsForCompany` has had no screen caller since the dealer visit form dropped its sector picker (v2.5.3-beta.1+9034) — the unit tests are its only remaining consumer.
 
 ### Why the zone stopped filtering
 
@@ -444,6 +449,25 @@ The Create and View-all buttons were icon-only 36 dp squares whose meaning came 
 
 > **Not changed:** the market detail screen's Edit button. It has no visit or follow-up action, so it was left alone rather than restyled on a guess.
 
+### Party detail tabs
+
+**v2.5.3-beta.1+9034.** `PartyDetailScreen` keeps its record lists in a pinned two-tab section under the action pills:
+
+```
+Column
+├── AppHeader
+└── NestedScrollView
+    ├── header slivers: info card → action pills → pinned TabBar
+    └── TabBarView
+        ├── Visits tab — "Visit reports" on farms, "Visits" on dealers: own CustomScrollView + RefreshIndicator
+        └── Follow-ups tab — same shape, listFollowups(partyId: …)
+```
+
+- The tab bar is a fixed-extent `SliverPersistentHeader` (`minExtent == maxExtent`), grouped with the rest of the header behind a `SliverOverlapAbsorber` + `SliverMainAxisGroup`; each tab body starts with the matching `SliverOverlapInjector` — the standard `NestedScrollView` pattern, and without it the first row sits under the pinned bar.
+- Each tab scrolls and pull-to-refreshes **on its own** (the same rule the hub's grids follow); a refresh reloads the party plus both lists.
+- Follow-ups come from `listFollowups(employeeId: …, partyId: …)` — the call the hub list makes, scoped to the party — and render through the shared `FollowupRow` (`lib/screens/marketing/followup_row.dart`), which the hub's list mode now uses too. Tapping an open row opens the same **Mark completed** dialog (`showCompleteFollowupDialog`) and reloads the tab.
+- A failed list load shows an error state with retry **inside its tab**; before, a failed load rendered as "No visits yet".
+
 ---
 
 ## Feature flag
@@ -501,7 +525,7 @@ These IDs **must exist in ZKTeco** or create fails:
 
 The app type-to-search **live** marketing lists for those. If the list is empty, the field is left unset. Fake market/party/visit IDs are never sent.
 
-Server-generated `public_id` / `visit_no` stay off create forms. Visit `client_uuid` is auto-filled (`mkt-{hex}`, max 64) and shown read-only.
+Server-generated `public_id` / `visit_no` stay off create forms. Visit `client_uuid` is auto-filled with a **UUID v4** (`marketingNewClientUuid`) — the backend column is a Postgres `uuid`, so a non-UUID value (the retired `mkt-{hex}`) passes validation and then fails the insert with a 500.
 
 ---
 
@@ -530,7 +554,7 @@ Server-generated `public_id` / `visit_no` stay off create forms. Visit `client_u
 
 **Dealer visit** opens from a dealer record (`DealerVisitFormScreen`); the market-visit variant was removed in v2.3.0. Uses `POST /visits` with `status: in_progress`. Visit types: `regular`, `order`, `collection`, `technical_support`, `complaint`, `dealer_opening`, `other` — **not** `survey` (farm report only). Visit type field is type-to-search autocomplete.
 
-Selecting a dealer **autofills market, company, and sector** from the party record when stored. Create with `status: in_progress` (not completed). Sends `visit_type`, live `market_id`, company/sector, `zone_id`/`zone_name` (party zone used as fallback server-side), `objective` / `purpose`, `findings`, **`feed_findings`**, **`chicks_findings`**, `result` / `outcome`, `next_plan`, `next_visit_date`, `order_amount`, `collection_amount`, auto-generated `client_uuid`, `geo_verified` (defaults true when GPS is present), check-in GPS.
+Selecting a dealer **autofills market and company** from the party record when stored — and a market outside the officer's zone-scoped picker list is fetched by id (`getMarket`), so the visit keeps the dealer's own market instead of silently dropping it. **Sector is no longer collected or sent** (v2.5.3-beta.1+9034). Create with `status: in_progress` (not completed). Sends `visit_type`, live `market_id`, company, `zone_id`/`zone_name` (party zone used as fallback server-side), `objective` / `purpose`, `findings`, **`feed_findings`**, **`chicks_findings`**, `result` / `outcome`, `next_plan`, `next_visit_date`, `order_amount`, `collection_amount`, auto-generated `client_uuid` (**a UUID v4** — the backend column is a Postgres `uuid`, and the retired `mkt-…` value passed validation only to fail the insert as a 500), `geo_verified` (defaults true when GPS is present), check-in GPS.
 
 Observation types: `uses|sells|stock|demand|order|competitor|sample|price|other`. Product row: searchable product + unit, brand, competitor, stock / demand / order qty, unit price, **amount** (auto: order qty × unit price; read-only), notes.
 
@@ -554,7 +578,7 @@ Paper field map: hatch / receiving date+time, breed, DOC + feed company, quantit
 
 ### Follow-up
 
-Requires `title`; optional description, notes, `priority` (`low|medium|high|urgent`), `due_date`, `action_type`, status (default `open`). Searchable `assigned_to_employee_id` from the demo employee catalog. Searchable `visit_id` from **live** visits for that party (never a demo visit id). Optional photo gallery → `attachable_type=followup`. List mode shows status chips; tap open items to mark `completed` with optional `completion_note` via `updateFollowup`.
+Requires `title`; optional description, notes, `priority` (`low|medium|high|urgent`), `due_date`, `action_type`, status (default `open`). Searchable `assigned_to_employee_id` from the demo employee catalog. Searchable `visit_id` from **live** visits for that party (never a demo visit id). Optional photo gallery → `attachable_type=followup`. List mode shows status chips; tap open items to mark `completed` with optional `completion_note` via `updateFollowup`. The hub's list and the **Follow-ups** tab on a party's detail page share the same row widget (`FollowupRow`), so the two surfaces cannot drift.
 
 ### Attachments (multipart)
 
@@ -611,6 +635,7 @@ Selecting a product fills `product_name` and related category/company when those
 | `lib/widgets/searchable_select_field.dart` | Type-to-search dropdown (shared with Post booking) |
 | `lib/widgets/voice_input_field.dart` | `VoiceTextField` + `VoiceMicButton` (mic on typed fields) |
 | `lib/screens/marketing/*` | Hub cards, lists, market/party records, farm visit report, visit form |
+| `lib/screens/marketing/followup_row.dart` | `FollowupRow` + `showCompleteFollowupDialog` — the follow-up row shared by the hub's list mode and the farm/dealer detail tabs |
 | `lib/screens/marketing/farm_form_screen.dart` | `FarmFormScreen` — the standalone Add Farm screen (v2.5.3) |
 | `test/farm_form_screen_test.dart` | Unit tests for the farm form's static rules |
 | `lib/services/endpoint_config_service.dart` | Keys + `marketing.enabled` + `sales.booking.formData` |

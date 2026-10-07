@@ -106,7 +106,7 @@ Handoff for backend teams: **[SALES_AND_PAYMENTS_API_CONTRACT.md](SALES_AND_PAYM
 ### Farm & Dealer (marketing)
 
 - Services tile **Farms, Dealers and Markets** → hub sections Farms / Dealers / Markets (top **5** preview rows + compact Create / View all icon buttons on each title row) and Follow-ups
-- Farm record: visit-report list + **Post a visit** (paper farm visit report). Dealer record: visit list + **Post a visit** (stock/order visit form). Market record: parties in that market
+- Farm record: **Visit reports** and **Follow-ups** tabs + **Post a visit** (paper farm visit report). Dealer record: **Visits** and **Follow-ups** tabs + **Post a visit** (stock/order visit form). Market record: parties in that market
 - Create forms collect the **full Phase-1 field set** the current marketing API accepts (v2.2.3+59). Farm visit report paper fields ship in **v2.2.3+60**. ID fields are type-to-search (`SearchableSelectField`)
 - Live lists for `market_id` / parent party / `dealer_party_id` / `visit_id` (FK-checked). Demo catalog for ERP dealer, product, unit, assigned employee, breed, DOC/feed, shed, territory, and zone until live master APIs exist
 - Party create: `employee_id` required; **Company** from Sales `GET /api/booking-person-books/form-data` (demo fallback if empty); farms can link parent dealer; products, photos
@@ -122,6 +122,14 @@ Handoff for backend teams: **[SALES_AND_PAYMENTS_API_CONTRACT.md](SALES_AND_PAYM
 - Party detail's **Post a visit** and **New follow-up** are pills as well, replacing a full-width button beside a 48 dp icon square
 - New shared UI component `AppPillButton` (44 dp min height, filled or tonal)
 - See [FARM_DEALER_MOBILE.md](FARM_DEALER_MOBILE.md#hub-layout)
+
+### Detail-page Visits and Follow-ups tabs (v2.5.3-beta.1+9034)
+
+- Farm and dealer detail pages hold their records in two tabs below **Post a visit** / **New follow-up**: the record list (**Visit reports** on farms, **Visits** on dealers) and a **Follow-ups** tab for that party
+- The tab bar is pinned under the header (`NestedScrollView` + `SliverPersistentHeader`); each tab scrolls and pull-to-refreshes on its own, and a failed list load shows its own retry state inside the tab
+- Follow-up rows reuse the hub list's row (shared `FollowupRow`); tapping an open one marks it completed with the same dialog, then reloads
+- The dealer visit form no longer picks a **Sector** (the last place that did), and its `client_uuid` is a real UUID v4 — the old `mkt-<hex>` value made every dealer-visit save fail with a server error
+- See [FARM_DEALER_MOBILE.md](FARM_DEALER_MOBILE.md#party-detail-tabs)
 
 ### Zone scoping (v2.3.0+92)
 
