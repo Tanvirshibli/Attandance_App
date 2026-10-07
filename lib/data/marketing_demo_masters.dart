@@ -1,3 +1,5 @@
+import 'dart:math';
+
 import '../models/booking_form_data_models.dart';
 import '../models/dealer_list_models.dart';
 
@@ -283,8 +285,18 @@ class MarketingDemoMasters {
   }
 }
 
+/// A UUID v4 for a visit's `client_uuid`.
+///
+/// The backend column is a Postgres `uuid`, so the value has to be a real
+/// UUID. The older `mkt-<hex>` id passed the API's `nullable|string|max:64`
+/// rule and then failed at the insert (`invalid input syntax for type uuid`),
+/// which reached the officer as a server error on every dealer visit.
 String marketingNewClientUuid() {
-  final millis = DateTime.now().microsecondsSinceEpoch.toRadixString(16);
-  final padded = millis.padLeft(16, '0');
-  return 'mkt-$padded';
+  final random = Random.secure();
+  final bytes = List<int>.generate(16, (_) => random.nextInt(256));
+  bytes[6] = (bytes[6] & 0x0f) | 0x40;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+  final hex = bytes.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
+  return '${hex.substring(0, 8)}-${hex.substring(8, 12)}-'
+      '${hex.substring(12, 16)}-${hex.substring(16, 20)}-${hex.substring(20)}';
 }
