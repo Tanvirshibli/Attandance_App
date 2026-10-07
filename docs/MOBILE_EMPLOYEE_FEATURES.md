@@ -132,6 +132,14 @@ Handoff for backend teams: **[SALES_AND_PAYMENTS_API_CONTRACT.md](SALES_AND_PAYM
 - The dealer visit form no longer picks a **Sector** (the last place that did), and its `client_uuid` is a real UUID v4 — the old `mkt-<hex>` value made every dealer-visit save fail with a server error
 - See [FARM_DEALER_MOBILE.md](FARM_DEALER_MOBILE.md#party-detail-tabs)
 
+### Uploaded photos everywhere (v2.5.3-beta.1+9036)
+
+- Every uploaded photo now shows where its record does: a **cover photo** on the hub grid tiles, a rounded **thumbnail** on party / market / visit / follow-up rows (and the party-detail tab rows), and the **Photos** strip on the party, market, visit and farm-survey detail cards
+- Tap any photo for the full-screen zoomable view; a small badge counts records with more than one photo
+- Photos come from the records themselves (farm/dealer/market posts, visits, farm reports, follow-ups) — inlined by the backend's list **and** detail endpoints, so lists load no slower
+- Picking/uploading is unchanged: images are still compressed to WebP on the phone (`ImageUploadService`) and sent as `image[]` through `MarketingService.uploadAttachments`
+- See [FARM_DEALER_MOBILE.md](FARM_DEALER_MOBILE.md#photos-across-the-app)
+
 ### Zone scoping (v2.3.0+92)
 
 - Marketing lists, form pickers and dealer dropdowns are narrowed to the employee's zones. HRM returns `user.zoneId` as a **jsonb array**; the app resolves those ids against Sales `GET /api/get-zone` (public) for names and districts

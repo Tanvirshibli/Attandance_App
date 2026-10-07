@@ -1,8 +1,10 @@
 # Farm & Dealer Mobile Module
 
-Last updated: October 7, 2026 — **v2.5.3-beta.1+9034**
+Last updated: October 7, 2026 — **v2.5.3-beta.1+9036**
 
 Field data collection for **markets**, **dealers**, and **farms** in Attandance_App, backed by ZKTeco `/api/v1/mobile/marketing/*` (no JWT — same pattern as geo). Employee identity uses profile `canonicalEmployeeId` (`employees.id`).
+
+**v2.5.3-beta.1+9036: Uploaded photos show up everywhere.** Every record's own uploads — farm/dealer/market posts, dealer visits, farm visit reports, follow-ups — now render wherever the record appears: a **cover photo** on the hub grid tiles (tinted icon row stays as the no-photo fallback), a compact rounded **thumbnail** on every list row (party, market, visit, follow-up rows and the party-detail tab rows), and the existing **Photos** strip on every detail card — the party and market pages gained theirs. Tap any photo to open it full screen; a count badge marks records with more than one. The ZKTeco index endpoints (`/parties`, `/markets`, `/visits`, `/farm-surveys`, `/followups`) now inline the same `attachments[]` block the show endpoints return, so list rows need no per-row fetch, and `Market` / `Followup` in the app parse it. **Uploads are unchanged** — picked photos stay compressed to **WebP** client-side (`ImageUploadService.convertAllToWebp`) and posted as `image[]` via `MarketingService.uploadAttachments`; all six call sites (farm form, party form, market form, visit form, farm survey form, follow-up form) go through that one path, and this wave added display only.
 
 **v2.5.3-beta.1+9034: Dealer visits save again; sector gone; detail pages have tabs.** Every dealer-visit save used to end in a server error: the form sent `client_uuid` as `mkt-<hex>`, the backend column is a Postgres `uuid`, and the insert failed with `SQLSTATE 22P02` — which the app maps to "Server is unreachable". `marketingNewClientUuid()` now returns a real UUID v4. The visit form's **Sector** picker is gone — the dealer form dropped sector in v2.5.3-beta.1 and the market form in v2.5.4, so it had nothing left to offer — and the payload no longer carries `sector_id`. A dealer's saved **market** is now fetched by id (`getMarket`) when it sits outside the officer's zone-scoped picker list, so the visit keeps that link instead of silently dropping it. The farm and dealer detail pages gained a second tab: **Visit reports** (farm) / **Visits** (dealer) hold the record list, and **Follow-ups** holds that party's follow-ups — tapping one marks it completed with the hub's dialog. Each tab scrolls and pull-to-refreshes on its own, under a pinned tab bar. See [Party detail tabs](#party-detail-tabs).
 
@@ -417,8 +419,8 @@ Column
 ```
 
 - The `_HubGroupCard`, the five-row preview lists and the fixed `268 dp` tab body are all gone. They existed only to fit three stacked cards on one screen, and the five-row cap was why "View all" was a mandatory second tap for anything longer.
-- **Delegate**: `SliverGridDelegateWithMaxCrossAxisExtent(maxCrossAxisExtent: 190, childAspectRatio: 0.78, spacing: AppSpace.sm)`. Max-cross-axis rather than a fixed count, so it is two columns on a 1080-wide phone and three or four on a tablet — the same width-driven behaviour as the services hub.
-- **Each cell** is an `InkWell` over a card with the module-colour left rail, the record name (2 lines, ellipsis), a secondary line, and a status chip for parties. Tapping opens the same `PartyDetailScreen` / `MarketDetailScreen` the old preview rows did.
+- **Delegate**: `SliverGridDelegateWithMaxCrossAxisExtent(maxCrossAxisExtent: 190, childAspectRatio: 0.68, spacing: AppSpace.sm)`. Max-cross-axis rather than a fixed count, so it is two columns on a 1080-wide phone and three or four on a tablet — the same width-driven behaviour as the services hub. The ratio moved 0.78 → 0.68 in v2.5.3-beta.1+9036 so a cover photo fits the tile header without squeezing the text below it.
+- **Each cell** is an `InkWell` over a card with the module-colour left rail, the record name (2 lines, ellipsis), a secondary line, and a status chip for parties. Tapping opens the same `PartyDetailScreen` / `MarketDetailScreen` the old preview rows did. When the record has uploads, its first photo fills the tile header as a 2.4:1 `MarketingCover` (count badge when there is more than one); the tinted icon row is the fallback for records with no photos.
 - **Scroll + refresh** belong to the grid, so `RefreshIndicator` wraps each tab's `GridView` instead of the page. Loading, error and empty states *replace* the grid rather than sitting inside it, so each fills its tab instead of floating in an empty scroll area.
 - **List size**: `limit: 200` (API cap 500) instead of the default 100 — a grid is only worth having with more rows than that. Zone narrowing still runs in Dart *after* the fetch, never as a server-side `zone_id`.
 - **Action bar**: Create / View-all move out of the cards into a `SafeArea` bar under the tabs. An `AnimatedBuilder` on the `TabController` re-labels them on swipe, so the pills name the tab actually on screen. Follow-ups joins that bar as an `AppIconTile` — it belongs to no single tab and must stay reachable from all three, but it no longer costs a row of grid height.
@@ -467,6 +469,25 @@ Column
 - Each tab scrolls and pull-to-refreshes **on its own** (the same rule the hub's grids follow); a refresh reloads the party plus both lists.
 - Follow-ups come from `listFollowups(employeeId: …, partyId: …)` — the call the hub list makes, scoped to the party — and render through the shared `FollowupRow` (`lib/screens/marketing/followup_row.dart`), which the hub's list mode now uses too. Tapping an open row opens the same **Mark completed** dialog (`showCompleteFollowupDialog`) and reloads the tab.
 - A failed list load shows an error state with retry **inside its tab**; before, a failed load rendered as "No visits yet".
+
+---
+
+## Photos across the app
+
+**v2.5.3-beta.1+9036.** Attachments are the same records' own photos (uploaded on creation or on the detail forms) — there is no separate gallery source.
+
+| Surface | Widget | Behaviour |
+|---|---|---|
+| Hub grid tiles (farms, dealers, markets) | `MarketingCover` | First photo as a 2.4:1 header cover; icon row when there are none |
+| List rows — party list, market list, visit list, follow-up rows, market-detail party rows | `MarketingThumb` | Rounded square cover (44–56 px), count badge when >1 |
+| Party detail card, market detail card, visit detail, farm survey detail | `MarketingPhotoGrid` | "Photos · n" title + 120 px thumbnails |
+| Any photo | `openMarketingPhotoViewer` | Full-screen zoomable dialog |
+
+- The data comes from `attachments[]` inlined by **both** the index and show endpoints (ZKteco change in the same wave), parsed by `Party`, `Visit`, `FarmSurvey`, `Market` and `Followup`. `market_list_screen.dart` / `market_detail_screen.dart` needed the `Market` model to gain the field; `followup_row.dart` needed it on `Followup`.
+- `marketingPhotoUrls()` is the single filter (drops entries with no usable `url`/`path`) and `Attachment.displayUrl` the single URL builder, so a stale upload host shows as the broken-image placeholder rather than a crash.
+- Widgets render **nothing** (zero-size) when a record has no photos, which is what keeps the old layouts byte-for-byte when there is nothing to show.
+- `childAspectRatio` on the hub grid moved to 0.68 to pay for the cover; the stage-2 layout guard covers the party-detail page with a photo attached.
+- **Upload path (audited, unchanged):** `MarketingService.uploadAttachments` → `ImageUploadService.convertAllToWebp` (WebP, `image[]`), called from the six form screens listed above. Nothing in the display widgets uploads, converts or re-encodes.
 
 ---
 
@@ -636,6 +657,7 @@ Selecting a product fills `product_name` and related category/company when those
 | `lib/widgets/voice_input_field.dart` | `VoiceTextField` + `VoiceMicButton` (mic on typed fields) |
 | `lib/screens/marketing/*` | Hub cards, lists, market/party records, farm visit report, visit form |
 | `lib/screens/marketing/followup_row.dart` | `FollowupRow` + `showCompleteFollowupDialog` — the follow-up row shared by the hub's list mode and the farm/dealer detail tabs |
+| `lib/widgets/marketing_photo_widgets.dart` | `MarketingPhotoPicker` (local picks), `MarketingPhotoGrid` (detail strip), `MarketingThumb` (row cover), `MarketingCover` (grid tile header), `marketingPhotoUrls` + the full-screen viewer |
 | `lib/screens/marketing/farm_form_screen.dart` | `FarmFormScreen` — the standalone Add Farm screen (v2.5.3) |
 | `test/farm_form_screen_test.dart` | Unit tests for the farm form's static rules |
 | `lib/services/endpoint_config_service.dart` | Keys + `marketing.enabled` + `sales.booking.formData` |
