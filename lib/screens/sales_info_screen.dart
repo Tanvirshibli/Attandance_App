@@ -231,7 +231,10 @@ class _SalesInfoScreenState extends State<SalesInfoScreen>
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.canvas,
-      floatingActionButton: _isEligible
+      // Posting does not depend on the sales-team list — only the performance
+      // report does. The module's feature flag (endpoint config) is the only
+      // gate here, and PostBookingScreen re-checks it before submitting.
+      floatingActionButton: _unavailableReason != SalesProfile.featureDisabled
           ? FloatingActionButton.extended(
               onPressed: _openPostMenu,
               backgroundColor: AppColors.primary,
@@ -279,10 +282,10 @@ class _SalesInfoScreenState extends State<SalesInfoScreen>
                     icon: Icons.trending_up_outlined,
                     title: _unavailableReason == SalesProfile.featureDisabled
                         ? 'Sales module disabled'
-                        : 'Sales not available',
+                        : 'No sales report for your profile',
                     subtitle: _unavailableReason == SalesProfile.featureDisabled
                         ? 'Sales Info is turned off in mobile app settings. Ask an admin to enable the Sales module.'
-                        : 'Your employee profile is not on the sales team list. Contact HR if this is unexpected.',
+                        : 'Sales performance is shown for sales-team members. You can still post a booking with the button below.',
                   ),
                 ),
               ),
