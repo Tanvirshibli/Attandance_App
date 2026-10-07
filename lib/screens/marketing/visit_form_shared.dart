@@ -148,7 +148,7 @@ class VisitObsRow {
   }
 }
 
-/// Dealer visit form � market/company/sector/zone autofill from the party,
+/// Dealer visit form — market/company/zone autofill from the party,
 /// required photo, and split feed/chicks findings.
 class SharedVisitFormScreen extends StatefulWidget {
   const SharedVisitFormScreen.dealer({super.key, required this.party});
@@ -176,12 +176,10 @@ class _SharedVisitFormScreenState extends State<SharedVisitFormScreen> {
 
   List<Market> _markets = const [];
   List<BookingFormCompany> _companies = const [];
-  List<BookingFormSector> _sectors = const [];
   List<MarketingDemoProduct> _catalogProducts = MarketingDemoMasters.products;
   Market? _selectedMarket;
   Party? _selectedParty;
   BookingFormCompany? _selectedCompany;
-  BookingFormSector? _selectedSector;
   int? _zoneId;
   String? _zoneName;
   DateTime? _nextVisitDate;
@@ -243,12 +241,24 @@ class _SharedVisitFormScreenState extends State<SharedVisitFormScreen> {
   Future<void> _loadMarkets() async {
     final result = await _service.listMarkets(zoneId: _zoneId);
     if (!mounted) return;
+    var markets = result.data ?? const <Market>[];
+    // The party's own market can sit outside the officer's zones, and the
+    // zone-scoped list would otherwise drop that link silently. Fetch it.
+    final partyMarketId = widget.party!.marketId;
+    if (partyMarketId != null &&
+        MarketingDemoMasters.byId(markets, partyMarketId, (m) => m.id) == null) {
+      final market = await _service.getMarket(partyMarketId);
+      if (!mounted) return;
+      if (market.success && market.data != null) {
+        markets = [...markets, market.data!];
+      }
+    }
     setState(() {
-      _markets = result.data ?? const [];
+      _markets = markets;
       _loadingMarkets = false;
       _selectedMarket = MarketingDemoMasters.byId(
         _markets,
-        widget.party!.marketId,
+        partyMarketId,
         (m) => m.id,
       );
       // A market's zone is a good fallback when the party itself has none.
@@ -260,34 +270,26 @@ class _SharedVisitFormScreenState extends State<SharedVisitFormScreen> {
   }
 
   Future<void> _loadMasters() async {
-    // Companies and sectors come from the mobile backend's own
-    // master (curated list merged with Sales, local names win);
-    // the Sales form-data read below is kept only for the product
-    // catalog, which the context endpoint does not serve.
+    // Companies come from the mobile backend's own master (curated
+    // list merged with Sales, local names win); the Sales form-data
+    // read below is kept only for the product catalog, which the
+    // context endpoint does not serve.
     final companies = await MarketingMasterService.instance.companies();
-    final sectors =
-        await MarketingMasterService.instance.sectorsForCompany(null);
     final result = await _salesService.fetchBookingFormData();
     if (!mounted) return;
     setState(() {
       _companies = companies;
-      _sectors = sectors;
       if (result.success && result.data != null) {
         _catalogProducts =
             MarketingDemoMasters.productsFromBookingForm(result.data);
       }
-      // Autofill company/sector from the party (dealer info).
+      // Autofill company from the party (dealer info).
       final party = widget.party;
       if (party != null) {
         _selectedCompany ??= MarketingDemoMasters.byId(
           _companies,
           party.companyId,
           (c) => c.id,
-        );
-        _selectedSector ??= MarketingDemoMasters.byId(
-          _sectors,
-          party.sectorId,
-          (s) => s.id,
         );
         // Dealer zone name fallback: match against sales/booking zones.
         if (_zoneId == null && party.zoneId != null) {
@@ -428,7 +430,6 @@ class _SharedVisitFormScreenState extends State<SharedVisitFormScreen> {
       'geo_verified': _geoVerified,
       if (_selectedMarket != null) 'market_id': _selectedMarket!.id,
       if (_selectedCompany != null) 'company_id': _selectedCompany!.id,
-      if (_selectedSector != null) 'sector_id': _selectedSector!.id,
       if (_zoneId != null && _zoneId! > 0) 'zone_id': _zoneId,
       if (_zoneName != null && _zoneName!.isNotEmpty) 'zone_name': _zoneName,
       'check_in_at': now.toIso8601String(),
@@ -699,25 +700,6 @@ class _SharedVisitFormScreenState extends State<SharedVisitFormScreen> {
                             enabled: !_locked,
                             onSelected: (c) =>
                                 setState(() => _selectedCompany = c),
-                          ),
-                          const SizedBox(height: 14),
-                          SearchableSelectField<BookingFormSector>(
-                            label: 'Sector',
-                            icon: Icons.hub_outlined,
-                            options: _selectedCompany == null
-                                ? _sectors
-                                : _sectors
-                                    .where(
-                                      (s) =>
-                                          s.companyId == _selectedCompany!.id,
-                                    )
-                                    .toList(),
-                            selected: _selectedSector,
-                            displayString: (s) => s.name,
-                            searchText: (s) => s.searchText,
-                            enabled: !_locked,
-                            onSelected: (s) =>
-                                setState(() => _selectedSector = s),
                           ),
                           const SizedBox(height: 14),
                           SearchableTextField(
