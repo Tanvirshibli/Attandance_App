@@ -125,6 +125,7 @@ class Market {
     this.colorFarmCount,
     this.cockFarmCount,
     this.competitorCompanies = const [],
+    this.attachments = const [],
     this.updatedByEmployeeId,
   });
 
@@ -165,6 +166,11 @@ class Market {
   final int? colorFarmCount;
   final int? cockFarmCount;
   final List<MarketCompetitor> competitorCompanies;
+
+  /// Photos uploaded with the market survey. Inlined by the markets index and
+  /// show endpoints; empty when the record has none.
+  final List<Attachment> attachments;
+
   final int? updatedByEmployeeId;
 
   String get displayName {
@@ -242,6 +248,9 @@ class Market {
       competitorCompanies: marketingMapList(
         json['competitorCompanies'] ?? json['competitor_companies'],
       ).map(MarketCompetitor.fromJson).toList(),
+      attachments: marketingMapList(
+        json['attachments'],
+      ).map(Attachment.fromJson).toList(),
       updatedByEmployeeId: marketingParseInt(
         json['updatedByEmployeeId'] ?? json['updated_by_employee_id'],
       ),
@@ -1209,6 +1218,7 @@ class Followup {
     this.completionNote,
     this.completedAt,
     this.partyName,
+    this.attachments = const [],
   });
 
   final int id;
@@ -1226,6 +1236,9 @@ class Followup {
   final String? completionNote;
   final String? completedAt;
   final String? partyName;
+
+  /// Photos uploaded with the follow-up. Inlined by the follow-ups index.
+  final List<Attachment> attachments;
 
   String get displayTitle {
     final t = title?.trim();
@@ -1266,6 +1279,9 @@ class Followup {
       partyName:
           partyName ??
           marketingNonEmpty(json['partyName'] ?? json['party_name']),
+      attachments: marketingMapList(
+        json['attachments'],
+      ).map(Attachment.fromJson).toList(),
     );
   }
 }

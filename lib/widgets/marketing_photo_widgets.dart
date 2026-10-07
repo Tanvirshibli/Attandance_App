@@ -80,6 +80,13 @@ class MarketingPhotoPicker extends StatelessWidget {
   }
 }
 
+/// The usable photo URLs across [attachments], first photo first.
+List<String> marketingPhotoUrls(List<Attachment> attachments) => attachments
+    .map((a) => a.displayUrl)
+    .whereType<String>()
+    .where((u) => u.isNotEmpty)
+    .toList();
+
 /// Network attachment thumbnails for detail screens.
 class MarketingPhotoGrid extends StatelessWidget {
   const MarketingPhotoGrid({
@@ -93,9 +100,7 @@ class MarketingPhotoGrid extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final photos = attachments
-        .where((a) => a.displayUrl != null && a.displayUrl!.isNotEmpty)
-        .toList();
+    final photos = marketingPhotoUrls(attachments);
     if (photos.isEmpty) return const SizedBox.shrink();
 
     return Padding(
@@ -104,7 +109,7 @@ class MarketingPhotoGrid extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            title,
+            photos.length > 1 ? '$title · ${photos.length}' : title,
             style: GoogleFonts.poppins(
               fontSize: 12,
               fontWeight: FontWeight.w500,
@@ -115,8 +120,7 @@ class MarketingPhotoGrid extends StatelessWidget {
           Wrap(
             spacing: 8,
             runSpacing: 8,
-            children: photos.map((attachment) {
-              final url = attachment.displayUrl!;
+            children: photos.map((url) {
               return GestureDetector(
                 onTap: () => openMarketingPhotoViewer(context, url),
                 child: ClipRRect(
@@ -124,26 +128,147 @@ class MarketingPhotoGrid extends StatelessWidget {
                   child: SizedBox(
                     width: 120,
                     height: 120,
-                    child: CachedNetworkImage(
-                      imageUrl: url,
-                      fit: BoxFit.cover,
-                      placeholder: (context, url) => Container(
-                        color: AppColors.background,
-                        child: const Center(
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        ),
-                      ),
-                      errorWidget: (context, url, error) => Container(
-                        color: AppColors.background,
-                        child: const Icon(Icons.broken_image_outlined),
-                      ),
-                    ),
+                    child: _PhotoImage(url),
                   ),
                 ),
               );
             }).toList(),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// A compact cover thumbnail for list rows.
+///
+/// Renders nothing when [attachments] has no usable image, so callers can drop
+/// it in unconditionally and keep their layout for photo-less records. A count
+/// badge appears when there is more than one photo; a tap opens the viewer.
+class MarketingThumb extends StatelessWidget {
+  const MarketingThumb({
+    super.key,
+    required this.attachments,
+    this.size = 52,
+    this.radius = 14,
+  });
+
+  final List<Attachment> attachments;
+  final double size;
+  final double radius;
+
+  @override
+  Widget build(BuildContext context) {
+    final photos = marketingPhotoUrls(attachments);
+    if (photos.isEmpty) return const SizedBox.shrink();
+
+    return GestureDetector(
+      onTap: () => openMarketingPhotoViewer(context, photos.first),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(radius),
+        child: SizedBox(
+          width: size,
+          height: size,
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              _PhotoImage(photos.first),
+              if (photos.length > 1) _PhotoCountBadge(count: photos.length),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// A full-width cover photo for grid cards; nothing when there are no photos.
+class MarketingCover extends StatelessWidget {
+  const MarketingCover({
+    super.key,
+    required this.attachments,
+    this.aspectRatio = 2.4,
+    this.radius = 12,
+  });
+
+  final List<Attachment> attachments;
+  final double aspectRatio;
+  final double radius;
+
+  @override
+  Widget build(BuildContext context) {
+    final photos = marketingPhotoUrls(attachments);
+    if (photos.isEmpty) return const SizedBox.shrink();
+
+    return GestureDetector(
+      onTap: () => openMarketingPhotoViewer(context, photos.first),
+      child: AspectRatio(
+        aspectRatio: aspectRatio,
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(radius),
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              _PhotoImage(photos.first),
+              if (photos.length > 1) _PhotoCountBadge(count: photos.length),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _PhotoImage extends StatelessWidget {
+  const _PhotoImage(this.url);
+
+  final String url;
+
+  @override
+  Widget build(BuildContext context) {
+    return CachedNetworkImage(
+      imageUrl: url,
+      fit: BoxFit.cover,
+      placeholder: (context, url) => Container(
+        color: AppColors.background,
+        child: const Center(
+          child: CircularProgressIndicator(strokeWidth: 2),
+        ),
+      ),
+      errorWidget: (context, url, error) => Container(
+        color: AppColors.background,
+        child: const Icon(Icons.broken_image_outlined),
+      ),
+    );
+  }
+}
+
+class _PhotoCountBadge extends StatelessWidget {
+  const _PhotoCountBadge({required this.count});
+
+  final int count;
+
+  @override
+  Widget build(BuildContext context) {
+    return Align(
+      alignment: Alignment.bottomRight,
+      child: Padding(
+        padding: const EdgeInsets.all(4),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+          decoration: BoxDecoration(
+            color: Colors.black.withValues(alpha: 0.6),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Text(
+            '$count',
+            style: GoogleFonts.poppins(
+              fontSize: 10,
+              fontWeight: FontWeight.w600,
+              color: Colors.white,
+            ),
+          ),
+        ),
       ),
     );
   }
