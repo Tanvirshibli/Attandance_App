@@ -1,7 +1,9 @@
 import 'package:employee_attendance/models/app_permissions.dart';
 import 'package:employee_attendance/models/auth_user_profile.dart';
+import 'package:employee_attendance/models/marketing_models.dart';
 import 'package:employee_attendance/screens/attendance_report_screen.dart';
 import 'package:employee_attendance/screens/marketing/marketing_hub_screen.dart';
+import 'package:employee_attendance/screens/marketing/party_detail_screen.dart';
 import 'package:employee_attendance/services/permission_service.dart';
 import 'package:employee_attendance/widgets/ui/ui.dart';
 import 'package:flutter/material.dart';
@@ -190,5 +192,45 @@ void main() {
     expect(find.text('Dealers'), findsNothing);
     expect(find.text('Markets'), findsNothing);
     expect(find.text('Add farm'), findsNothing);
+  });
+
+  // The detail page stacks the record card, the action pills, a pinned TabBar
+  // and a TabBarView of two independently scrolling lists inside a
+  // NestedScrollView. A layout failure anywhere in that chain -- a pinned
+  // header that cannot size itself, an overlap injector without its absorber,
+  // a tab body that cannot scroll -- blanks the page with no useful log.
+  Party dealerParty() => Party.fromJson(<String, dynamic>{
+        'id': 1,
+        'partyType': 'dealer',
+        'name': 'Rahman Poultry',
+        'phone': '01712345678',
+        'zoneName': 'Dhaka South',
+        'status': 'active',
+      });
+
+  testWidgets('PartyDetailScreen builds its visits and follow-ups tabs',
+      (tester) async {
+    await usePhoneViewport(tester);
+    SharedPreferences.setMockInitialValues({});
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: PartyDetailScreen(partyId: 1, initialParty: dealerParty()),
+      ),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 600));
+
+    expect(tester.takeException(), isNull);
+    expect(find.text('Visits'), findsOneWidget);
+    expect(find.text('Follow-ups'), findsOneWidget);
+    expect(find.text('Post a visit'), findsOneWidget);
+    expect(find.text('New follow-up'), findsOneWidget);
+
+    await tester.tap(find.text('Follow-ups'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+
+    expect(tester.takeException(), isNull);
   });
 }

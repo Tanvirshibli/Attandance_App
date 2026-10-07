@@ -14,6 +14,7 @@ import '../../widgets/filter_chip_row.dart';
 import '../../widgets/searchable_select_field.dart';
 import '../../widgets/ui/ui.dart';
 import '../../widgets/voice_input_field.dart';
+import 'followup_row.dart';
 
 /// Create follow-up for a party, or list-mode hub for open follow-ups.
 class FollowupFormScreen extends StatefulWidget {
@@ -138,47 +139,8 @@ class _FollowupFormScreenState extends State<FollowupFormScreen> {
   }
 
   Future<void> _markCompleted(Followup item) async {
-    final noteCtrl = TextEditingController();
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(
-          'Mark completed',
-          style: AppType.body.copyWith(fontWeight: FontWeight.w600),
-        ),
-        content: VoiceTextField(
-          controller: noteCtrl,
-          maxLines: 3,
-          decoration: const InputDecoration(
-            hintText: 'Completion note (optional)',
-            border: OutlineInputBorder(),
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Complete'),
-          ),
-        ],
-      ),
-    );
-    if (ok != true) return;
-
-    final result = await _service.updateFollowup(item.id, {
-      'status': 'completed',
-      if (noteCtrl.text.trim().isNotEmpty)
-        'completion_note': noteCtrl.text.trim(),
-    });
-    if (!mounted) return;
-    if (!result.success) {
-      _snack(result.message ?? 'Could not update follow-up.');
-      return;
-    }
-    _snack('Marked completed.');
+    final done = await showCompleteFollowupDialog(context, _service, item);
+    if (!mounted || !done) return;
     _loadList();
   }
 
@@ -271,32 +233,6 @@ class _FollowupFormScreenState extends State<FollowupFormScreen> {
     );
   }
 
-  Color _priorityColor(String? p) {
-    switch ((p ?? '').toLowerCase()) {
-      case 'urgent':
-      case 'high':
-        return AppColors.error;
-      case 'low':
-        return AppColors.info;
-      default:
-        return AppColors.warning;
-    }
-  }
-
-  Color _statusColor(String? s) {
-    switch ((s ?? '').toLowerCase()) {
-      case 'completed':
-      case 'done':
-        return AppColors.success;
-      case 'cancelled':
-        return AppColors.error;
-      case 'in_progress':
-        return AppColors.info;
-      default:
-        return AppColors.warning;
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     if (_listMode && widget.party == null) {
@@ -367,107 +303,17 @@ class _FollowupFormScreenState extends State<FollowupFormScreen> {
                     delegate: SliverChildBuilderDelegate(
                       (context, index) {
                         final item = _items[index];
-                        final status = (item.status ?? 'open').toLowerCase();
-                        final canComplete = status != 'completed' &&
-                            status != 'done' &&
-                            status != 'cancelled';
+                        final canComplete =
+                            FollowupRow.canComplete(item.status);
                         return FadeInUp(
                           delay: Duration(milliseconds: 30 * index),
                           child: Padding(
                             padding: const EdgeInsets.only(bottom: 10),
-                            child: AppCard(
-                              child: InkWell(
-                                onTap: canComplete
-                                    ? () => _markCompleted(item)
-                                    : null,
-                                borderRadius: BorderRadius.circular(12),
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Row(
-                                      children: [
-                                        Expanded(
-                                          child: Text(
-                                            item.displayTitle,
-                                            style: AppType.body.copyWith(fontWeight: FontWeight.w600),
-                                          ),
-                                        ),
-                                        Container(
-                                          padding: const EdgeInsets.symmetric(
-                                            horizontal: 8,
-                                            vertical: 4,
-                                          ),
-                                          decoration: BoxDecoration(
-                                            color: _statusColor(item.status)
-                                                .withValues(alpha: 0.12),
-                                            borderRadius:
-                                                BorderRadius.circular(10),
-                                          ),
-                                          child: Text(
-                                            item.status ?? 'open',
-                                            style: AppType.micro.copyWith(
-                                              fontWeight: FontWeight.w600,
-                                              color: _statusColor(
-                                                item.status,
-                                              ),
-                                            ),
-                                          ),
-                                        ),
-                                        const SizedBox(width: 6),
-                                        Container(
-                                          padding: const EdgeInsets.symmetric(
-                                            horizontal: 8,
-                                            vertical: 4,
-                                          ),
-                                          decoration: BoxDecoration(
-                                            color: _priorityColor(item.priority)
-                                                .withValues(alpha: 0.12),
-                                            borderRadius:
-                                                BorderRadius.circular(10),
-                                          ),
-                                          child: Text(
-                                            item.priority ?? 'medium',
-                                            style: AppType.micro.copyWith(
-                                              fontWeight: FontWeight.w600,
-                                              color: _priorityColor(
-                                                item.priority,
-                                              ),
-                                            ),
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                    const SizedBox(height: 4),
-                                    Text(
-                                      [
-                                        if (item.partyName != null)
-                                          item.partyName!,
-                                        if (item.dueDate != null)
-                                          'Due ${item.dueDate}',
-                                        if (item.actionType != null)
-                                          item.actionType!,
-                                      ].where((e) => e.isNotEmpty).join(' · '),
-                                      style: AppType.meta.copyWith(color: AppColors.inkMuted),
-                                    ),
-                                    if (item.description != null ||
-                                        item.notes != null) ...[
-                                      const SizedBox(height: 6),
-                                      Text(
-                                        item.description ?? item.notes!,
-                                        style:
-                                            AppType.meta,
-                                      ),
-                                    ],
-                                    if (canComplete) ...[
-                                      const SizedBox(height: 8),
-                                      Text(
-                                        'Tap to mark completed',
-                                        style: AppType.micro.copyWith(fontWeight: FontWeight.w500, color: AppColors.primary),
-                                      ),
-                                    ],
-                                  ],
-                                ),
-                              ),
+                            child: FollowupRow(
+                              item: item,
+                              onTap: canComplete
+                                  ? () => _markCompleted(item)
+                                  : null,
                             ),
                           ),
                         );
