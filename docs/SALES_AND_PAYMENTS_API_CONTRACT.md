@@ -532,6 +532,29 @@ Modules: `egg`, `feed`, `fertilizer`, `chicks`, `liveBird`, `cullBird`, `unclass
 
 HRM payslip/loan/PF screens are under **Services → HR Benefits** (`HrBenefitsHubScreen`) and still default to demo (`USE_PAYMENT_DEMO_DATA`).
 
+## Booking-api deploy runbook (2026-10-07)
+
+`POST /api/booking-person-books` accepts a booking with **no sales account**: the app always sends
+`bookingPersonEmployeeId` (the HRM `employees.id`) and `bookingPerson` only when it resolved one;
+the service resolves the Sales id from the employee id when it can (`pphl_account-laravel` commit
+`0e8dc9c`, migration `2026_10_07_120000_add_booking_person_employee_id_to_booking_tables.php`).
+
+**Deploy the migration with the code.** The service writes
+`feed_bookings.bookingPersonEmployeeId` / `chicks_bookings.bookingPersonEmployeeId` on every
+booking, so code running against an un-migrated database 500s on every post — and the controller's
+`catch (Throwable)` turns that into the opaque **"Booking could not be created."** the app shows,
+with the real exception only in `storage/logs/laravel.log`.
+
+Runbook when a booking fails:
+
+1. `php artisan migrate --force` on the accounts server.
+2. Check `storage/logs/laravel.log` — the recorded exception names the cause
+   (`column "bookingPersonEmployeeId" does not exist` for a skipped migration).
+3. Fingerprint the deployed code with a validation-only POST (creates nothing): a body with no
+   `bookingPerson` replies 422 whose `errors` must **not** contain `bookingPerson` (it did before
+   the change). Verified 2026-10-07 against `sales.peoplesitsolution.online` — the new code is
+   deployed, only the migration was missing.
+
 ### C.1 Create auth-wise payment (Post receive)
 
 `POST {SALES_API_BASE_URL}/api/auth-wise-payments`
