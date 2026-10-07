@@ -298,6 +298,20 @@ After publishing build **N**:
 
 ---
 
+## October 7, 2026 Update (v2.5.3+109) — main channel
+
+**Voice-typing language popup fix. Force update.**
+
+> Published from `2.5.3+108` → `2.5.3+109`. Tag `v2.5.3-build109`, manifest commit `5457b1f`; both APKs verified by download — sizes and SHA-256 match the manifest, `versionName=2.5.3`, `versionCode=2109` (→ 109), and the APK bakes the **prod** manifest URL with no beta path.
+
+- The mic's language popup was a Material radio group dismissed from the group's `onChanged`; tapping the radio that was **already selected** reports `false`, which `RawRadio` ignores — a dead tap that left the dialog open, so re-picking the current language did nothing and the officer had to switch languages and toggle the mic twice
+- The popup is now a **ticked pick-and-start list**: every option starts a session, including the language already in use; the current one is bold with a check mark. Dictation, locale resolution and biasing phrases are unchanged
+- Guard: `test/voice_language_popup_test.dart` fails against the old popup on the dialog staying open (verified by stashing the fix)
+
+**Beta line re-seated at `2.5.3-beta.1+9036`** after this release (next beta = 9037), same as the 108 release.
+
+---
+
 ## October 7, 2026 Update (v2.5.3+108) — main channel
 
 **The first main-channel release since the beta channel was introduced. Force update.**
