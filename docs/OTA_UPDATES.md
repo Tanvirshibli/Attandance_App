@@ -1,6 +1,6 @@
 # OTA (Over-The-Air) Updates — PPHL Attendance App
 
-Last updated: August 26, 2026
+Last updated: October 7, 2026
 
 Production OTA uses **GitHub** (public repo + GitHub Releases). There is **no Cloudinary** or HRM server involved in APK hosting.
 
@@ -295,6 +295,22 @@ After publishing build **N**:
 - [`rocket launcher/README.md`](../../rocket%20launcher/README.md) — publisher scripts and GitHub API flow
 - [`SERVER_COMMANDS.md`](../../SERVER_COMMANDS.md) — workspace command reference (OTA section)
 - [`MOBILE_EMPLOYEE_FEATURES.md`](MOBILE_EMPLOYEE_FEATURES.md) — feature summary including OTA
+
+---
+
+## October 7, 2026 Update (v2.5.3+108) — main channel
+
+**The first main-channel release since the beta channel was introduced. Force update.**
+
+> Published from `2.5.3+107` (prod line) → `2.5.3+108`. Tag `v2.5.3-build108`, manifest commit `9ca974f`; both APKs verified by download — sizes and SHA-256 match the manifest, `versionName=2.5.3`, `versionCode=2108` (→ 108), and the APK bakes the **prod** manifest URL with no beta path.
+
+Covers everything the beta line shipped between `2.5.2-beta.1+9009` and `2.5.3-beta.1+9036`:
+
+- **Face attendance** — face alignment + GhostFaceNet 512-d recognition; stricter identity matching so a shared account cannot match several people; the registration-stickiness fix; instant check-in/check-out (dashboard returns on match, the punch finishes in the background with a sync pulse). Everyone re-enrols their face once on this update
+- **Marketing** — company master from the mobile backend (93 curated + Sales gaps); search-first Add Farm / Add Dealer / Add Market screens; sector removed from the dealer, market and visit forms (markets are picked directly); product-company pickers follow the product category; ERP dealer integration (parent-dealer picker, code fill, farm-report details); `outlet`/`farmer` parties appear in their lists again; dealer/farm detail pages gained **Visits / Follow-ups tabs**; the dealer-visit server-error fix (`client_uuid` UUID v4); **photos everywhere** (grid covers, row thumbnails, detail strips)
+- **Bookings** — any employee can post a feed/chicks booking without a sales account; Post sale entry hidden
+
+**Beta line resumed at `2.5.3-beta.1+9036`** (commit `497c513`) after this release: the publisher's beta band floor is `9000 + (build % 100)`, so leaving the pubspec on the prod line would have produced 9009 next — below the live beta build — and silently withheld the next beta from testers.
 
 ---
 
