@@ -63,6 +63,8 @@
 
 > October 7, 2026 Uploaded photos across the marketing module (v2.5.3-beta.1+9036): Every record's own photos — farm/dealer/market posts, dealer visits, farm visit reports, follow-ups — now render wherever the record appears: **cover photos** on the hub grids, rounded **thumbnails** on party/market/visit/follow-up rows and the party-detail tab rows, and the **Photos** strip on every detail card (party and market pages gained theirs), all tap-to-zoom with a count badge when a record has more than one. The ZKTeco marketing **index** endpoints now inline the same `attachments[]` block the show endpoints return, so no per-row fetch is needed; `Market` and `Followup` learned to parse it. The **WebP upload mechanism is untouched** — photos are still compressed client-side (`ImageUploadService.convertAllToWebp`) and posted as `image[]` through `MarketingService.uploadAttachments` from all six form screens. See `docs/FARM_DEALER_MOBILE.md`.
 
+> October 7, 2026 Voice-typing language popup fix (v2.5.3+109): Re-picking the language already in use now starts dictation like any other pick. The popup was a Material radio group dismissed from the group's `onChanged`, but tapping an already-selected radio reports `false` (`RawRadio._handleChanged` returns early on `false`), so the tap was a dead no-op and the dialog stayed open — users had to switch languages and toggle the mic twice. The popup is now a ticked pick-and-start list of `SimpleDialogOption`s (`lib/widgets/voice_input_field.dart`); the current language is bold with a check mark. Dictation, locale resolution and biasing phrases are unchanged.
+
 ---
 
 ## Table of Contents
