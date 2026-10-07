@@ -6,10 +6,13 @@ import '../services/voice_typing_service.dart';
 
 /// Mic suffix button that dictates English or Bangla into a text field.
 ///
-/// Tap → language popup (English / বাংলা) → live dictation fills the
-/// controller. Tapping again stops listening. Use [VoiceTextField] as a
-/// drop-in `TextFormField` replacement, or place this button inside an
-/// `InputDecoration.suffixIcon` of an existing field.
+/// Tap → language popup (English / বাংলা, the current one ticked) → live
+/// dictation fills the controller. The popup is a "pick and start" list, so
+/// choosing the language already in use starts a session exactly like picking
+/// the other one — there is no change-first dance. Tapping the mic again stops
+/// listening. Use [VoiceTextField] as a drop-in `TextFormField` replacement, or
+/// place this button inside an `InputDecoration.suffixIcon` of an existing
+/// field.
 class VoiceMicButton extends StatefulWidget {
   const VoiceMicButton({
     super.key,
@@ -54,27 +57,44 @@ class _VoiceMicButtonState extends State<VoiceMicButton> {
 
     final language = await showDialog<VoiceLanguage>(
       context: context,
-      builder: (context) => RadioGroup<VoiceLanguage>(
-        groupValue: _language,
-        onChanged: (v) => Navigator.of(context).pop(v),
-        child: SimpleDialog(
-          title: Text(
-            'Voice typing language',
-            style: GoogleFonts.poppins(fontSize: 15, fontWeight: FontWeight.w600),
-          ),
-          children: VoiceLanguage.values
-              .map(
-                (lang) => RadioListTile<VoiceLanguage>(
-                  dense: true,
-                  value: lang,
-                  title: Text(
-                    lang.label,
-                    style: GoogleFonts.poppins(fontSize: 14),
-                  ),
-                ),
-              )
-              .toList(),
+      builder: (context) => SimpleDialog(
+        title: Text(
+          'Voice typing language',
+          style: GoogleFonts.poppins(fontSize: 15, fontWeight: FontWeight.w600),
         ),
+        // Plain tappable options, not radios. The dialog's job is "pick and
+        // start", but an already-selected Material radio swallows its own tap —
+        // the toggle only reports a *change* — so re-picking the language in
+        // use did nothing and left the dialog open. Every option pops its
+        // language now; the tick marks the one currently in use.
+        children: VoiceLanguage.values
+            .map(
+              (lang) => SimpleDialogOption(
+                onPressed: () => Navigator.of(context).pop(lang),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        lang.label,
+                        style: GoogleFonts.poppins(
+                          fontSize: 14,
+                          fontWeight: lang == _language
+                              ? FontWeight.w600
+                              : FontWeight.w400,
+                        ),
+                      ),
+                    ),
+                    if (lang == _language)
+                      Icon(
+                        Icons.check_rounded,
+                        size: 18,
+                        color: AppColors.primary,
+                      ),
+                  ],
+                ),
+              ),
+            )
+            .toList(),
       ),
     );
     if (language == null || !mounted) return;
