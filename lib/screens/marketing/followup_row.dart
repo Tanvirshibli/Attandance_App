@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../models/marketing_models.dart';
 import '../../services/marketing_service.dart';
+import '../../widgets/marketing_photo_widgets.dart';
 import '../../widgets/ui/ui.dart';
 import '../../widgets/voice_input_field.dart';
 
@@ -72,6 +73,14 @@ class FollowupRow extends StatelessWidget {
           children: [
             Row(
               children: [
+                if (marketingPhotoUrls(item.attachments).isNotEmpty) ...[
+                  MarketingThumb(
+                    attachments: item.attachments,
+                    size: 44,
+                    radius: 12,
+                  ),
+                  const SizedBox(width: 10),
+                ],
                 Expanded(
                   child: Text(
                     item.displayTitle,

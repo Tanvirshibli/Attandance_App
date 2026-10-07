@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import '../../models/marketing_models.dart';
 import '../../services/auth_service.dart';
 import '../../services/marketing_service.dart';
+import '../../widgets/marketing_photo_widgets.dart';
 import '../../widgets/ui/ui.dart';
 import 'dealer_visit_form_screen.dart';
 import 'farm_survey_detail_screen.dart';
@@ -302,6 +303,9 @@ class _PartyDetailScreenState extends State<PartyDetailScreen>
             _row('Capacity', '${party.capacity}'),
           if (party.isFarm && party.capacityLimit != null)
             _row('Capacity limit', '${party.capacityLimit}'),
+          // The photos uploaded when the record was posted.
+          if (marketingPhotoUrls(party.attachments).isNotEmpty)
+            MarketingPhotoGrid(attachments: party.attachments),
         ],
       ),
     );
@@ -509,6 +513,9 @@ class _PartyDetailScreenState extends State<PartyDetailScreen>
                 ),
               );
             },
+            leading: marketingPhotoUrls(survey.attachments).isEmpty
+                ? null
+                : MarketingThumb(attachments: survey.attachments, size: 48),
             title: Text(
               survey.displayTitle,
               style: AppType.body.copyWith(fontWeight: FontWeight.w600),
@@ -548,6 +555,9 @@ class _PartyDetailScreenState extends State<PartyDetailScreen>
               );
               if (mounted) _loadVisits();
             },
+            leading: marketingPhotoUrls(visit.attachments).isEmpty
+                ? null
+                : MarketingThumb(attachments: visit.attachments, size: 48),
             title: Text(
               visit.displayName,
               style: AppType.body.copyWith(fontWeight: FontWeight.w600),

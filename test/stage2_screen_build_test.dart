@@ -206,6 +206,11 @@ void main() {
         'phone': '01712345678',
         'zoneName': 'Dhaka South',
         'status': 'active',
+        // The party page renders its uploads through the shared photo strip;
+        // the network image falls back to its error state inside tests.
+        'attachments': <Map<String, dynamic>>[
+          <String, dynamic>{'id': 1, 'url': 'https://cdn.test/shed.webp'},
+        ],
       });
 
   testWidgets('PartyDetailScreen builds its visits and follow-ups tabs',
@@ -226,6 +231,7 @@ void main() {
     expect(find.text('Follow-ups'), findsOneWidget);
     expect(find.text('Post a visit'), findsOneWidget);
     expect(find.text('New follow-up'), findsOneWidget);
+    expect(find.text('Photos'), findsOneWidget);
 
     await tester.tap(find.text('Follow-ups'));
     await tester.pump();

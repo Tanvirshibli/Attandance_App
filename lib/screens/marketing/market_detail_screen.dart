@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 
 import '../../models/marketing_models.dart';
 import '../../services/marketing_service.dart';
+import '../../widgets/marketing_photo_widgets.dart';
 import '../../widgets/ui/ui.dart';
 import 'market_form_screen.dart';
 import 'party_detail_screen.dart';
@@ -239,6 +240,9 @@ class _MarketDetailScreenState extends State<MarketDetailScreen> {
                       ),
                       const SizedBox(height: 12),
                       _intelSection(market),
+                      // The photos uploaded with the market survey.
+                      if (marketingPhotoUrls(market.attachments).isNotEmpty)
+                        MarketingPhotoGrid(attachments: market.attachments),
                     ],
                   ),
                 ),
@@ -307,14 +311,20 @@ class _MarketDetailScreenState extends State<MarketDetailScreen> {
                                 );
                                 _load();
                               },
-                              leading: Icon(
-                                party.isFarm
-                                    ? Icons.agriculture_outlined
-                                    : Icons.storefront_outlined,
-                                color: party.isFarm
-                                    ? AppColors.accent
-                                    : AppColors.primary,
-                              ),
+                              leading: marketingPhotoUrls(party.attachments)
+                                      .isEmpty
+                                  ? Icon(
+                                      party.isFarm
+                                          ? Icons.agriculture_outlined
+                                          : Icons.storefront_outlined,
+                                      color: party.isFarm
+                                          ? AppColors.accent
+                                          : AppColors.primary,
+                                    )
+                                  : MarketingThumb(
+                                      attachments: party.attachments,
+                                      size: 44,
+                                    ),
                               title: Text(
                                 party.displayName,
                                 style: AppType.body.copyWith(fontWeight: FontWeight.w600),
