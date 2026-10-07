@@ -204,7 +204,8 @@ When `USE_SALES_DEMO_DATA=true`, Post Sale stays on-device demo only.
 | ----- | ----- |
 | `module` | `feed` or `chicks` |
 | `dealerId`, `categoryId`, `subCategoryId`, `childCategoryId`, `bookingPointId` | IDs |
-| `bookingPerson` | Feed: the officer's Sales **`users.id`**, resolved on load via `GET /api/v2/user/list?employeeId={canonicalEmployeeId}` (fallback `GET /api/v2/get-my-info`). Chicks: `GET /api/payment-setup-data` → `employeeList[].id`, matched on `employeeId` |
+| `bookingPerson` | **Optional.** The Sales id when the app resolved one: feed = `users.id` (via `GET /api/v2/user/list?employeeId={canonicalEmployeeId}`), chicks = `sales_employees_flat.id` (via `GET /api/payment-setup-data` → `employeeList[].id`). Omitted when the officer has no sales account |
+| `bookingPersonEmployeeId` | **Always sent when the profile has one** — the HRM `employees.id`. The backend resolves `bookingPerson` from it (feed `users.employeeId`, chicks `sales_employees_flat.employeeId`) and stores it on the booking either way |
 | `bookingType` | `Sale` or `Sample` (web labels; not `regular`) |
 | `isBookingMoney` | `0` / `1` |
 | `discount`, `discountType` | `Discount` (percent) or `Flat Discount` |
@@ -214,12 +215,16 @@ When `USE_SALES_DEMO_DATA=true`, Post Sale stays on-device demo only.
 | `details[i][productId]`, `unitId`, `qty`, `price`, `note` | one or more lines (`unitId` from the product catalog, falling back to `1`) |
 | **Chicks only** | required `cZoneId`, `isMultiDelivery` (`0`/`1`); optional `deliveryDetails[i][name|phone|roadNo|address|productDetails]`; line `mrp` (defaults to sale price) |
 
-> **`bookingPerson` is a Sales id, never the HRM employee id.** The HRM id the app holds is
-> `users.employeeId`; the feed endpoint wants `users.id` (`Rule::exists('users','id')`) and chicks
-> wants `sales_employees_flat.id`. Sending the HRM id for feed is exactly what produced the bare
-> `{"message":"Validation failed."}` 422. The app now resolves the right id up front and, when it
-> cannot, blocks with a plain "sales account isn't linked" message instead of posting. A 422 body's
-> `errors` text is now surfaced (e.g. "Booking person is required.") rather than the generic message.
+> **No sales account is required to post.** `bookingPerson` used to be `required|exists` and the app
+> blocked with *"Your sales account isn't linked"* when it could not resolve one — which was most
+> employees, because nothing syncs HRM employees into the accounts `users` table. The endpoint now
+> accepts a booking without `bookingPerson`, resolving it server-side from `bookingPersonEmployeeId`
+> when a matching Sales row exists and otherwise storing just the employee id
+> (`feed_bookings.bookingPersonEmployeeId` / `chicks_bookings.bookingPersonEmployeeId`, both nullable).
+> The app's old `GET /api/v2/get-my-info` fallback is gone: it authenticates the HRM token's `sub`
+> (= the HRM `users.id`) against this app's `users` table, so it resolves the wrong row or none at
+> all. A 422 body's `errors` text (e.g. "Booking person is required." from an older backend) is still
+> surfaced rather than the generic message.
 
 #### ⚠️ `details[i][qty]` is **kg**, not bags — for feed
 

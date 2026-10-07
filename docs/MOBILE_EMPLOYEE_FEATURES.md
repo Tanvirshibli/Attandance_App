@@ -89,6 +89,7 @@ Handoff for backend teams: **[SALES_AND_PAYMENTS_API_CONTRACT.md](SALES_AND_PAYM
 - Per module: summary, Products / Dealers / Sectors, line details
 - **Post booking** FAB opens `PostBookingScreen` directly:
   - **Post booking** (`PostBookingScreen`) — Feed vs Chicks layouts matching sales web create pages: booking point, feed category cascade, Sale/Sample, dealer (feed list), booking-money + advance, multi-line products, Discount / Flat Discount, chicks **Zone** dropdown from `GET /api/all-dealer-lists` `data.zoneList` (POSTs `cZoneId`) + multi-delivery. POST `booking-person-books` with `Sale`/`Sample` and `Discount`/`Flat Discount`.
+  - **No sales account is required.** `bookingPerson` (the Sales id) is sent only when the app resolved one; `bookingPersonEmployeeId` (the HRM `employees.id`) is always sent, and the backend resolves the Sales id from it. The FAB is not gated by the sales-team list — only the report is; without one, the screen shows "No sales report for your profile" and posting stays available.
   - **Post sale** (`PostSaleScreen`) — temporarily disabled in the app (not reachable from Sales Info); screen + `sales-person-sales` contract kept dormant for reintegration.
 - Receive payment (`PostAuthWisePaymentScreen`) matches the sales web create page: Payment For, rec type, cascading dealer/employee receiver, invoice type, payment mode extras, ADD queue, SAVE. POST maps `paymentMode` 1–8, `paymentType` = bank id, `paymentFor` = type list, dealer vs `employeeId` receivers.
 - Force reporting demo: `--dart-define=USE_SALES_DEMO_DATA=true`
