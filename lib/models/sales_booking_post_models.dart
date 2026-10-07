@@ -85,6 +85,13 @@ class BookingLineInput {
   }
 }
 
+/// The body of `POST /api/booking-person-books`.
+///
+/// [bookingPerson] is a **Sales** id — `users.id` for feed,
+/// `sales_employees_flat.id` for chicks — and is only sent when the app could
+/// resolve one. [bookingPersonEmployeeId] (the HRM `employees.id`) is always
+/// sent when the profile has one: the backend resolves the Sales id from it and
+/// keeps it on the booking, so an officer with no sales account can still post.
 class CreateBookingPersonBookRequest {
   const CreateBookingPersonBookRequest({
     required this.module,
@@ -93,7 +100,8 @@ class CreateBookingPersonBookRequest {
     required this.subCategoryId,
     required this.childCategoryId,
     required this.bookingPointId,
-    required this.bookingPerson,
+    this.bookingPerson,
+    this.bookingPersonEmployeeId,
     required this.bookingType,
     required this.isBookingMoney,
     required this.isMultiDelivery,
@@ -117,7 +125,12 @@ class CreateBookingPersonBookRequest {
   final int subCategoryId;
   final int childCategoryId;
   final int bookingPointId;
-  final int bookingPerson;
+
+  /// The Sales id when the officer's sales account could be resolved.
+  final int? bookingPerson;
+
+  /// The HRM `employees.id` — always known, always sent when positive.
+  final int? bookingPersonEmployeeId;
   final String bookingType;
   final bool isBookingMoney;
   final bool isMultiDelivery;
@@ -142,7 +155,6 @@ class CreateBookingPersonBookRequest {
       'subCategoryId': '$subCategoryId',
       'childCategoryId': '$childCategoryId',
       'bookingPointId': '$bookingPointId',
-      'bookingPerson': '$bookingPerson',
       'bookingType': bookingType,
       'isBookingMoney': isBookingMoney ? '1' : '0',
       'isMultiDelivery': isMultiDelivery ? '1' : '0',
@@ -153,6 +165,18 @@ class CreateBookingPersonBookRequest {
       'bookingDate': bookingDate,
       'invoiceDate': invoiceDate,
     };
+
+    // The Sales id only when one was resolved; the HRM employee id whenever the
+    // profile has one. The backend resolves the Sales id from it server-side
+    // and records both, so a booking never depends on a sales account.
+    final salesPerson = bookingPerson;
+    if (salesPerson != null && salesPerson > 0) {
+      fields['bookingPerson'] = '$salesPerson';
+    }
+    final employeeId = bookingPersonEmployeeId;
+    if (employeeId != null && employeeId > 0) {
+      fields['bookingPersonEmployeeId'] = '$employeeId';
+    }
 
     if (module == 'chicks' && cZoneId != null && cZoneId! > 0) {
       fields['cZoneId'] = '$cZoneId';

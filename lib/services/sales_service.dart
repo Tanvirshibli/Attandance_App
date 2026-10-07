@@ -700,17 +700,23 @@ class SalesService {
   /// The logged-in officer's Sales `users.id` — the value the feed booking
   /// endpoint wants for `bookingPerson`.
   ///
-  /// The HRM employee id the app holds lives in the Sales `users.employeeId`
-  /// column, **not** `users.id`, so sending it straight to
-  /// `POST /api/booking-person-books` fails the backend's `exists:users,id`
-  /// rule with a 422 "Validation failed." (Chicks needs
-  /// `sales_employees_flat.id` instead, which `payment-setup-data` already
-  /// gives us — this is feed only.)
+  /// Best-effort only. The HRM employee id the app holds lives in the Sales
+  /// `users.employeeId` column, **not** `users.id`, so it cannot be sent
+  /// straight to `POST /api/booking-person-books` (the backend's
+  /// `exists:users,id` rule rejects it with a 422). Resolved from
+  /// `GET /api/v2/user/list?employeeId=` (`UserController::allUser`, which
+  /// filters `users.employeeId`).
   ///
-  /// Source: `GET /api/v2/user/list?employeeId=` (`UserController::allUser`,
-  /// filters `users.employeeId`), falling back to `GET /api/v2/get-my-info`
-  /// (`UserController::getSelf`). Both sit under `jwt.verify` — the same group
-  /// as the product catalog the app already calls — so the existing token works.
+  /// A failure here never blocks a booking: the request also carries the HRM
+  /// employee id as `bookingPersonEmployeeId`, and the backend resolves the
+  /// Sales id from it.
+  ///
+  /// The old `GET /api/v2/get-my-info` fallback is deliberately gone — it
+  /// authenticates the token's `sub`, which is the **HRM** `users.id` from a
+  /// different database than this app's `users` table, so it either resolves
+  /// nothing (the middleware passes an unknown subject through unauthenticated
+  /// and `getSelf()` then fails on a null user) or a coincidental id match
+  /// attributes the booking to the wrong person.
   Future<ApiResult<int>> fetchMySalesUserId(int? canonicalEmployeeId) async {
     if (_cachedSalesUserId != null) {
       return ApiResult.ok(_cachedSalesUserId!);
@@ -750,22 +756,11 @@ class SalesService {
           return ApiResult.ok(id);
         }
       }
-
-      final meResponse = await http
-          .get(Uri.parse('$base/api/v2/get-my-info'), headers: headers)
-          .timeout(const Duration(seconds: 30));
-      final id = salesUserIdFromMe(meResponse.body);
-      if (id != null && id > 0) {
-        _cachedSalesUserId = id;
-        return ApiResult.ok(id);
-      }
     } catch (error) {
       return ApiResult.fail('Network error: $error');
     }
 
-    return ApiResult.fail(
-      'Your sales account isn\'t linked. Please contact an admin.',
-    );
+    return ApiResult.fail('No sales user account matched your employee id.');
   }
 
   /// `data[].id` from `GET /api/v2/user/list` — the Sales `users.id`.
@@ -780,18 +775,6 @@ class SalesService {
             if (id != null) return id;
           }
         }
-      }
-    } catch (_) {}
-    return null;
-  }
-
-  /// `user.id` from `GET /api/v2/get-my-info` — the Sales `users.id`.
-  static int? salesUserIdFromMe(String body) {
-    try {
-      final decoded = jsonDecode(body);
-      final user = decoded is Map ? decoded['user'] : null;
-      if (user is Map) {
-        return _asPositiveInt(user['id']);
       }
     } catch (_) {}
     return null;
