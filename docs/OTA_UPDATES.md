@@ -1,6 +1,6 @@
 # OTA (Over-The-Air) Updates — PPHL Attendance App
 
-Last updated: October 7, 2026
+Last updated: October 10, 2026
 
 Production OTA uses **GitHub** (public repo + GitHub Releases). There is **no Cloudinary** or HRM server involved in APK hosting.
 
@@ -295,6 +295,20 @@ After publishing build **N**:
 - [`rocket launcher/README.md`](../../rocket%20launcher/README.md) — publisher scripts and GitHub API flow
 - [`SERVER_COMMANDS.md`](../../SERVER_COMMANDS.md) — workspace command reference (OTA section)
 - [`MOBILE_EMPLOYEE_FEATURES.md`](MOBILE_EMPLOYEE_FEATURES.md) — feature summary including OTA
+
+---
+
+## October 10, 2026 Update (v2.5.4+110) — main channel
+
+**Chick booking temporarily disabled. Force update.**
+
+> Published from `2.5.4+109` → `2.5.4+110`. Tag `v2.5.4-build110`, manifest commit `2668c38`; both APKs verified by download — sizes and SHA-256 match the manifest, `versionName=2.5.4`, `versionCode=2110` (→ 110), and the APK bakes the **prod** manifest URL with no beta path.
+
+- **Chick booking posting is hidden and disabled** while the chick booking flow is reworked: the Module picker is gone from Post booking (feed is the only module), and `SalesService.createBookingPersonBook` rejects any non-feed module before any network call. Feed booking, Sales Info reporting and every other sales feature are unchanged
+- Gated by the deployment-wide feature flag `sales.chicksBooking.enabled` — local fallback `false`, so it fails closed on every server response and offline device. Flip the flag on the app-config endpoint to re-enable without another release; the implementing release flips the local default when the rework lands
+- Guard: `test/chicks_booking_gate_test.dart` pins the fail-closed rejection (a chicks request is rejected with zero endpoint resolves, while a feed request still reaches the endpoint resolve); `test/endpoint_config_test.dart` pins the flag's fail-closed resolution
+
+**Pubspec stays on the prod line at `2.5.4+110`** after this release (the beta line is paused at `2.5.3-beta.1+9036`).
 
 ---
 
