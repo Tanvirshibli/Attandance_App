@@ -88,7 +88,7 @@ Handoff for backend teams: **[SALES_AND_PAYMENTS_API_CONTRACT.md](SALES_AND_PAYM
 - Module tabs: Egg | Feed | Fertilizer | Chicks | Live Bird | Cull Bird
 - Per module: summary, Products / Dealers / Sectors, line details
 - **Post booking** FAB opens `PostBookingScreen` directly:
-  - **Post booking** (`PostBookingScreen`) — Feed vs Chicks layouts matching sales web create pages: booking point, feed category cascade, Sale/Sample, dealer (feed list), booking-money + advance, multi-line products, Discount / Flat Discount, chicks **Zone** dropdown from `GET /api/all-dealer-lists` `data.zoneList` (POSTs `cZoneId`) + multi-delivery. POST `booking-person-books` with `Sale`/`Sample` and `Discount`/`Flat Discount`.
+  - **Post booking** (`PostBookingScreen`) — Feed vs Chicks layouts matching sales web create pages: booking point, feed category cascade, Sale/Sample, dealer (feed list), booking-money + advance, multi-line products, Discount / Flat Discount, chicks **Zone** dropdown from `GET /api/all-dealer-lists` `data.zoneList` (POSTs `cZoneId`) + multi-delivery. POST `booking-person-books` with `Sale`/`Sample` and `Discount`/`Flat Discount`. **Chicks module is temporarily hidden and disabled (v2.5.4+110):** the Module picker is removed while the chick booking flow is reworked, and `createBookingPersonBook` rejects any non-feed module before any network call. Gated by the deployment-wide feature flag `sales.chicksBooking.enabled` — local fallback `false`, so it fails closed on every server response and offline device; flip the flag on the app-config endpoint to re-enable.
   - **No sales account is required.** `bookingPerson` (the Sales id) is sent only when the app resolved one; `bookingPersonEmployeeId` (the HRM `employees.id`) is always sent, and the backend resolves the Sales id from it. The FAB is not gated by the sales-team list — only the report is; without one, the screen shows "No sales report for your profile" and posting stays available.
   - **Post sale** (`PostSaleScreen`) — temporarily disabled in the app (not reachable from Sales Info); screen + `sales-person-sales` contract kept dormant for reintegration.
 - Receive payment (`PostAuthWisePaymentScreen`) matches the sales web create page: Payment For, rec type, cascading dealer/employee receiver, invoice type, payment mode extras, ADD queue, SAVE. POST maps `paymentMode` 1–8, `paymentType` = bank id, `paymentFor` = type list, dealer vs `employeeId` receivers.
@@ -155,6 +155,7 @@ Handoff for backend teams: **[SALES_AND_PAYMENTS_API_CONTRACT.md](SALES_AND_PAYM
 - Chicks **Zone** is a searchable dropdown from `GET /api/all-dealer-lists` `data.zoneList` (`id`, `zoneName`); selected `id` is posted as `cZoneId`
 - No numeric Zone ID field. Product pick and submit stay blocked until a zone is selected (`Please select Zone first!`)
 - Empty `zoneList` (server not deployed yet) shows a one-line helper; chicks booking cannot be posted until the list is live
+- **Chicks posting is temporarily disabled (v2.5.4+110):** the whole chicks module (Zone dropdown included) is hidden from Post booking and `createBookingPersonBook` rejects `module: 'chicks'` until the `sales.chicksBooking.enabled` flag is on — the dropdown returns with the rest of the module when it is
 
 ### Receive payment & Post booking UX (v2.2.3+43)
 

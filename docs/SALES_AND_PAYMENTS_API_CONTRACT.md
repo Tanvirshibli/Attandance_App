@@ -1,9 +1,9 @@
 # Sales & Payments API Contract (Android Attandance_App)
 
-**Last updated:** August 15, 2026  
+**Last updated:** October 10, 2026  
 **Audience:** External sales backend team · pphl_erp (HRM) · ZKTeco Mobile App API admins  
 **App:** `Attandance_App` (Flutter)  
-**Status:** **Sales Info reporting and Post booking create are live** against `https://sales.peoplesitsolution.online` when `USE_SALES_DEMO_DATA=false` (default). **Post sale entry is temporarily disabled in the app** — the `POST /api/sales-person-sales` contract below is unchanged and kept dormant for reintegration. **Auth-wise payment POST** is live when `payment.enabled` is on. HRM loan/payslip screens still demo by default (`USE_PAYMENT_DEMO_DATA=true`).
+**Status:** **Sales Info reporting and Post booking (feed) create are live** against `https://sales.peoplesitsolution.online` when `USE_SALES_DEMO_DATA=false` (default). **Chick booking posting is temporarily disabled** — `module: 'chicks'` is rejected client-side (UI hidden + `createBookingPersonBook` fails closed) until the deployment-wide `sales.chicksBooking.enabled` feature flag is on; the `POST /api/booking-person-books` contract is unchanged. **Post sale entry is temporarily disabled in the app** — the `POST /api/sales-person-sales` contract below is unchanged and kept dormant for reintegration. **Auth-wise payment POST** is live when `payment.enabled` is on. HRM loan/payslip screens still demo by default (`USE_PAYMENT_DEMO_DATA=true`).
 
 ---
 
@@ -13,7 +13,7 @@
 | Module   | Compile-time flag                           | Default        | Live requirement                                      |
 | -------- | ------------------------------------------- | -------------- | ----------------------------------------------------- |
 | Sales reporting | `--dart-define=USE_SALES_DEMO_DATA=true` | `false` (live) | Person-sales GET + HRM eligibility list               |
-| Sales create (Post booking) | `--dart-define=USE_SALES_DEMO_DATA=true` | `false` (live) | `POST /api/booking-person-books` (feed, chicks). `POST /api/sales-person-sales` (egg, fertilizer, liveBird, cullBird) contract unchanged; Post sale entry disabled in app pending reintegration |
+| Sales create (Post booking) | `--dart-define=USE_SALES_DEMO_DATA=true` | `false` (live) | `POST /api/booking-person-books` — **feed live; chicks rejected client-side** until `sales.chicksBooking.enabled` is on (fail-closed, contract unchanged). `POST /api/sales-person-sales` (egg, fertilizer, liveBird, cullBird) contract unchanged; Post sale entry disabled in app pending reintegration |
 | Payments | `--dart-define=USE_PAYMENT_DEMO_DATA=false` | `true` (demo)  | Existing pphl_erp JWT APIs + ZKTeco `payment.enabled` |
 
 
