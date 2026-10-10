@@ -80,4 +80,59 @@ void main() {
       expect(empty.endpoints.isNotEmpty || empty.bases.isNotEmpty, isFalse);
     });
   });
+
+  group('sales.chicksBooking.enabled — the chick booking freeze', () {
+    // Chick booking posting is hidden and disabled until the rework is
+    // confirmed. The server has never published this key, so the
+    // resolution must fail closed for every device and every offline
+    // fallback path.
+    test('a config that never heard of the key fails closed', () {
+      final config = EndpointConfig.fromJson({
+        'version': 1,
+        'bases': <String, dynamic>{},
+        'endpoints': <String, dynamic>{},
+        'features': <String, dynamic>{'sales.enabled': true},
+      });
+
+      expect(
+        config.isFeatureEnabled('sales.chicksBooking.enabled',
+            defaultValue: false),
+        isFalse,
+      );
+    });
+
+    test('reports enabled only when the server explicitly turns it on', () {
+      final config = EndpointConfig.fromJson({
+        'version': 1,
+        'bases': <String, dynamic>{},
+        'endpoints': <String, dynamic>{},
+        'features': <String, dynamic>{
+          'sales.chicksBooking.enabled': true,
+        },
+      });
+
+      expect(
+        config.isFeatureEnabled('sales.chicksBooking.enabled',
+            defaultValue: false),
+        isTrue,
+      );
+    });
+
+    test('an explicit false stays disabled', () {
+      final config = EndpointConfig.fromJson({
+        'version': 1,
+        'bases': <String, dynamic>{},
+        'endpoints': <String, dynamic>{},
+        'features': <String, dynamic>{
+          'sales.chicksBooking.enabled': false,
+        },
+      });
+
+      expect(
+        config.isFeatureEnabled('sales.chicksBooking.enabled',
+            defaultValue: false),
+        isFalse,
+      );
+    });
+  });
 }

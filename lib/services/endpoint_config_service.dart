@@ -192,6 +192,7 @@ class EndpointConfigService {
       },
       features: {
         'sales.enabled': true,
+        'sales.chicksBooking.enabled': false,
         'payment.enabled': true,
         'vehicle.enabled': true,
         'geo.tracking.enabled': true,

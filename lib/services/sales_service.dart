@@ -50,6 +50,16 @@ class SalesService {
   Future<bool> isSalesEnabled() =>
       _configService.isFeatureEnabled('sales.enabled', defaultValue: true);
 
+  /// Chick booking posting is temporarily hidden and disabled while the
+  /// chick booking flow is reworked. Fails closed: a config that has never
+  /// heard of the key (every server today, and any offline device) reports
+  /// disabled. Flip the `sales.chicksBooking.enabled` feature on the
+  /// app-config endpoint (or the local fallback here) to re-enable.
+  Future<bool> isChicksBookingEnabled() => _configService.isFeatureEnabled(
+        'sales.chicksBooking.enabled',
+        defaultValue: false,
+      );
+
   Future<ApiResult<SalesProfile>> checkEligibility(int? employeeId) async {
     if (useDemoData) {
       return ApiResult.ok(
@@ -462,6 +472,10 @@ class SalesService {
 
     if (!await isSalesEnabled()) {
       return ApiResult.fail('Sales module is disabled.');
+    }
+
+    if (request.module != 'feed' && !await isChicksBookingEnabled()) {
+      return ApiResult.fail('Chick booking is temporarily disabled.');
     }
 
     final url = await _configService.resolveUrl('sales.booking.create');
