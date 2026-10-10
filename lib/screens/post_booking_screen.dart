@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import '../models/dealer_list_models.dart';
 import '../models/sales_booking_post_models.dart';
 import '../services/auth_service.dart';
+import '../services/endpoint_config_service.dart';
 import '../services/payment_service.dart';
 import '../services/sales_service.dart';
 import '../services/zone_scope_service.dart';
@@ -130,6 +131,7 @@ class _PostBookingScreenState extends State<PostBookingScreen> {
 
   bool _loading = true;
   bool _isSubmitting = false;
+  bool _chicksBookingEnabled = false;
   String? _loadError;
   BookingFormData? _formData;
   AllDealerLists? _dealerLists;
@@ -224,6 +226,12 @@ class _PostBookingScreenState extends State<PostBookingScreen> {
     final catalogResult = await _salesService.fetchProductCatalog();
     if (!mounted) return;
 
+    // Resolved before the form renders so the chicks module can never
+    // flash into the UI. The config is cached, so this is a local read
+    // after the first screen load.
+    final chicksBookingEnabled = await EndpointConfigService.instance
+        .isFeatureEnabled('sales.chicksBooking.enabled', defaultValue: false);
+
     final canonical = profile?.canonicalEmployeeId;
     int? chicksPerson;
     if (canonical != null &&
@@ -255,6 +263,7 @@ class _PostBookingScreenState extends State<PostBookingScreen> {
 
     setState(() {
       _loading = false;
+      _chicksBookingEnabled = chicksBookingEnabled;
       _formData = formResult.data;
       _dealerLists = dealerResult.data == null
           ? null
@@ -320,6 +329,7 @@ class _PostBookingScreenState extends State<PostBookingScreen> {
 
   void _switchModule(String? value) {
     if (value == null || value == _module) return;
+    if (value == 'chicks' && !_chicksBookingEnabled) return;
     setState(() {
       _module = value;
       _bookingPoint = null;
@@ -390,6 +400,11 @@ class _PostBookingScreenState extends State<PostBookingScreen> {
 
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
+
+    if (_module != 'feed' && !_chicksBookingEnabled) {
+      _snack('Chick booking is temporarily disabled.');
+      return;
+    }
 
     final data = _formData;
     if (data == null) {
@@ -570,7 +585,9 @@ class _PostBookingScreenState extends State<PostBookingScreen> {
               title: 'Post booking',
               subtitle: _salesService.useCreateDemo
                   ? 'Demo mode — enable live sales to post to server'
-                  : 'Feed / chicks → booking-person-books',
+                  : (_chicksBookingEnabled
+                      ? 'Feed / chicks → booking-person-books'
+                      : 'Feed → booking-person-books'),
             ),
           ),
           SliverPadding(
@@ -609,19 +626,22 @@ class _PostBookingScreenState extends State<PostBookingScreen> {
                               style: AppType.meta.copyWith(color: AppColors.warning),
                             ),
                           const SizedBox(height: 12),
-                          _dropdown(
-                            label: 'Module',
-                            value: _module,
-                            items: const [
-                              DropdownMenuItem(value: 'feed', child: Text('Feed')),
-                              DropdownMenuItem(
-                                value: 'chicks',
-                                child: Text('Chicks'),
-                              ),
-                            ],
-                            onChanged: _switchModule,
-                          ),
-                          const SizedBox(height: 12),
+                          if (_chicksBookingEnabled) ...[
+                            _dropdown(
+                              label: 'Module',
+                              value: _module,
+                              items: const [
+                                DropdownMenuItem(
+                                    value: 'feed', child: Text('Feed')),
+                                DropdownMenuItem(
+                                  value: 'chicks',
+                                  child: Text('Chicks'),
+                                ),
+                              ],
+                              onChanged: _switchModule,
+                            ),
+                            const SizedBox(height: 12),
+                          ],
                           if (_isFeed) _feedHeader(data) else _chicksHeader(data),
                           const SizedBox(height: 12),
                           SearchableSelectField<DealerListItem>(
