@@ -9,6 +9,7 @@ import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../widgets/ui/ui.dart' as ui;
 import '../models/geo_ping.dart';
+import '../services/battery_optimization_service.dart';
 import '../services/fcm_wake_handler.dart';
 import '../services/geo_tracking_service.dart';
 import '../widgets/live_location_map.dart';
@@ -153,6 +154,27 @@ class _GeoTrackingScreenState extends State<GeoTrackingScreen> {
     }
   }
 
+  /// 'Battery & app settings' handler.
+  ///
+  /// While the app is still subject to battery optimisations, the direct
+  /// exemption screen is the useful destination — it is what lets background
+  /// geo work survive Doze. Once the exemption is granted there is nothing to
+  /// change there, so fall back to the full app-settings page; any platform
+  /// failure falls back there too.
+  Future<void> _openBatterySettings() async {
+    var openedBatterySettings = false;
+    try {
+      if (!await BatteryOptimizationService()
+          .isIgnoringBatteryOptimizations()) {
+        openedBatterySettings = await BatteryOptimizationService()
+            .openBatteryOptimizationSettings();
+      }
+    } catch (_) {}
+    if (!openedBatterySettings) {
+      await openAppSettings();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return PopScope(
@@ -220,7 +242,7 @@ class _GeoTrackingScreenState extends State<GeoTrackingScreen> {
                 Align(
                   alignment: Alignment.centerLeft,
                   child: TextButton.icon(
-                    onPressed: openAppSettings,
+                    onPressed: _openBatterySettings,
                     icon: ui.AppIcon(
                       ui.AppIcons.key,
                       size: 16,
