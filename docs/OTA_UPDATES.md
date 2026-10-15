@@ -1,6 +1,6 @@
 # OTA (Over-The-Air) Updates — PPHL Attendance App
 
-Last updated: October 10, 2026
+Last updated: October 15, 2026
 
 Production OTA uses **GitHub** (public repo + GitHub Releases). There is **no Cloudinary** or HRM server involved in APK hosting.
 
@@ -295,6 +295,21 @@ After publishing build **N**:
 - [`rocket launcher/README.md`](../../rocket%20launcher/README.md) — publisher scripts and GitHub API flow
 - [`SERVER_COMMANDS.md`](../../SERVER_COMMANDS.md) — workspace command reference (OTA section)
 - [`MOBILE_EMPLOYEE_FEATURES.md`](MOBILE_EMPLOYEE_FEATURES.md) — feature summary including OTA
+
+---
+
+## October 15, 2026 Update (v2.5.4+111) — main channel
+
+**Location tracking keeps working while the app is closed. Force update.**
+
+> Published from `2.5.4+110` → `2.5.4+111`. Tag `v2.5.4-build111`; the live manifest was verified after publishing (channel `prod`, `version_code` 111, `force_update` true, both APK entries present) and each asset was range-requested — served as a real ZIP archive (PK magic), sizes matching the manifest exactly. Release notes are the user-facing text carried in the manifest.
+
+- **Closed-app tracking captured nothing before this release**: the 15-minute WorkManager job and the FCM `geo_wake` push both run in a fresh isolate, where the in-memory permission gate was always empty — every background capture silently no-op'd for every user, and the FCM handler additionally dropped every wake push on a UI-isolate-only flag. The permission snapshot is now persisted and rehydrated on demand, the wake handler gates on `Firebase.apps` + the same SharedPreferences the worker reads, and background captures get a 45-second fix budget with a last-known-position fallback
+- Uploads resolve the employee id from a persisted mirror instead of a live profile fetch, and duplicate observations are coalesced so an upload can only mark its own queue entry
+- Logout drops the session's employee id, pending ping queue and last-ping mirror, and disables the device's server-side geo registration — previously the ZKTeco sender kept waking signed-out devices. A profile fetch or token refresh completing mid-logout can no longer re-persist the dead session
+- Guard: `test/geo_isolate_wake_test.dart` pins the wake truth table and the fail-closed isolate gate; `test/permission_snapshot_test.dart` pins snapshot round-trip and clear semantics; the permission widget tests now mock SharedPreferences
+
+**Pubspec stays on the prod line at `2.5.4+111`** after this release (the beta line is paused at `2.5.3-beta.1+9036`).
 
 ---
 
