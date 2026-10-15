@@ -23,6 +23,7 @@ const String _lastPingKey = 'geo_last_ping_json';
 const String _queueKey = 'geo_ping_queue';
 const String _lastCaptureKey = 'geo_last_capture_ms';
 const String _hrmPausedUntilKey = 'geo_hrm_paused_until_ms';
+const String _employeeIdKey = 'canonical_employee_id';
 
 class GeoTrackingService {
   GeoTrackingService({
@@ -50,12 +51,23 @@ class GeoTrackingService {
   }
 
   /// Stop foreground/background HRM-bound geo work so leftover traffic cannot
-  /// block the next login on the same IP after 429 or logout.
+  /// block the next login on the same IP after 429 or logout, and drop the
+  /// session-scoped geo state (employee id, pending queue, last ping).
   Future<void> pauseForLogout() async {
     _foregroundTimer?.cancel();
     _foregroundTimer = null;
     await GeoBackgroundWorker.cancelPeriodicTask();
     await GeoNotificationService.instance.cancelTrackingNotification();
+    // The persisted employee id belongs to the session that just ended; a
+    // background isolate must not upload the next user's pings under it.
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_employeeIdKey);
+    // Pending pings and the last-ping mirror are session-scoped too: once this
+    // session's token and geo registration are gone, a later flush would post
+    // them under the next user's employee id.
+    await prefs.remove(_queueKey);
+    await prefs.remove(_lastPingKey);
+    await prefs.remove(_lastCaptureKey);
     await _setHrmPausedUntil(
       DateTime.now().add(const Duration(minutes: 2)),
     );
@@ -82,11 +94,25 @@ class GeoTrackingService {
     await prefs.setInt(_hrmPausedUntilKey, until.millisecondsSinceEpoch);
   }
 
+  /// Resolves the employee id for uploads: in-memory cache, then the persisted
+  /// mirror, then the network.
+  ///
+  /// Order matters for background isolates. They start with an empty
+  /// [AuthService] — no in-memory profile — so the persisted
+  /// `canonical_employee_id` preference is what lets a 15-minute worker or an
+  /// FCM wake-up finish an upload without a slow, failure-prone profile fetch.
+  /// When nothing is persisted (or [forceRefresh] demands fresh data) it falls
+  /// back to the network as before.
   Future<int?> _resolveEmployeeId({bool forceRefresh = false}) async {
     if (!forceRefresh) {
       final cached = _authService.cachedCanonicalEmployeeId;
       if (cached != null && cached > 0) {
         return cached;
+      }
+      final prefs = await SharedPreferences.getInstance();
+      final persisted = prefs.getInt(_employeeIdKey);
+      if (persisted != null && persisted > 0) {
+        return persisted;
       }
     }
     final profile =
@@ -107,7 +133,17 @@ class GeoTrackingService {
   /// [ensureEnabledIfAllowed] runs at bootstrap and on resume — without the
   /// permission check here, a user who may not see the module would still have
   /// the app silently uploading their location in the background.
+  ///
+  /// This runs in fresh background isolates too (the WorkManager dispatcher and
+  /// the FCM background handler), where [PermissionService] was never fed by a
+  /// profile fetch — without hydration the gate would deny every background
+  /// capture for every user. Hydrating restores the grants the UI isolate last
+  /// persisted; when no snapshot exists the service stays unloaded and the gate
+  /// still fails closed, so a device that never signed in captures nothing.
   Future<bool> isGeoFeatureEnabled() async {
+    if (!PermissionService.instance.isLoaded) {
+      await PermissionService.instance.hydrateFromStorage();
+    }
     final enabled = await _configService.isFeatureEnabled(
       'geo.tracking.enabled',
       defaultValue: true,
@@ -272,14 +308,41 @@ class GeoTrackingService {
       return;
     }
 
+    // Background wake-ups run on borrowed time (a WorkManager slot or an FCM
+    // data push), so a fix that misses the window is worth less than an older
+    // one: give it 45s, then fall back to the last known position. Foreground
+    // captures keep the interactive 20s limit.
+    final backgroundSource = source == 'background' || source == 'fcm_wake';
+
+    Position? position;
+    var fromLastKnown = false;
     try {
-      final position = await Geolocator.getCurrentPosition(
-        locationSettings: const LocationSettings(
+      position = await Geolocator.getCurrentPosition(
+        locationSettings: LocationSettings(
           accuracy: LocationAccuracy.high,
-          timeLimit: Duration(seconds: 20),
+          timeLimit: Duration(seconds: backgroundSource ? 45 : 20),
         ),
       );
+    } catch (error) {
+      debugPrint('Geo capture failed: $error');
+      if (!backgroundSource) {
+        return;
+      }
+      debugPrint('Geo $source capture: falling back to last known position');
+      try {
+        position = await Geolocator.getLastKnownPosition();
+        fromLastKnown = position != null;
+      } catch (fallbackError) {
+        debugPrint('Geo last-known fallback failed: $fallbackError');
+      }
+    }
 
+    if (position == null) {
+      debugPrint('Geo capture abandoned ($source): no position available');
+      return;
+    }
+
+    try {
       String? address;
       try {
         final placemarks = await placemarkFromCoordinates(
@@ -294,10 +357,24 @@ class GeoTrackingService {
         }
       } catch (_) {}
 
+      // The fix and the address can take up to 45 s. A logout landing in that
+      // window removes the session's queue and last-ping mirror; persisting
+      // now would re-create them, and a later flush would post this
+      // observation under the next user's employee id. Re-check the session
+      // before writing anything.
+      if (await _authService.getToken() == null) {
+        return;
+      }
+      if (!await isGeoFeatureEnabled()) {
+        return;
+      }
+
       final ping = GeoPing(
         latitude: position.latitude,
         longitude: position.longitude,
-        capturedAt: DateTime.now(),
+        // A last-known fix can be minutes old; label it with its own timestamp
+        // instead of "now", which would misreport a stale location as fresh.
+        capturedAt: fromLastKnown ? position.timestamp : DateTime.now(),
         address: address,
         accuracyM: position.accuracy,
       );
@@ -306,6 +383,20 @@ class GeoTrackingService {
       await prefs.setInt(_lastCaptureKey, DateTime.now().millisecondsSinceEpoch);
 
       final queue = await _loadQueue();
+      // Two background captures can reuse the same last-known fix, producing an
+      // identical observation (same capture time and coordinates). Coalescing
+      // keeps queue entries unique, so an upload can only ever mark its own
+      // entry — and the duplicate is not posted a second time.
+      final duplicate = queue.any(
+        (item) =>
+            item.capturedAt == ping.capturedAt &&
+            item.latitude == ping.latitude &&
+            item.longitude == ping.longitude,
+      );
+      if (duplicate) {
+        return;
+      }
+
       queue.add(ping);
       await _saveQueue(queue);
 
@@ -403,22 +494,36 @@ class GeoTrackingService {
     }
   }
 
+  /// Marks the queued copy of [ping] as uploaded.
+  ///
+  /// Matches on capture time **and** coordinates and marks a single entry, so a
+  /// duplicate observation — which [captureAndQueue] coalesces — can never
+  /// cause a sibling's upload bookkeeping to be applied to the wrong entry.
   Future<void> _markUploaded(GeoPing ping) async {
     final queue = await _loadQueue();
-    final updated = queue
-        .map(
-          (item) => item.capturedAt == ping.capturedAt
-              ? GeoPing(
-                  latitude: item.latitude,
-                  longitude: item.longitude,
-                  capturedAt: item.capturedAt,
-                  address: item.address,
-                  accuracyM: item.accuracyM,
-                  uploaded: true,
-                )
-              : item,
-        )
-        .toList();
+    var marked = false;
+    final updated = <GeoPing>[];
+    for (final item in queue) {
+      if (!marked &&
+          !item.uploaded &&
+          item.capturedAt == ping.capturedAt &&
+          item.latitude == ping.latitude &&
+          item.longitude == ping.longitude) {
+        marked = true;
+        updated.add(
+          GeoPing(
+            latitude: item.latitude,
+            longitude: item.longitude,
+            capturedAt: item.capturedAt,
+            address: item.address,
+            accuracyM: item.accuracyM,
+            uploaded: true,
+          ),
+        );
+        continue;
+      }
+      updated.add(item);
+    }
     await _saveQueue(updated);
   }
 

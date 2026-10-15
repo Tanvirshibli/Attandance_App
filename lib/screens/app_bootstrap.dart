@@ -126,7 +126,7 @@ class _AppBootstrapState extends State<AppBootstrap>
       // AuthService.getCurrentUserProfile(), which this await already calls.
       // Kept deliberately: it is idempotent, and it makes the bootstrap's
       // dependency on the profile explicit rather than incidental.
-      PermissionService.instance.update(profile);
+      await PermissionService.instance.update(profile);
     } catch (_) {
       // The dashboard loads the profile itself and falls back.
     }

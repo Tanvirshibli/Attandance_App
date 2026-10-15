@@ -1,4 +1,7 @@
+import 'dart:convert';
+
 import 'package:flutter/foundation.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/app_permissions.dart';
 import '../models/auth_user_profile.dart';
@@ -28,10 +31,22 @@ import '../models/auth_user_profile.dart';
 /// Between the first frame and the profile landing, [isLoaded] is false. Gated
 /// modules stay hidden in that window rather than appearing and then vanishing.
 /// Ungated modules render immediately, so the services hub is never blank.
+///
+/// ## Background isolates
+///
+/// WorkManager and FCM start in fresh isolates where this service is empty, so
+/// a gate there would deny for every user. [update] therefore mirrors the
+/// decided state into a SharedPreferences snapshot that any isolate can
+/// [hydrateFromStorage] without a profile fetch; a missing or unreadable
+/// snapshot fails closed rather than guessing.
 class PermissionService extends ChangeNotifier {
   PermissionService._();
 
   static final PermissionService instance = PermissionService._();
+
+  /// Where the snapshot background isolates hydrate from lives; versioned so a
+  /// future payload shape can ignore the old one.
+  static const String _snapshotKey = 'permission_snapshot_v1';
 
   /// Granted permission names, lowercased. Comparisons are case-insensitive to
   /// match the HRM web client, which lowercases both sides
@@ -62,10 +77,14 @@ class PermissionService extends ChangeNotifier {
 
   /// Adopts the permissions carried by a freshly-fetched profile.
   ///
-  /// Cheap and synchronous — call it from wherever the profile arrives rather
-  /// than adding a fetch of its own. Ignores a null profile, since a failed
-  /// `get-my-info` must not be read as "revoke everything" mid-session.
-  void update(AuthUserProfile? profile) {
+  /// Call it from wherever the profile arrives rather than adding a fetch of
+  /// its own. Ignores a null profile, since a failed `get-my-info` must not be
+  /// read as "revoke everything" mid-session.
+  ///
+  /// The new state applies to this isolate immediately; the snapshot background
+  /// isolates hydrate from is written before listeners are notified, and a
+  /// failed write is ignored — the in-memory state is already correct here.
+  Future<void> update(AuthUserProfile? profile) async {
     if (profile == null) {
       return;
     }
@@ -91,21 +110,92 @@ class PermissionService extends ChangeNotifier {
     _isAdmin = isAdmin;
     _isSuperAdmin = isSuperAdmin;
     _loaded = true;
+
+    try {
+      final preferences = await SharedPreferences.getInstance();
+      await preferences.setString(
+        _snapshotKey,
+        jsonEncode(<String, Object>{
+          'granted': _granted.toList(),
+          'is_admin': _isAdmin,
+          'is_super_admin': _isSuperAdmin,
+        }),
+      );
+    } catch (_) {
+      // Best-effort: the in-memory state is already correct for this isolate.
+    }
+
     notifyListeners();
   }
 
   /// Drops all state on logout, so a second user signing in on the same device
   /// never sees the previous user's grants — and so the window before their
-  /// profile lands is closed rather than inheriting a stale list.
-  void clear() {
-    if (!_loaded && _granted.isEmpty && !_isAdmin && !_isSuperAdmin) {
-      return;
-    }
+  /// profile lands is closed rather than inheriting a stale list. The snapshot
+  /// goes with it, so a background isolate cannot hydrate the old grants.
+  Future<void> clear() async {
+    final hadState =
+        _loaded || _granted.isNotEmpty || _isAdmin || _isSuperAdmin;
     _granted = const <String>{};
     _isAdmin = false;
     _isSuperAdmin = false;
     _loaded = false;
-    notifyListeners();
+
+    // Removed even when this isolate held no state: a stale snapshot left by a
+    // previous session must not stay hydratable by a background isolate after
+    // logout.
+    try {
+      final preferences = await SharedPreferences.getInstance();
+      await preferences.remove(_snapshotKey);
+    } catch (_) {
+      // Best-effort: the next sign-in overwrites any snapshot left behind.
+    }
+
+    if (hadState) {
+      notifyListeners();
+    }
+  }
+
+  /// Loads the snapshot [update] persisted, for an isolate that started empty —
+  /// the WorkManager worker or the FCM background handler.
+  ///
+  /// Returns false and leaves [isLoaded] false when there is no usable
+  /// snapshot, so even a caller that ignores the result fails closed. Returns
+  /// true immediately when this isolate already has state.
+  Future<bool> hydrateFromStorage() async {
+    if (_loaded) {
+      return true;
+    }
+
+    try {
+      final preferences = await SharedPreferences.getInstance();
+      final raw = preferences.getString(_snapshotKey);
+      if (raw == null || raw.isEmpty) {
+        return false;
+      }
+
+      final decoded = jsonDecode(raw);
+      if (decoded is! Map<String, dynamic>) {
+        return false;
+      }
+
+      final rawGranted = decoded['granted'];
+      if (rawGranted is! List) {
+        return false;
+      }
+
+      _granted = rawGranted
+          .whereType<String>()
+          .map((permission) => permission.trim().toLowerCase())
+          .where((permission) => permission.isNotEmpty)
+          .toSet();
+      _isAdmin = decoded['is_admin'] == true;
+      _isSuperAdmin = decoded['is_super_admin'] == true;
+      _loaded = true;
+      notifyListeners();
+      return true;
+    } catch (_) {
+      return false;
+    }
   }
 
   /// Whether [permission] is granted.

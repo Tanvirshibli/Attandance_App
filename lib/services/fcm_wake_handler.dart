@@ -26,7 +26,11 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
 /// Firebase Cloud Messaging geo wake-up.
 ///
 /// Requires `android/app/google-services.json` (see `.example`). Without it,
-/// [isConfigured] stays false and all methods are safe no-ops.
+/// [isConfigured] stays false on the UI isolate and the token-registration
+/// methods are safe no-ops. The background handler (see
+/// [firebaseMessagingBackgroundHandler]) no longer depends on that per-isolate
+/// static — [register] only ever runs on the UI isolate, so the background
+/// isolate checks `Firebase.apps` and SharedPreferences directly.
 class FcmWakeHandler {
   static bool _configured = false;
   static bool _listenersBound = false;
@@ -83,9 +87,50 @@ class FcmWakeHandler {
   }
 
   /// Called when an FCM data message requests a geo capture.
+  ///
+  /// Runs in whichever isolate received the push. The UI-isolate-only
+  /// [_configured] static cannot be trusted here (it is false in the background
+  /// isolate), so the gate is rebuilt from `Firebase.apps` and the same
+  /// SharedPreferences the WorkManager worker reads. The capture then drains
+  /// the queue, which the wake path previously never did.
   static Future<void> onWakeRequested() async {
-    if (!isConfigured) return;
-    await GeoTrackingService().captureAndQueue(source: 'fcm_wake');
+    if (Firebase.apps.isEmpty) return;
+
+    final prefs = await SharedPreferences.getInstance();
+    final trackingEnabled = prefs.getBool('geo_tracking_enabled') ?? false;
+    if (!trackingEnabled) return;
+
+    final pausedUntil = prefs.getInt('geo_hrm_paused_until_ms') ?? 0;
+    if (!wakeRequestAllowed(
+      firebaseConfigured: Firebase.apps.isNotEmpty,
+      trackingEnabled: trackingEnabled,
+      pausedUntilMs: pausedUntil,
+      now: DateTime.now(),
+    )) {
+      return;
+    }
+
+    final service = GeoTrackingService();
+    await service.captureAndQueue(source: 'fcm_wake');
+    await service.flushQueue();
+  }
+
+  /// The gate [onWakeRequested] evaluates before capturing, split out so the
+  /// truth table is testable without Firebase or SharedPreferences.
+  ///
+  /// [firebaseConfigured] is `Firebase.apps` being non-empty rather than
+  /// [isConfigured]: the background isolate never runs [register], so the
+  /// per-isolate static would always deny there.
+  @visibleForTesting
+  static bool wakeRequestAllowed({
+    required bool firebaseConfigured,
+    required bool trackingEnabled,
+    required int pausedUntilMs,
+    required DateTime now,
+  }) {
+    return firebaseConfigured &&
+        trackingEnabled &&
+        now.millisecondsSinceEpoch >= pausedUntilMs;
   }
 
   /// Refresh token registration using current geo-enabled preference.
@@ -138,6 +183,29 @@ class FcmWakeHandler {
       deviceId: deviceId,
       geoTrackingEnabled: enabled,
     );
+  }
+
+  /// Best-effort token deregistration on logout.
+  ///
+  /// Marks the device's token as geo-disabled on the backend so a signed-out
+  /// handset stops being woken for captures. The whole body is wrapped because
+  /// logout must complete even when Firebase or the network is unavailable:
+  /// failures are logged and swallowed, never rethrown.
+  static Future<void> deregisterForLogout({required int employeeId}) async {
+    try {
+      if (!isConfigured || employeeId <= 0) return;
+
+      final token = (await FirebaseMessaging.instance.getToken())?.trim();
+      if (token == null || token.isEmpty) return;
+
+      await registerTokenWithBackend(
+        employeeId: employeeId,
+        fcmToken: token,
+        geoTrackingEnabled: false,
+      );
+    } catch (error) {
+      debugPrint('FCM deregister failed: $error');
+    }
   }
 
   static Future<bool> _postFcmToken({
