@@ -41,6 +41,7 @@ class AuthService {
   static const String _emailKey = 'auth_email';
   static const String _passwordKey = 'auth_password';
   static const String _rememberKey = 'remember_me';
+  static const String _employeeIdKey = 'canonical_employee_id';
   static const Duration _profileCacheTtl = Duration(minutes: 20);
 
   /// Login must tolerate a slow handshake. The production host has been
@@ -210,7 +211,7 @@ class AuthService {
           // clear, a user who signs out and another who signs in on the same
           // process would briefly see the first user's modules until this
           // account's profile landed.
-          PermissionService.instance.clear();
+          await PermissionService.instance.clear();
           try {
             await ZoneScopeService.instance.clear();
           } catch (_) {}
@@ -385,6 +386,16 @@ class AuthService {
         return false;
       }
 
+      // The session can end (logout) or be replaced (another sign-in) while
+      // this refresh is in flight. Saving the refreshed token then would
+      // resurrect the ended session: the next profile fetch would pass its
+      // token guard and re-persist permissions and the employee id after
+      // logout already cleared them.
+      final currentToken = await getToken();
+      if (currentToken != token) {
+        return false;
+      }
+
       final email = await getSavedEmail() ?? '';
       final rememberMe = await getRememberMe();
       await _saveSession(
@@ -453,6 +464,15 @@ class AuthService {
         if (response.statusCode == 200 && data['user'] is Map<String, dynamic>) {
           final profile =
               AuthUserProfile.fromJson(data['user'] as Map<String, dynamic>);
+          // A logout (or a different sign-in) can land while this fetch is in
+          // flight. Adopting the profile then would re-persist permissions and
+          // the employee id for a session that no longer exists — and a
+          // background isolate could hydrate them after logout. The token is
+          // the session's identity: if it is gone or replaced, drop the result.
+          final sessionToken = await getToken();
+          if (sessionToken == null || sessionToken != token) {
+            return null;
+          }
           _cachedProfile = profile;
           _cachedProfileAt = DateTime.now();
           // Permissions are adopted here, at the single point where a profile
@@ -465,7 +485,22 @@ class AuthService {
           // hid every gated module until the user closed and reopened the app.
           // Routing it through here fixes both paths, and any future one,
           // without each caller having to remember.
-          PermissionService.instance.update(profile);
+          await PermissionService.instance.update(profile);
+          // Background isolates (WorkManager / FCM wake) resolve `employee_id`
+          // from SharedPreferences: the static profile cache above lives only
+          // in this process, so a closed-app upload could not otherwise get
+          // the id without a network profile fetch.
+          final canonicalEmployeeId = profile.canonicalEmployeeId;
+          if (canonicalEmployeeId != null && canonicalEmployeeId > 0) {
+            try {
+              final prefs = await SharedPreferences.getInstance();
+              await prefs.setInt(_employeeIdKey, canonicalEmployeeId);
+            } catch (error) {
+              debugPrint(
+                'AuthService: could not persist canonical employee id: $error',
+              );
+            }
+          }
           return profile;
         }
       } on TimeoutException {
@@ -546,7 +581,27 @@ class AuthService {
   }
 
   Future<void> logout({bool invalidateServerSession = true}) async {
+    // Captured before anything below clears caches — the FCM deregistration at
+    // the end of this method needs the id of the session being ended. A logout
+    // in a process that never fetched the profile falls back to the persisted
+    // mirror, so the server-side geo registration still gets disabled.
+    var employeeId = cachedCanonicalEmployeeId;
+    if (employeeId == null || employeeId <= 0) {
+      try {
+        final preferences = await SharedPreferences.getInstance();
+        employeeId = preferences.getInt(_employeeIdKey);
+      } catch (_) {}
+    }
     final token = await getToken();
+
+    // The persisted token is the session's identity for every other in-flight
+    // call: getCurrentUserProfile only adopts its result while this token still
+    // matches. Clearing it first closes the window where a profile fetch could
+    // finish mid-logout and re-persist a dead session's permissions and
+    // employee id. The captured token above still authorises the server-side
+    // invalidation call.
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_tokenKey);
 
     if (invalidateServerSession && token != null && token.isNotEmpty) {
       for (final url in await _logoutUrls()) {
@@ -572,7 +627,7 @@ class AuthService {
     clearProfileCache();
     // Drop the previous user's grants before the next login can render a frame,
     // so a shared device never shows them the previous account's modules.
-    PermissionService.instance.clear();
+    await PermissionService.instance.clear();
     try {
       await ZoneScopeService.instance.clear();
     } catch (_) {}
@@ -581,8 +636,16 @@ class AuthService {
       await GeoTrackingService().pauseForLogout();
     } catch (_) {}
 
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.remove(_tokenKey);
+    // Cancelling the local schedules leaves the server-side registration on,
+    // so the `zkteo:geo-fcm-wake` sender would keep waking a logged-out
+    // device. The backend upserts by (employee_id, fcm_token), so re-posting
+    // this device's pair with geo disabled flips it off.
+    try {
+      if (employeeId != null && employeeId > 0) {
+        await FcmWakeHandler.deregisterForLogout(employeeId: employeeId);
+      }
+    } catch (_) {}
+
     // "Remember me" keeps the last email and password so the login screen can
     // prefill them — signing out ends the session, it does not forget the
     // login. Without it, nothing is kept.
