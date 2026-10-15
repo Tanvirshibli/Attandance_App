@@ -40,7 +40,7 @@ Required before login / main shell (`AppPermissionsService.requiredItems`):
 3. Location (while using app)  
 4. Location (all the time) — background geo tracking  
 
-Geo tracking turns on automatically once these are granted (`GeoTrackingService.ensureEnabledIfAllowed`). The Geo Tracking screen shows **Tracking on/off** status and permission subtitle only — no user toggle. Logout still pauses schedules via `pauseForLogout`.
+Geo tracking turns on automatically once these are granted (`GeoTrackingService.ensureEnabledIfAllowed`). The Geo Tracking screen shows **Tracking on/off** status and permission subtitle only — no user toggle. With the app closed, captures keep coming from the ZKTeco `geo_wake` push (every ~5 min) and the 15-minute WorkManager job; both run in a fresh isolate, so they rehydrate the persisted permission snapshot before capturing (fixed in v2.5.4+111 — the in-memory gate used to be empty there and every background capture silently no-op'd). Logout pauses schedules via `pauseForLogout`, which also drops the session's employee id, pending ping queue and last-ping mirror, and disables the device's server-side geo registration.
 
 ## API mapping
 
@@ -76,7 +76,7 @@ Geo tracking turns on automatically once these are granted (`GeoTrackingService.
 | JWT refresh | HRM `POST /api/v1/refresh` | **Wired** |
 | Geo history | ZKTeco `GET /api/v1/mobile/geo-location` | **Wired** |
 | FCM token register | ZKTeco `POST /api/v1/mobile/fcm-token` | **Wired** (`google-services.json` present for Android) |
-| FCM wake for geo | Firebase Cloud Messaging + ZKTeco `zkteco:geo-fcm-wake` | **Wired** (local stack: `GEO_FCM_WAKE_ENABLED` + service account in container storage) |
+| FCM wake for geo | Firebase Cloud Messaging + ZKTeco `zkteco:geo-fcm-wake` | **Wired** — data-only `{type: geo_wake}` push wakes a closed app, captures and flushes (v2.5.4+111: the background handler rehydrates the permission snapshot and no longer depends on UI-isolate state). Server: `GEO_FCM_WAKE_ENABLED` + service account in container storage |
 
 Handoff for backend teams: **[SALES_AND_PAYMENTS_API_CONTRACT.md](SALES_AND_PAYMENTS_API_CONTRACT.md)**.
 

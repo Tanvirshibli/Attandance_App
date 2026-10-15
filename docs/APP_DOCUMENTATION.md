@@ -21,6 +21,8 @@
 >
 > July 9, 2026 dual-device attendance: Home/History use ZKTeco-primary list merged with HRM JWT (one row per day). Machine and android punches both show. ZKTeco backend merges same-day machine-in + android-out onto one `new_attendance_requests` row (`device_type` may become `mixed`).
 
+> October 15, 2026 geo continuity fix (v2.5.4+111): closed-app tracking now actually captures. The 15-minute WorkManager job and the FCM `geo_wake` push both run in a fresh isolate, where the in-memory permission gate was always empty, so every background capture silently no-op'd; the permission snapshot is now persisted and rehydrated on demand, the wake handler no longer depends on UI-isolate state, uploads resolve the employee id from a persisted mirror, and logout clears the session's geo state and disables the device's server-side token. See `docs/OTA_UPDATES.md`.
+
 > August 19, 2026 face capture: Auto-capture waits until the live face **fills the centered rounded frame** (height ≥ 70% of the guide; straight center inside a 12% inset, turned poses 4%). Image-area floor is **16%** for live and still (20% is a quality penalty only). The success tick is centered on the painted guide rect; step/coaching/status text sits above the frame. Registration and check-in keep the display awake. A rejected still capture keeps its error visible for 2 seconds. Missing or corrupt 192-dim templates prompt re-registration on Home, Check-in, and Profile. Shared widget: `lib/widgets/face_capture_stage.dart`.
 >
 > August 19, 2026 Geo Tracking: the live Google Maps panel can go **full screen** (same style, zoom, and recenter controls). System back exits fullscreen before leaving the screen.
@@ -943,7 +945,7 @@ build\app\outputs\flutter-apk\app-armeabi-v7a-release.apk (~36.7 MB, 32-bit phon
 | **Camera** | Uses `camera` package for live preview — full programmatic control over front camera. Angle detection, smile/blink checks done in real-time via `startImageStream` (~4–5 FPS); JPEG capture only on final register/verify commits. |
 | **Single user** | Only one face can be registered at a time (single-tenant) |
 | **Liveness** | Passive (smile + sharpness) — no active 3D depth or IR checks |
-| **Notifications** | Static dummy data, no push notification integration |
+| **Notifications** | In-app alerts are static; push is limited to the ZKTeco `geo_wake` data wake (no user-facing notifications) |
 | **Settings** | Toggle switches in Profile are non-functional |
 | **APK size** | Split-per-ABI + R8: ~37–48 MB per ABI (was ~110 MB fat; ML Kit + TFLite dominate) |
 | **iOS** | Not tested or configured (Android only) |
