@@ -4,6 +4,7 @@ import 'package:employee_attendance/screens/employee_services_hub_screen.dart';
 import 'package:employee_attendance/services/permission_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 /// Widget-level coverage for permission gating in the services hub.
 ///
@@ -17,7 +18,13 @@ import 'package:flutter_test/flutter_test.dart';
 /// smoke test should actually cover.
 void main() {
   // PermissionService is a singleton; each test starts from a clean grant list.
-  setUp(PermissionService.instance.clear);
+  // update()/clear() write the snapshot background isolates hydrate from, so
+  // SharedPreferences must be mocked here — without it the calls would hit an
+  // unimplemented platform channel.
+  setUp(() {
+    SharedPreferences.setMockInitialValues(<String, Object>{});
+    return PermissionService.instance.clear();
+  });
   tearDown(PermissionService.instance.clear);
 
   void grant(List<String> permissions) {

@@ -2,6 +2,7 @@ import 'package:employee_attendance/models/app_permissions.dart';
 import 'package:employee_attendance/models/auth_user_profile.dart';
 import 'package:employee_attendance/services/permission_service.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 /// A profile carrying [permissions], with everything else neutral.
 AuthUserProfile _profileWith(
@@ -27,7 +28,12 @@ AuthUserProfile _profileWith(
 
 void main() {
   // The service is a singleton, so each test must start from a known state.
-  setUp(PermissionService.instance.clear);
+  // update()/clear() write the snapshot background isolates hydrate from, so
+  // SharedPreferences must be mocked before the first clear() runs.
+  setUp(() {
+    SharedPreferences.setMockInitialValues(<String, Object>{});
+    return PermissionService.instance.clear();
+  });
   tearDown(PermissionService.instance.clear);
 
   group('AuthUserProfile — permission parsing', () {
@@ -306,13 +312,15 @@ void main() {
       expect(PermissionService.instance.can(AppPermissions.farmsRead), isFalse);
     });
 
-    test('clear notifies listeners so open screens re-hide their tiles', () {
-      PermissionService.instance
+    test('clear notifies listeners so open screens re-hide their tiles', () async {
+      // update() and clear() notify after their snapshot write, so await both:
+      // the update flushes before the listener attaches, clear before counting.
+      await PermissionService.instance
           .update(_profileWith([AppPermissions.farmsRead]));
       var notifications = 0;
       PermissionService.instance.addListener(() => notifications++);
 
-      PermissionService.instance.clear();
+      await PermissionService.instance.clear();
 
       expect(notifications, 1);
     });
@@ -328,12 +336,14 @@ void main() {
       expect(notifications, 0);
     });
 
-    test('a changed grant set does notify', () {
-      PermissionService.instance.update(_profileWith([AppPermissions.farmsRead]));
+    test('a changed grant set does notify', () async {
+      // Same reason as above: the notification follows the snapshot write.
+      await PermissionService.instance
+          .update(_profileWith([AppPermissions.farmsRead]));
       var notifications = 0;
       PermissionService.instance.addListener(() => notifications++);
 
-      PermissionService.instance.update(
+      await PermissionService.instance.update(
         _profileWith([AppPermissions.farmsRead, AppPermissions.marketsRead]),
       );
 

@@ -102,7 +102,13 @@ void main() {
     );
   }
 
-  setUp(PermissionService.instance.clear);
+  // update()/clear() write the permission snapshot through SharedPreferences,
+  // so the store must be mocked before the first clear() runs — otherwise it
+  // would hit an unimplemented platform channel.
+  setUp(() {
+    SharedPreferences.setMockInitialValues(<String, Object>{});
+    return PermissionService.instance.clear();
+  });
   tearDown(PermissionService.instance.clear);
 
   testWidgets('MarketingHubScreen builds its tabs without throwing', (tester) async {
