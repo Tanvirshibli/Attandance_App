@@ -14,7 +14,7 @@ import '../models/app_update_manifest.dart';
 typedef DownloadProgressCallback = void Function(int received, int total);
 
 class AppUpdateCheckResult {
-  const AppUpdateCheckResult.upToDate()
+  const AppUpdateCheckResult.upToDate({this.remoteVersionCode = 0})
       : manifest = null,
         installedVersionCode = 0,
         errorMessage = null;
@@ -22,14 +22,23 @@ class AppUpdateCheckResult {
   const AppUpdateCheckResult.updateRequired({
     required this.manifest,
     required this.installedVersionCode,
+    this.remoteVersionCode = 0,
   }) : errorMessage = null;
 
   const AppUpdateCheckResult.error(this.errorMessage)
       : manifest = null,
-        installedVersionCode = 0;
+        installedVersionCode = 0,
+        remoteVersionCode = 0;
 
   final AppUpdateManifest? manifest;
   final int installedVersionCode;
+
+  /// The build number the feed advertised. Kept on the result so a manual
+  /// "check for updates" can say what it compared against instead of only
+  /// "up to date" — the difference between build 115 and a cached 112 is
+  /// exactly the thing that makes an update look missing.
+  final int remoteVersionCode;
+
   final String? errorMessage;
 
   bool get needsUpdate => manifest != null;
@@ -70,7 +79,7 @@ class AppUpdateService {
       );
 
       final response = await _dio.get<dynamic>(
-        AppConfig.updateManifestUrl,
+        _withCacheBuster(AppConfig.updateManifestUrl),
         options: Options(
           responseType: ResponseType.json,
           receiveTimeout: const Duration(seconds: 30),
@@ -105,12 +114,13 @@ class AppUpdateService {
         installedVersionCode: installedCode,
         remoteVersionCode: remoteCode,
       )) {
-        return const AppUpdateCheckResult.upToDate();
+        return AppUpdateCheckResult.upToDate(remoteVersionCode: remoteCode);
       }
 
       return AppUpdateCheckResult.updateRequired(
         manifest: manifest,
         installedVersionCode: installedCode,
+        remoteVersionCode: remoteCode,
       );
     } on DioException catch (e) {
       debugPrint('AppUpdateService.checkForUpdate: $e');
@@ -121,6 +131,20 @@ class AppUpdateService {
       debugPrint('AppUpdateService.checkForUpdate: $e');
       return AppUpdateCheckResult.error('Could not check for updates.');
     }
+  }
+
+  /// Unique URL per check, because the manifest host is not ours to control.
+  ///
+  /// `raw.githubusercontent.com` is served behind a CDN and ignores the request's
+  /// `Cache-Control`; a phone, or an ISP proxy in front of one, can keep answering
+  /// with the manifest from the previous publish for a long time. A published
+  /// build then looks "not received" while the origin is perfectly correct. A
+  /// per-call query string makes each check a URL no cache has a prior response
+  /// for, so the newest manifest is always fetched.
+  static String _withCacheBuster(String url) {
+    final separator = url.contains('?') ? '&' : '?';
+    final stamp = DateTime.now().millisecondsSinceEpoch;
+    return '$url${separator}ts=$stamp';
   }
 
   Future<String> getPreferredAbi() async {

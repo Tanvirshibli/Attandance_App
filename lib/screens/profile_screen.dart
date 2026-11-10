@@ -15,6 +15,7 @@ import '../services/auth_service.dart';
 import '../services/app_update_service.dart';
 import '../services/face_recognition_service.dart';
 import 'login_screen.dart';
+import 'app_update_screen.dart';
 import 'face_registration_screen.dart';
 import 'leave_hub_screen.dart';
 import 'attendance_report_screen.dart';
@@ -35,6 +36,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   String? _profileError;
   String _appVersionLabel = '…';
   bool _faceRegistered = true;
+  bool _checkingUpdates = false;
 
   @override
   void initState() {
@@ -64,6 +66,53 @@ class _ProfileScreenState extends State<ProfileScreen> {
         _appVersionLabel = 'v—';
       });
     }
+  }
+
+  /// Runs the same check the cold-start gate does, on demand, and says what it
+  /// found.
+  ///
+  /// The gate is intentionally silent when the manifest cannot be read (the app
+  /// works offline, and refusing to open over a failed lookup is worse), which
+  /// left "I did not get the update" with nothing on screen to explain it. This
+  /// reports the three outcomes verbatim — newer build, up to date with both
+  /// build numbers, or the failure reason — plus the channel the build watches,
+  /// which is the first thing to check when a device looks stuck.
+  Future<void> _checkForUpdates() async {
+    if (_checkingUpdates) return;
+    setState(() => _checkingUpdates = true);
+
+    final result = await AppUpdateService().checkForUpdate();
+    if (!mounted) return;
+    setState(() => _checkingUpdates = false);
+
+    if (result.needsUpdate && result.manifest != null) {
+      await Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => AppUpdateScreen(
+            manifest: result.manifest!,
+            installedVersionCode: result.installedVersionCode,
+          ),
+        ),
+      );
+      return;
+    }
+
+    final channel = AppConfig.updateChannel;
+    final text = result.hasError
+        ? 'Update check failed: ${result.errorMessage}\n'
+            'Channel $channel · ${AppConfig.updateManifestUrl}'
+        : 'Up to date — installed build ${result.installedVersionCode}, '
+            'latest ${result.remoteVersionCode} (channel $channel).';
+
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(text),
+          behavior: SnackBarBehavior.floating,
+          duration: const Duration(seconds: 6),
+        ),
+      );
   }
 
   Future<void> _loadProfile() async {
@@ -612,6 +661,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
           _settingsDivider(),
           _settingsTile(Icons.info_outline, 'About', null,
               color: ui.AppColors.mPayments, trailing: _appVersionLabel),
+          _settingsDivider(),
+          _checkForUpdatesTile(),
           // A beta build and a production build install over each other and
           // carry the same version name in some cases, so a tester reporting
           // "it updated fine" is ambiguous. The channel is baked in at compile
@@ -623,6 +674,51 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 trailing: 'BETA — beta OTA only'),
           ],
         ],
+      ),
+    );
+  }
+
+  /// On-demand update check, with the build and channel that decide it on the
+  /// same row. The cold-start gate stays silent on failure, so this is the row
+  /// that answers "why did this phone not get the update".
+  Widget _checkForUpdatesTile() {
+    final tint = ui.AppColors.mPayments;
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      child: ListTile(
+        contentPadding: EdgeInsets.zero,
+        onTap: _checkingUpdates ? null : _checkForUpdates,
+        leading: Container(
+          width: 38,
+          height: 38,
+          decoration: BoxDecoration(
+            color: tint.withValues(alpha: 0.08),
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Icon(Icons.system_update_alt_rounded, size: 18, color: tint),
+        ),
+        title: Text(
+          'Check for updates',
+          style: GoogleFonts.poppins(
+            fontSize: 14,
+            fontWeight: FontWeight.w500,
+            color: legacy.AppColors.textPrimary,
+          ),
+        ),
+        subtitle: Text(
+          'Channel ${AppConfig.updateChannel} · $_appVersionLabel',
+          style: GoogleFonts.poppins(
+            fontSize: 12,
+            color: legacy.AppColors.textHint,
+          ),
+        ),
+        trailing: _checkingUpdates
+            ? const SizedBox(
+                width: 18,
+                height: 18,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
+            : const Icon(Icons.chevron_right_rounded, color: Color(0xFF52645F)),
       ),
     );
   }
