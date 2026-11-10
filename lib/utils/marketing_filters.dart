@@ -330,3 +330,20 @@ List<String> marketingAreaOptions(ZoneScope? scope) {
   if (scope == null || scope.isEmpty) return const ['All'];
   return ['All', ...scope.displayNames];
 }
+
+/// Choices taken from the rows themselves, for an axis whose values the server
+/// does not fix (party types inside a pool, market product types, visit types).
+///
+/// Blanks and duplicates drop out, `All` leads, and the rest sort
+/// case-insensitively so the order never shuffles between loads.
+List<String> marketingDerivedOptions(Iterable<String?> values) {
+  final unique = <String>{};
+  for (final value in values) {
+    final text = (value ?? '').trim();
+    if (text.isNotEmpty) unique.add(text);
+  }
+  final sorted = unique.toList()
+    ..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
+  return ['All', ...sorted];
+}
+

@@ -7,6 +7,8 @@ import '../../models/zone_scope.dart';
 import '../../services/marketing_service.dart';
 import '../../services/permission_service.dart';
 import '../../services/zone_scope_service.dart';
+import '../../utils/marketing_filters.dart';
+import '../../widgets/marketing_filter_bar.dart';
 import '../../widgets/marketing_photo_widgets.dart';
 import '../../widgets/ui/ui.dart';
 import 'farm_form_screen.dart';
@@ -61,6 +63,14 @@ class _MarketingHubScreenState extends State<MarketingHubScreen>
   List<Party> _farms = const [];
   List<Party> _dealers = const [];
   List<Market> _markets = const [];
+
+  /// Market id -> district, needed because a party carries no district of its
+  /// own; the area pill resolves it through the market the party sits in.
+  Map<int, String> _marketDistricts = const {};
+
+  /// One filter state per tab key. Kept apart so narrowing the dealer grid
+  /// cannot follow the officer onto the markets tab (and back).
+  final Map<String, MarketingFilters> _filtersByTab = {};
   String? _farmsError;
   String? _dealersError;
   String? _marketsError;
@@ -253,6 +263,7 @@ class _MarketingHubScreenState extends State<MarketingHubScreen>
 
     setState(() {
       _loadingRecords = false;
+      _marketDistricts = marketDistricts;
       if (farmsResult.success) {
         _farms = inScope(farmsResult.data ?? const []);
       } else {
@@ -447,67 +458,188 @@ class _MarketingHubScreenState extends State<MarketingHubScreen>
     );
   }
 
-  /// The grid for one tab. Kept as a lookup on [tab.key] rather than a positional
-  /// list so filtering the tabs cannot leave a grid paired with the wrong tab —
-  /// the failure that a `TabController(length: 3)` with two tabs would hide
-  /// until someone swiped.
+  /// Statuses a party or market can hold, mirroring the party list's chip set.
+  static const List<String> _partyStatusOptions = [
+    'All',
+    'active',
+    'inactive',
+    'prospect',
+  ];
+
+  MarketingFilters _filtersFor(String tabKey) =>
+      _filtersByTab[tabKey] ?? const MarketingFilters();
+
+  void _applyFilters(String tabKey, MarketingFilters filters) {
+    setState(() => _filtersByTab[tabKey] = filters);
+  }
+
+  /// The grid for one tab, with that tab's filter bar above it.
+  ///
+  /// Kept as a lookup on the tab key rather than a positional list so filtering
+  /// the tabs cannot leave a grid paired with the wrong tab — the failure that a
+  /// `TabController(length: 3)` with two tabs would hide until someone swiped.
+  ///
+  /// Narrowing is client-side over the pool the hub already loaded: a refetch
+  /// would spend a request, reset the scroll position and, because the pool is
+  /// capped per type, could return a different set than the officer is looking
+  /// at. A filtered dead end gets its own label and a way out rather than the
+  /// "nothing recorded yet" copy.
   Widget _gridFor(_TabAction tab) {
+    final filters = _filtersFor(tab.key);
+
+    List<Party> visibleParties(List<Party> source) => source
+        .where((p) =>
+            marketingStatusMatches(p.status, filters.status) &&
+            marketingTypeMatches(p.partyType, filters.type) &&
+            marketingAreaMatches(
+              zoneId: p.zoneId,
+              zoneName: p.zoneName,
+              district:
+                  p.marketId == null ? null : _marketDistricts[p.marketId],
+              area: filters.area,
+            ))
+        .toList();
+
     switch (tab.key) {
       case 'farm':
-        return _RecordGrid<Party>(
-          color: tab.color,
-          icon: tab.icon,
-          emptyLabel: 'No farms in your zones yet',
-          loading: _loadingRecords,
-          error: _farmsError,
-          scope: _scope,
-          onRetry: _loadRecords,
-          items: _farms,
-          itemBuilder: (party) => _PartyGridTile(
-            party: party,
+        return _filteredGrid(
+          tabKey: tab.key,
+          filters: filters,
+          statusOptions: _partyStatusOptions,
+          typeOptions: marketingDerivedOptions(_farms.map((p) => p.partyType)),
+          child: _RecordGrid<Party>(
             color: tab.color,
-            statusColor: _statusColor,
-          ),
-          onTap: (party) => _open(
-            PartyDetailScreen(partyId: party.id, initialParty: party),
+            icon: tab.icon,
+            emptyLabel: filters.isActive
+                ? 'No farms match these filters'
+                : 'No farms in your zones yet',
+            onClearFilters: filters.isActive
+                ? () => _applyFilters(tab.key, filters.cleared)
+                : null,
+            loading: _loadingRecords,
+            error: _farmsError,
+            scope: _scope,
+            onRetry: _loadRecords,
+            items: visibleParties(_farms),
+            itemBuilder: (party) => _PartyGridTile(
+              party: party,
+              color: tab.color,
+              statusColor: _statusColor,
+            ),
+            onTap: (party) => _open(
+              PartyDetailScreen(partyId: party.id, initialParty: party),
+            ),
           ),
         );
       case 'dealer':
-        return _RecordGrid<Party>(
-          color: tab.color,
-          icon: tab.icon,
-          emptyLabel: 'No dealers in your zones yet',
-          loading: _loadingRecords,
-          error: _dealersError,
-          scope: _scope,
-          onRetry: _loadRecords,
-          items: _dealers,
-          itemBuilder: (party) => _PartyGridTile(
-            party: party,
+        return _filteredGrid(
+          tabKey: tab.key,
+          filters: filters,
+          statusOptions: _partyStatusOptions,
+          typeOptions:
+              marketingDerivedOptions(_dealers.map((p) => p.partyType)),
+          child: _RecordGrid<Party>(
             color: tab.color,
-            statusColor: _statusColor,
-          ),
-          onTap: (party) => _open(
-            PartyDetailScreen(partyId: party.id, initialParty: party),
+            icon: tab.icon,
+            emptyLabel: filters.isActive
+                ? 'No dealers match these filters'
+                : 'No dealers in your zones yet',
+            onClearFilters: filters.isActive
+                ? () => _applyFilters(tab.key, filters.cleared)
+                : null,
+            loading: _loadingRecords,
+            error: _dealersError,
+            scope: _scope,
+            onRetry: _loadRecords,
+            items: visibleParties(_dealers),
+            itemBuilder: (party) => _PartyGridTile(
+              party: party,
+              color: tab.color,
+              statusColor: _statusColor,
+            ),
+            onTap: (party) => _open(
+              PartyDetailScreen(partyId: party.id, initialParty: party),
+            ),
           ),
         );
       default:
-        return _RecordGrid<Market>(
-          color: tab.color,
-          icon: tab.icon,
-          emptyLabel: 'No markets in your zones yet',
-          loading: _loadingRecords,
-          error: _marketsError,
-          scope: _scope,
-          onRetry: _loadRecords,
-          items: _markets,
-          itemBuilder: (market) => _MarketGridTile(
-            market: market,
-            color: tab.color,
+        final markets = _markets
+            .where((m) =>
+                marketingStatusMatches(m.status, filters.status) &&
+                marketingTypeListMatches(m.productTypes, filters.type) &&
+                marketingAreaMatches(
+                  zoneId: m.zoneId,
+                  zoneName: m.zoneName,
+                  district: m.district,
+                  area: filters.area,
+                ))
+            .toList();
+        return _filteredGrid(
+          tabKey: tab.key,
+          filters: filters,
+          statusOptions: _partyStatusOptions,
+          typeOptions: marketingDerivedOptions(
+            _markets.expand((m) => m.productTypes),
           ),
-          onTap: (market) => _open(MarketDetailScreen(market: market)),
+          child: _RecordGrid<Market>(
+            color: tab.color,
+            icon: tab.icon,
+            emptyLabel: filters.isActive
+                ? 'No markets match these filters'
+                : 'No markets in your zones yet',
+            onClearFilters: filters.isActive
+                ? () => _applyFilters(tab.key, filters.cleared)
+                : null,
+            loading: _loadingRecords,
+            error: _marketsError,
+            scope: _scope,
+            onRetry: _loadRecords,
+            items: markets,
+            itemBuilder: (market) => _MarketGridTile(
+              market: market,
+              color: tab.color,
+            ),
+            onTap: (market) => _open(MarketDetailScreen(market: market)),
+          ),
         );
     }
+  }
+
+  /// One tab's filter bar stacked over its grid.
+  Widget _filteredGrid({
+    required String tabKey,
+    required MarketingFilters filters,
+    required List<String> statusOptions,
+    required List<String> typeOptions,
+    required Widget child,
+  }) {
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(
+            AppSpace.gutter,
+            AppSpace.md,
+            AppSpace.gutter,
+            0,
+          ),
+          child: MarketingFilterBar(
+            filters: filters,
+            dimensions: const [
+              MarketingFilterDimension.status,
+              MarketingFilterDimension.type,
+              MarketingFilterDimension.area,
+            ],
+            options: {
+              MarketingFilterDimension.status: statusOptions,
+              MarketingFilterDimension.type: typeOptions,
+              MarketingFilterDimension.area: marketingAreaOptions(_scope),
+            },
+            onChanged: (next) => _applyFilters(tabKey, next),
+          ),
+        ),
+        Expanded(child: child),
+      ],
+    );
   }
 }
 
@@ -696,6 +828,7 @@ class _RecordGrid<T> extends StatelessWidget {
     required this.items,
     required this.itemBuilder,
     required this.onTap,
+    this.onClearFilters,
   });
 
   final Color color;
@@ -711,6 +844,11 @@ class _RecordGrid<T> extends StatelessWidget {
   final List<T> items;
   final Widget Function(T) itemBuilder;
   final ValueChanged<T> onTap;
+
+  /// Set when the empty grid is the result of active filters rather than an
+  /// empty pool, so the empty state can offer the way out instead of telling the
+  /// officer nothing has been recorded.
+  final VoidCallback? onClearFilters;
 
   @override
   Widget build(BuildContext context) {
@@ -736,15 +874,31 @@ class _RecordGrid<T> extends StatelessWidget {
       );
     }
     if (items.isEmpty) {
+      final filtered = onClearFilters != null;
       return Center(
         child: Padding(
           padding: const EdgeInsets.all(24),
-          child: AppEmptyState(
-            icon: icon,
-            title: emptyLabel,
-            subtitle: (scope != null && !scope!.isEmpty)
-                ? 'These zones have none recorded yet.'
-                : 'Tap Add to create the first one.',
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              AppEmptyState(
+                icon: icon,
+                title: emptyLabel,
+                subtitle: filtered
+                    ? 'Nothing in your zones matches these filters.'
+                    : (scope != null && !scope!.isEmpty)
+                        ? 'These zones have none recorded yet.'
+                        : 'Tap Add to create the first one.',
+              ),
+              if (filtered)
+                AppButton(
+                  label: 'Clear filters',
+                  icon: Icons.close_rounded,
+                  kind: AppButtonKind.secondary,
+                  expand: false,
+                  onPressed: onClearFilters,
+                ),
+            ],
           ),
         ),
       );
