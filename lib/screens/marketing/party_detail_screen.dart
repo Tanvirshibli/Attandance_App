@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import '../../models/marketing_models.dart';
 import '../../services/auth_service.dart';
 import '../../services/marketing_service.dart';
+import '../../utils/marketing_filters.dart';
+import '../../widgets/marketing_filter_bar.dart';
 import '../../widgets/marketing_photo_widgets.dart';
 import '../../widgets/ui/ui.dart';
 import 'dealer_visit_form_screen.dart';
@@ -39,6 +41,32 @@ class _PartyDetailScreenState extends State<PartyDetailScreen>
   bool _loadingFollowups = true;
   String? _visitsError;
   String? _followupsError;
+
+  // One filter state per tab: the visits tab lists reports or visits, which
+  // carry their own status and type vocabularies, so sharing a single state
+  // would let a status picked for one hide every row of the other.
+  MarketingFilters _visitFilters = const MarketingFilters();
+  MarketingFilters _followupFilters = const MarketingFilters();
+
+  /// The statuses the visits endpoint writes. Fixed rather than derived: a
+  /// dealer with only drafts still needs to be able to ask for completed ones.
+  static const List<String> _visitStatusOptions = [
+    'All',
+    'draft',
+    'in_progress',
+    'completed',
+    'cancelled',
+  ];
+
+  /// Follow-ups get their own vocabulary; `done` is the older spelling of
+  /// `completed` and the matcher folds the two together.
+  static const List<String> _followupStatusOptions = [
+    'All',
+    'open',
+    'in_progress',
+    'completed',
+    'cancelled',
+  ];
 
   @override
   void initState() {
@@ -130,6 +158,82 @@ class _PartyDetailScreenState extends State<PartyDetailScreen>
           result.success ? null : (result.message ?? 'Could not load follow-ups.');
       _loadingFollowups = false;
     });
+  }
+
+  // Filtering happens here, at render time, rather than inside _loadVisits or
+  // _loadFollowups: a detail page already holds the party's whole history, so
+  // narrowing it is instant and costs no request. `All` on every axis returns
+  // the list untouched.
+  List<FarmSurvey> get _visibleSurveys => _surveys
+      .where((s) =>
+          marketingStatusMatches(s.status, _visitFilters.status) &&
+          marketingTypeMatches(s.surveyType, _visitFilters.type) &&
+          marketingDateMatches(s.surveyDate, _visitFilters.date))
+      .toList();
+
+  List<Visit> get _visibleVisits => _visits
+      .where((v) =>
+          marketingStatusMatches(v.status, _visitFilters.status) &&
+          marketingTypeMatches(v.visitType, _visitFilters.type) &&
+          marketingDateMatches(v.visitDate, _visitFilters.date))
+      .toList();
+
+  List<Followup> get _visibleFollowups => _followups
+      .where((f) =>
+          marketingStatusMatches(f.status, _followupFilters.status) &&
+          marketingDateMatches(f.dueDate, _followupFilters.date))
+      .toList();
+
+  /// Options taken from the rows themselves, for an axis whose values the
+  /// server does not fix.
+  ///
+  /// A farm's report statuses and types are whatever it has recorded, so a
+  /// hardcoded list would offer choices that match nothing — or miss the one
+  /// value the farm actually uses. Blanks and duplicates drop out, `All`
+  /// leads, and the rest sort case-insensitively so the order is stable.
+  static List<String> _derivedOptions(Iterable<String?> values) {
+    final unique = <String>{};
+    for (final value in values) {
+      final text = (value ?? '').trim();
+      if (text.isNotEmpty) unique.add(text);
+    }
+    final sorted = unique.toList()
+      ..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
+    return ['All', ...sorted];
+  }
+
+  /// The list-is-not-empty-but-nothing-matched state.
+  ///
+  /// The tab's own empty copy ("No visits yet") would read as if the records
+  /// had been deleted, so this says the filter is what hid them and puts the
+  /// way out on screen.
+  Widget _noMatchEmptyState({
+    required IconData icon,
+    required String title,
+    required VoidCallback onClear,
+  }) {
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          AppEmptyState(
+            icon: icon,
+            title: title,
+            subtitle: 'Nothing here matches the current filters.',
+          ),
+          Padding(
+            padding: const EdgeInsets.only(bottom: AppSpace.lg),
+            child: AppButton(
+              label: 'Clear filters',
+              icon: Icons.close_rounded,
+              kind: AppButtonKind.secondary,
+              expand: false,
+              onPressed: onClear,
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _postVisit() async {
@@ -335,6 +439,10 @@ class _PartyDetailScreenState extends State<PartyDetailScreen>
   }
 
   Widget _visitsTab(Party party) {
+    // Resolved once per build so the bar's options and the rendered rows read
+    // the same state, and so the list builder does not re-filter per row.
+    final surveys = _visibleSurveys;
+    final visits = _visibleVisits;
     return RefreshIndicator(
       onRefresh: _load,
       color: AppColors.primary,
@@ -348,6 +456,41 @@ class _PartyDetailScreenState extends State<PartyDetailScreen>
             SliverOverlapInjector(
               handle: NestedScrollView.sliverOverlapAbsorberHandleFor(context),
             ),
+            // Directly under the pinned tab bar and above every state this tab
+            // can be in, so a filter is never out of reach. Hidden until there
+            // is something to filter: a spinner or an error notice has nothing
+            // to narrow, and an empty list would offer dead choices.
+            if (_surveys.isNotEmpty || _visits.isNotEmpty)
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(
+                      AppSpace.gutter, AppSpace.sm, AppSpace.gutter, 0),
+                  child: MarketingFilterBar(
+                    filters: _visitFilters,
+                    dimensions: const [
+                      MarketingFilterDimension.status,
+                      MarketingFilterDimension.type,
+                      MarketingFilterDimension.date,
+                    ],
+                    // This tab renders a farm's visit reports or a dealer's
+                    // visits, and the two carry different vocabularies. A
+                    // farm's types are whatever its reports recorded, so they
+                    // are taken from the rows; a dealer's statuses are the
+                    // endpoint's fixed set, listed even when unused so an
+                    // empty status can still be searched for.
+                    options: {
+                      MarketingFilterDimension.status: party.isFarm
+                          ? _derivedOptions(_surveys.map((s) => s.status))
+                          : _visitStatusOptions,
+                      MarketingFilterDimension.type: party.isFarm
+                          ? _derivedOptions(_surveys.map((s) => s.surveyType))
+                          : _derivedOptions(_visits.map((v) => v.visitType)),
+                    },
+                    onChanged: (filters) =>
+                        setState(() => _visitFilters = filters),
+                  ),
+                ),
+              ),
             if (_loadingVisits)
               const SliverFillRemaining(
                 hasScrollBody: false,
@@ -396,15 +539,36 @@ class _PartyDetailScreenState extends State<PartyDetailScreen>
                   ),
                 ),
               )
+            else if (party.isFarm && surveys.isEmpty)
+              SliverFillRemaining(
+                hasScrollBody: false,
+                child: _noMatchEmptyState(
+                  icon: AppIcons.note,
+                  title: 'No visit reports match these filters',
+                  onClear: () =>
+                      setState(() => _visitFilters = _visitFilters.cleared),
+                ),
+              )
+            else if (!party.isFarm && visits.isEmpty)
+              SliverFillRemaining(
+                hasScrollBody: false,
+                child: _noMatchEmptyState(
+                  icon: AppIcons.route,
+                  title: 'No visits match these filters',
+                  onClear: () =>
+                      setState(() => _visitFilters = _visitFilters.cleared),
+                ),
+              )
             else
               SliverPadding(
                 padding: const EdgeInsets.fromLTRB(
                     AppSpace.gutter, AppSpace.md, AppSpace.gutter, AppSpace.xl),
                 sliver: SliverList(
                   delegate: SliverChildBuilderDelegate(
-                    (context, index) =>
-                        party.isFarm ? _surveyRow(index) : _visitRow(index),
-                    childCount: party.isFarm ? _surveys.length : _visits.length,
+                    (context, index) => party.isFarm
+                        ? _surveyRow(surveys[index], index)
+                        : _visitRow(visits[index], index),
+                    childCount: party.isFarm ? surveys.length : visits.length,
                   ),
                 ),
               ),
@@ -415,6 +579,9 @@ class _PartyDetailScreenState extends State<PartyDetailScreen>
   }
 
   Widget _followupsTab() {
+    // Same render-time narrowing as the visits tab: the follow-ups are already
+    // loaded, so a filter never triggers another request.
+    final followups = _visibleFollowups;
     return RefreshIndicator(
       onRefresh: _load,
       color: AppColors.primary,
@@ -428,6 +595,27 @@ class _PartyDetailScreenState extends State<PartyDetailScreen>
             SliverOverlapInjector(
               handle: NestedScrollView.sliverOverlapAbsorberHandleFor(context),
             ),
+            if (_followups.isNotEmpty)
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(
+                      AppSpace.gutter, AppSpace.sm, AppSpace.gutter, 0),
+                  child: MarketingFilterBar(
+                    filters: _followupFilters,
+                    // No type axis: the bar would be offering follow-up action
+                    // types, which is not how an officer narrows this tab.
+                    dimensions: const [
+                      MarketingFilterDimension.status,
+                      MarketingFilterDimension.date,
+                    ],
+                    options: const {
+                      MarketingFilterDimension.status: _followupStatusOptions,
+                    },
+                    onChanged: (filters) =>
+                        setState(() => _followupFilters = filters),
+                  ),
+                ),
+              ),
             if (_loadingFollowups)
               const SliverFillRemaining(
                 hasScrollBody: false,
@@ -462,6 +650,16 @@ class _PartyDetailScreenState extends State<PartyDetailScreen>
                   ),
                 ),
               )
+            else if (followups.isEmpty)
+              SliverFillRemaining(
+                hasScrollBody: false,
+                child: _noMatchEmptyState(
+                  icon: Icons.event_note_outlined,
+                  title: 'No follow-ups match these filters',
+                  onClear: () => setState(
+                      () => _followupFilters = _followupFilters.cleared),
+                ),
+              )
             else
               SliverPadding(
                 padding: const EdgeInsets.fromLTRB(
@@ -469,7 +667,7 @@ class _PartyDetailScreenState extends State<PartyDetailScreen>
                 sliver: SliverList(
                   delegate: SliverChildBuilderDelegate(
                     (context, index) {
-                      final item = _followups[index];
+                      final item = followups[index];
                       return FadeInUp(
                         delay: Duration(milliseconds: 30 * index),
                         child: Padding(
@@ -484,7 +682,7 @@ class _PartyDetailScreenState extends State<PartyDetailScreen>
                         ),
                       );
                     },
-                    childCount: _followups.length,
+                    childCount: followups.length,
                   ),
                 ),
               ),
@@ -494,8 +692,7 @@ class _PartyDetailScreenState extends State<PartyDetailScreen>
     );
   }
 
-  Widget _surveyRow(int index) {
-    final survey = _surveys[index];
+  Widget _surveyRow(FarmSurvey survey, int index) {
     return FadeInUp(
       delay: Duration(milliseconds: 30 * index),
       child: Padding(
@@ -535,8 +732,7 @@ class _PartyDetailScreenState extends State<PartyDetailScreen>
     );
   }
 
-  Widget _visitRow(int index) {
-    final visit = _visits[index];
+  Widget _visitRow(Visit visit, int index) {
     return FadeInUp(
       delay: Duration(milliseconds: 30 * index),
       child: Padding(
