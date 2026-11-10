@@ -140,7 +140,7 @@ Handoff for backend teams: **[SALES_AND_PAYMENTS_API_CONTRACT.md](SALES_AND_PAYM
 - Picking/uploading is unchanged: images are still compressed to WebP on the phone (`ImageUploadService`) and sent as `image[]` through `MarketingService.uploadAttachments`
 - See [FARM_DEALER_MOBILE.md](FARM_DEALER_MOBILE.md#photos-across-the-app)
 
-### Marketing list filters
+### Marketing list filters (v2.5.4+114)
 
 One filter bar, one behaviour, on every marketing list — farms, dealers, markets, the visits and follow-ups tabs
 of a farm/dealer, the party list inside a market, and the standalone visit list.

@@ -298,6 +298,23 @@ After publishing build **N**:
 
 ---
 
+## November 10, 2026 Update (v2.5.4+114) — main channel
+
+**Every marketing list gets one filter bar: status, type, date range and area.**
+
+> Published from `2.5.4+113` → `2.5.4+114`. Tag `v2.5.4-build114`; the live manifest was verified after publishing (channel `prod`, `version_code` 114, `force_update` true, both APK entries present with sizes and SHA-256).
+
+- **One shared bar replaces the ad-hoc chips.** Each screen shows a `Filters` pill with an active-filter count, a pill per dimension it offers (carrying the chosen value), and an animated `Clear all`. A pill opens its own bottom sheet; the `Filters` pill opens them all with a single Apply
+- **Dimensions:** status + existing search everywhere; type (party, product, visit or survey) where the entity has one; date (`All / Today / This week / This month / Custom`, custom inclusive); area (the employee's own zones) where rows carry a zone. Farms/dealers get status + type + area, markets status + product type + area, a market's party list status + type, the visits tab status + type + date, follow-ups status + date, and the visit list all four
+- **Nothing refetches on a filter change.** No marketing list endpoint paginates or accepts a date range / visit type, so narrowing happens over the payload the screen already holds. The visit list still sends `status` because it always did
+- **A locked Farms/Dealers entry keeps its type** through `Clear all` and never reports it as an active filter, and a farm's report statuses/types are derived from its own rows rather than a hardcoded list
+- **Filtered dead ends are distinct from empty lists:** they say no rows match and offer `Clear filters`; the "create one to get started" copy still takes precedence when the list is genuinely empty
+- Guard: `test/marketing_filters_test.dart` pins the predicates (date presets, `yyyy-MM-dd` vs ISO input, fail-open on `All`, `done` ≡ `completed`, multi-valued product types, area matching, active count)
+
+**Pubspec stays on the prod line at `2.5.4+114`** after this release (the beta line is paused at `2.5.3-beta.1+9036`).
+
+---
+
 ## November 10, 2026 Update (v2.5.4+113) — main channel
 
 **The face registration screen follows the Bangla toggle.**
