@@ -4,12 +4,17 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'config/theme.dart';
+import 'services/app_settings_service.dart';
 import 'services/geo_tracking_service.dart';
 import 'widgets/location_guard.dart';
 import 'widgets/update_gate.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Local SharedPreferences read (no network), so awaiting it costs one disk
+  // read and lets the capture screen pick its language on the first build.
+  await AppSettingsService.instance.init();
 
   // Deliberately not awaited. This does FCM registration, notification channel
   // setup and starts the geo tracking timer — all network and platform work

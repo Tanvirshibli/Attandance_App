@@ -10,6 +10,7 @@ import '../config/theme.dart' as legacy;
 import '../models/app_update_manifest.dart';
 import '../widgets/ui/ui.dart' as ui;
 import '../models/auth_user_profile.dart';
+import '../services/app_settings_service.dart';
 import '../services/auth_service.dart';
 import '../services/app_update_service.dart';
 import '../services/face_recognition_service.dart';
@@ -601,8 +602,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           _settingsTile(Icons.dark_mode_outlined, 'Dark Mode', false,
               color: ui.AppColors.mHr),
           _settingsDivider(),
-          _settingsTile(Icons.language_outlined, 'Language', null,
-              color: ui.AppColors.mVehicles, trailing: 'English'),
+          _faceCaptureLanguageTile(),
           _settingsDivider(),
           _settingsTile(Icons.security_outlined, 'Change Password', null,
               color: ui.AppColors.mAttendance),
@@ -623,6 +623,51 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 trailing: 'BETA — beta OTA only'),
           ],
         ],
+      ),
+    );
+  }
+
+  /// Mirrors [_settingsTile]'s layout by hand so the one row that does
+  /// something can carry a real [Switch] as its trailing widget. It only
+  /// changes the copy language of the face-capture screen, nothing else.
+  Widget _faceCaptureLanguageTile() {
+    final tint = ui.AppColors.mVehicles;
+    final enabled = AppSettingsService.instance.faceCaptureBangla.value;
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      child: ListTile(
+        contentPadding: EdgeInsets.zero,
+        leading: Container(
+          width: 38,
+          height: 38,
+          decoration: BoxDecoration(
+            color: tint.withValues(alpha: 0.08),
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Icon(Icons.language_outlined, size: 18, color: tint),
+        ),
+        title: Text(
+          'Face capture in Bangla',
+          style: GoogleFonts.poppins(
+            fontSize: 14,
+            fontWeight: FontWeight.w500,
+            color: legacy.AppColors.textPrimary,
+          ),
+        ),
+        subtitle: Text(
+          'বাংলা',
+          style: GoogleFonts.poppins(
+            fontSize: 12,
+            color: legacy.AppColors.textHint,
+          ),
+        ),
+        trailing: Switch(
+          value: enabled,
+          onChanged: (value) async {
+            await AppSettingsService.instance.setFaceCaptureBangla(value);
+            if (mounted) setState(() {});
+          },
+        ),
       ),
     );
   }
