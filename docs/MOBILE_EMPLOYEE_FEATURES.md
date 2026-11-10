@@ -142,8 +142,12 @@ Handoff for backend teams: **[SALES_AND_PAYMENTS_API_CONTRACT.md](SALES_AND_PAYM
 
 ### Marketing list filters (v2.5.4+114)
 
-One filter bar, one behaviour, on every marketing list — farms, dealers, markets, the visits and follow-ups tabs
-of a farm/dealer, the party list inside a market, and the standalone visit list.
+One filter bar, one behaviour, on every marketing list — the hub's Farms, Dealers and Markets tabs, farms, dealers,
+markets, the visits and follow-ups tabs of a farm/dealer, the party list inside a market, and the visit list.
+
+- The marketing hub carries the bar on each of its tabs (status, type, area) with **one filter state per tab**, so
+  narrowing Dealers does not follow the officer onto Markets. Type choices come from that tab's own pool
+  (farm/farmer, dealer/outlet, product types).
 
 - Pills, not stacked chip rows: `Filters` (with an active-filter count), then one pill per dimension that screen
   offers, then `Clear all` once anything is active. A pill shows its chosen value (`Status · active`,

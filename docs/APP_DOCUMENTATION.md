@@ -1080,7 +1080,8 @@ The current stack uses **ML Kit for detection** and **MobileFaceNet for identity
 - The filter state and predicates the marketing lists share. `MarketingFilters` carries four axes (`status`, `type`, `date`, `area`) where `All` means "do not narrow", plus `activeCount` and `cleared`. `MarketingDateRange` holds `All / Today / This week / This month / Custom` with inclusive custom bounds and an injectable `now`. Matchers: `marketingStatusMatches` (`done` ≡ `completed`), `marketingTypeMatches` / `marketingTypeListMatches`, `marketingDateMatches` (via the tolerant `marketingParseDate`, which accepts `yyyy-MM-dd` and ISO datetimes) and `marketingAreaMatches` for the zone/district axis.
 
 ### `lib/widgets/marketing_filter_bar.dart`
-- One row of animated pills (a `Filters` pill with the active count, one pill per dimension showing its value, and `Clear all`) plus a per-dimension bottom sheet with chips, a custom date range and Apply. Used by the party list, both party-detail tabs, the market list, the market-detail party list and the visit list. No new packages; tokens come from `config/app_design.dart`.
+- One row of animated pills (a `Filters` pill with the active count, one pill per dimension showing its value, and `Clear all`) plus a per-dimension bottom sheet with chips, a custom date range and Apply. Used by the marketing hub's Farms/Dealers/Markets tabs, the party list, both party-detail tabs, the market list, the market-detail party list and the visit list. No new packages; tokens come from `config/app_design.dart`.
+- `marketingDerivedOptions` (in `lib/utils/marketing_filters.dart`) builds the type choices from the rows themselves where the server does not fix them.
 
 ### `lib/widgets/face_capture_stage.dart`
 - Shared full-preview camera stage for registration and check-in: dimmed outside one rounded frame, L-corner brackets on that path, success tick at the guide center, step/coaching strip above the frame, clockwise progress stroke.

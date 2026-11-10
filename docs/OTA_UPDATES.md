@@ -298,6 +298,22 @@ After publishing build **N**:
 
 ---
 
+## November 10, 2026 Update (v2.5.4+115) — main channel
+
+**The Farms, Dealers and Markets hub tabs carry the filter bar too.**
+
+> Published from `2.5.4+114` → `2.5.4+115`. Tag `v2.5.4-build115`; the live manifest was verified after publishing (channel `prod`, `version_code` 115, `force_update` true, both APK entries present with sizes and SHA-256).
+
+- **The hub is where the module opens**, and its preview grids were unfiltered — the only way to narrow anything was to push into "All farms", "All dealers" or "All markets" first. Each hub tab now shows the same bar above its grid: status, type and area
+- Type choices come from the tab's own pool — farm/farmer inside Farms, dealer/outlet inside Dealers, product types inside Markets — instead of a hardcoded list
+- Each tab keeps **its own filter state**, so narrowing Dealers does not follow the officer onto Markets and back
+- A grid emptied by filters reads "No … match these filters" and offers `Clear filters`; the "nothing recorded yet" copy still wins when the pool itself is empty
+- Guard: none added this round — the predicates are the ones pinned by `test/marketing_filters_test.dart` in `+114`
+
+**Pubspec stays on the prod line at `2.5.4+115`** after this release (the beta line is paused at `2.5.3-beta.1+9036`).
+
+---
+
 ## November 10, 2026 Update (v2.5.4+114) — main channel
 
 **Every marketing list gets one filter bar: status, type, date range and area.**
