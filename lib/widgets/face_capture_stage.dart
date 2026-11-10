@@ -9,6 +9,10 @@ import '../config/theme.dart';
 const double faceGuideTopReserve = 88.0;
 const double faceGuideMargin = 28.0;
 const double faceGuideTickSize = 72.0;
+// Stays this low so the coaching text above the guide remains legible.
+const double faceGuideDimAlpha = 0.20;
+// Carries the placement state colour (idle / warning / primary / success).
+const double faceGuideTintAlpha = 0.16;
 
 Radius faceGuideCornerRadius(Rect rect) {
   return Radius.circular(rect.shortestSide * 0.22);
@@ -234,16 +238,22 @@ class FaceGuidePainter extends CustomPainter {
     final rrect = faceGuideRRect(faceRect);
     final facePath = buildFaceGuidePath(faceRect);
 
-    final bgPaint = Paint()
-      ..color = Colors.black.withValues(alpha: 0.48)
-      ..style = PaintingStyle.fill;
+    final bgPaint = Paint()..style = PaintingStyle.fill;
 
     final bgPath = Path()
       ..addRect(Rect.fromLTWH(0, 0, size.width, size.height))
       ..addPath(facePath, Offset.zero)
       ..fillType = PathFillType.evenOdd;
 
-    canvas.drawPath(bgPath, bgPaint);
+    // Dim, then tint the same outside-the-guide region with the state colour.
+    canvas.drawPath(
+      bgPath,
+      bgPaint..color = Colors.black.withValues(alpha: faceGuideDimAlpha),
+    );
+    canvas.drawPath(
+      bgPath,
+      bgPaint..color = guideColor.withValues(alpha: faceGuideTintAlpha),
+    );
 
     final borderPaint = Paint()
       ..color = guideColor.withValues(alpha: 0.88)

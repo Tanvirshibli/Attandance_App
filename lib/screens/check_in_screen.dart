@@ -15,13 +15,16 @@ import 'package:wakelock_plus/wakelock_plus.dart';
 
 import '../widgets/ui/ui.dart' as ui;
 import '../config/theme.dart';
+import '../l10n/face_capture_strings.dart';
 import '../models/attendance_request_record.dart';
+import '../services/app_settings_service.dart';
 import '../services/face_recognition_service.dart';
 import '../services/attendance_request_service.dart';
 import '../services/attendance_punch_notifier.dart';
 import '../services/camera_prewarm.dart';
 import '../services/auth_service.dart';
 import '../utils/camera_input_image.dart';
+import '../utils/check_in_window.dart';
 import '../utils/face_guide_placement.dart';
 import '../widgets/face_capture_stage.dart';
 import 'face_registration_screen.dart';
@@ -63,9 +66,12 @@ class _CheckInScreenState extends State<CheckInScreen>
   final _authService = AuthService();
   CameraController? _cameraController;
 
+  late final FaceCaptureStrings _s =
+      AppSettingsService.instance.faceCaptureStrings;
+
   // ---- State ----
   CheckInPhase _phase = CheckInPhase.initializing;
-  String _statusMessage = 'Initializing...';
+  late String _statusMessage;
   String _errorMessage = '';
   bool _cameraReady = false;
   bool _needsFaceReregister = false;
@@ -90,8 +96,6 @@ class _CheckInScreenState extends State<CheckInScreen>
   static const int _requiredSmileHoldFrames = 2;
   static const Duration _firstPositioningWindow = Duration(seconds: 1);
   static const Duration _postCaptureSettle = Duration(milliseconds: 600);
-  static const String _positioningMessage =
-      'Position your face in the guide';
   DateTime? _analysisArmedAt;
   bool _isFirstStreamStart = true;
 
@@ -135,6 +139,7 @@ class _CheckInScreenState extends State<CheckInScreen>
   @override
   void initState() {
     super.initState();
+    _statusMessage = _s.initializing;
     if (_routeActive) {
       _aborted = true;
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -200,8 +205,7 @@ class _CheckInScreenState extends State<CheckInScreen>
       setState(() {
         _phase = CheckInPhase.error;
         _needsFaceReregister = true;
-        _errorMessage =
-            'Your face data is missing or unreadable. Please register your face again.';
+        _errorMessage = _s.faceDataMissing;
       });
       return;
     }
@@ -216,7 +220,7 @@ class _CheckInScreenState extends State<CheckInScreen>
         if (!mounted) return;
         setState(() {
           _phase = CheckInPhase.error;
-          _errorMessage = 'Camera permission denied.';
+          _errorMessage = _s.cameraPermissionDenied;
         });
         return;
       }
@@ -243,7 +247,8 @@ class _CheckInScreenState extends State<CheckInScreen>
         _cameraReady = true;
         _phase = CheckInPhase.scanning;
         _statusMessage = FaceRecognitionService.challengeInstruction(
-            _challenges[_currentChallengeIndex]);
+            _challenges[_currentChallengeIndex],
+            strings: _s);
       });
 
       _startImageStream();
@@ -251,7 +256,7 @@ class _CheckInScreenState extends State<CheckInScreen>
       if (!mounted) return;
       setState(() {
         _phase = CheckInPhase.error;
-        _errorMessage = 'Camera initialization failed: $e';
+        _errorMessage = _s.cameraInitFailed(e);
       });
     }
   }
@@ -272,15 +277,14 @@ class _CheckInScreenState extends State<CheckInScreen>
       _angleHoldFrames = 0;
       _smileHoldFrames = 0;
       if (isFirst && mounted) {
-        setState(() => _statusMessage = _positioningMessage);
+        setState(() => _statusMessage = _s.positionFaceInGuide);
       }
     } catch (e) {
       debugPrint('Image stream start failed: $e');
       if (mounted) {
         setState(() {
           _phase = CheckInPhase.error;
-          _errorMessage =
-              'Camera stream failed. Close other camera apps and retry.';
+          _errorMessage = _s.cameraStreamFailed;
         });
       }
     }
@@ -392,7 +396,7 @@ class _CheckInScreenState extends State<CheckInScreen>
             _angleHoldFrames = 0;
             _smileHoldFrames = 0;
             if (_currentChallengeIndex == 0 && !_challengeResults[0]) {
-              _statusMessage = _positioningMessage;
+              _statusMessage = _s.positionFaceInGuide;
             }
           });
         }
@@ -409,8 +413,7 @@ class _CheckInScreenState extends State<CheckInScreen>
             _facePlacedCorrectly = false;
             _angleHoldFrames = 0;
             _smileHoldFrames = 0;
-            _statusMessage =
-                'Camera format not supported — close and reopen check-in';
+            _statusMessage = _s.cameraFormatUnsupported;
           });
         }
         return;
@@ -426,7 +429,7 @@ class _CheckInScreenState extends State<CheckInScreen>
           _facePlacedCorrectly = false;
           _angleHoldFrames = 0;
           _smileHoldFrames = 0;
-          _statusMessage = 'Position your face in the guide';
+          _statusMessage = _s.positionFaceInGuide;
         });
       } else if (faces.length > 1) {
         setState(() {
@@ -434,7 +437,7 @@ class _CheckInScreenState extends State<CheckInScreen>
           _facePlacedCorrectly = false;
           _angleHoldFrames = 0;
           _smileHoldFrames = 0;
-          _statusMessage = 'Only one face should be visible';
+          _statusMessage = _s.onlyOneFace;
         });
       } else {
         final face = faces.first;
@@ -478,49 +481,49 @@ class _CheckInScreenState extends State<CheckInScreen>
     switch (challenge) {
       case ChallengeType.lookStraight:
         passed = _checkAngleChallenge(face, FaceAngle.straight,
-            'Look straight at the camera');
+            _s.lookStraightAtCamera);
         break;
       case ChallengeType.smile:
         if (!_faceService.isTargetAngle(face, FaceAngle.straight)) {
           _smileHoldFrames = 0;
-          setState(() => _statusMessage = 'Look straight, then smile');
+          setState(() => _statusMessage = _s.lookStraightThenSmile);
         } else if (_faceService.isSmiling(face)) {
           _smileHoldFrames++;
           if (_smileHoldFrames >= _requiredSmileHoldFrames) {
             passed = true;
           } else {
-            setState(() => _statusMessage = 'Hold that smile...');
+            setState(() => _statusMessage = _s.holdThatSmile);
           }
         } else {
           _smileHoldFrames = 0;
-          setState(() => _statusMessage = 'Smile! 😄');
+          setState(() => _statusMessage = _s.smile);
         }
         break;
       case ChallengeType.blink:
         if (!_faceService.isTargetAngle(face, FaceAngle.straight)) {
           _blinkPhase = _BlinkPhase.waitingOpen;
-          setState(() => _statusMessage = 'Look straight at the camera');
+          setState(() => _statusMessage = _s.lookStraightAtCamera);
           break;
         }
         _handleBlinkChallenge(face);
         passed = _blinkPhase == _BlinkPhase.done;
         if (!passed) {
           final msg = switch (_blinkPhase) {
-            _BlinkPhase.waitingOpen => 'Open your eyes and look at camera',
-            _BlinkPhase.waitingClosed => 'Now blink your eyes',
-            _BlinkPhase.waitingReopen => 'Open your eyes again',
-            _BlinkPhase.done => 'Blink detected ✓',
+            _BlinkPhase.waitingOpen => _s.openEyesAndLook,
+            _BlinkPhase.waitingClosed => _s.nowBlink,
+            _BlinkPhase.waitingReopen => _s.openEyesAgain,
+            _BlinkPhase.done => _s.blinkDetected,
           };
           setState(() => _statusMessage = msg);
         }
         break;
       case ChallengeType.turnLeft:
         passed = _checkAngleChallenge(
-            face, FaceAngle.left, 'Turn your face slightly left');
+            face, FaceAngle.left, _s.turnSlightlyLeft);
         break;
       case ChallengeType.turnRight:
         passed = _checkAngleChallenge(
-            face, FaceAngle.right, 'Turn your face slightly right');
+            face, FaceAngle.right, _s.turnSlightlyRight);
         break;
     }
 
@@ -534,12 +537,12 @@ class _CheckInScreenState extends State<CheckInScreen>
     ({int width, int height})? frameDimensions,
   ) {
     if (frameDimensions == null) {
-      return 'Hold still while the camera focuses';
+      return _s.holdStillWhileFocusing;
     }
 
     final previewSize = _previewWidgetSize();
     if (previewSize == null) {
-      return 'Hold still while the camera focuses';
+      return _s.holdStillWhileFocusing;
     }
 
     final ovalIssue = FaceGuidePlacement.issue(
@@ -552,6 +555,7 @@ class _CheckInScreenState extends State<CheckInScreen>
       mirrorX: _cameraController?.description.lensDirection ==
           CameraLensDirection.front,
       angled: _currentChallengeIsAngled(),
+      strings: _s,
     );
     if (ovalIssue != null) return ovalIssue;
 
@@ -559,9 +563,10 @@ class _CheckInScreenState extends State<CheckInScreen>
       face,
       frameDimensions.width,
       frameDimensions.height,
+      strings: _s,
     );
     if (placement.isFrontCamera) return null;
-    return placement.issue ?? 'Fill the face guide';
+    return placement.issue ?? _s.fillTheFaceGuide;
   }
 
   bool _currentChallengeIsAngled() {
@@ -597,7 +602,7 @@ class _CheckInScreenState extends State<CheckInScreen>
     if (_faceService.isTargetAngle(face, target)) {
       _angleHoldFrames++;
       if (_angleHoldFrames >= _requiredHoldFrames) return true;
-      setState(() => _statusMessage = 'Hold steady...');
+      setState(() => _statusMessage = _s.holdSteady);
       return false;
     } else {
       _angleHoldFrames = 0;
@@ -636,7 +641,7 @@ class _CheckInScreenState extends State<CheckInScreen>
       _angleHoldFrames = 0;
       _smileHoldFrames = 0;
       _blinkPhase = _BlinkPhase.waitingOpen;
-      _statusMessage = 'Checking identity...';
+      _statusMessage = _s.checkingIdentity;
     });
     _analysisArmedAt = DateTime.now().add(_postCaptureSettle);
 
@@ -656,6 +661,7 @@ class _CheckInScreenState extends State<CheckInScreen>
       setState(() {
         _statusMessage = FaceRecognitionService.challengeInstruction(
           _challenges[_currentChallengeIndex],
+          strings: _s,
         );
       });
       return;
@@ -667,6 +673,7 @@ class _CheckInScreenState extends State<CheckInScreen>
     setState(() {
       _statusMessage = FaceRecognitionService.challengeInstruction(
         _challenges[_currentChallengeIndex],
+        strings: _s,
       );
     });
   }
@@ -683,7 +690,7 @@ class _CheckInScreenState extends State<CheckInScreen>
 
     setState(() {
       _phase = CheckInPhase.verifying;
-      _statusMessage = 'Checking if additional steps are needed...';
+      _statusMessage = _s.checkingAdditionalSteps;
     });
 
     try {
@@ -709,8 +716,7 @@ class _CheckInScreenState extends State<CheckInScreen>
           }
           _currentChallengeIndex = _challenges.length;
           _progress = 1.0;
-          _statusMessage =
-              'Identity verified early — additional challenge steps not required.';
+          _statusMessage = _s.identityVerifiedEarly;
         });
 
         _progressAnimationStart = _animatedProgress;
@@ -729,6 +735,7 @@ class _CheckInScreenState extends State<CheckInScreen>
       _phase = CheckInPhase.scanning;
       _statusMessage = FaceRecognitionService.challengeInstruction(
         _challenges[_currentChallengeIndex],
+        strings: _s,
       );
     });
     await _startImageStream();
@@ -736,13 +743,11 @@ class _CheckInScreenState extends State<CheckInScreen>
   }
 
   IconData get _coachingIcon {
-    final message = _statusMessage.toLowerCase();
+    final message = _statusMessage;
     if (!_faceDetected) return Icons.face_retouching_off_outlined;
-    if (message.contains('too close')) return Icons.zoom_out_rounded;
-    if (message.contains('closer') || message.contains('too small')) {
-      return Icons.zoom_in_rounded;
-    }
-    if (message.contains('center')) return Icons.center_focus_strong_rounded;
+    if (message == _s.moveBack) return Icons.zoom_out_rounded;
+    if (message == _s.moveCloser) return Icons.zoom_in_rounded;
+    if (message == _s.centerFace) return Icons.center_focus_strong_rounded;
     if (!_facePlacedCorrectly) return Icons.zoom_in_rounded;
     return Icons.center_focus_strong_rounded;
   }
@@ -763,7 +768,7 @@ class _CheckInScreenState extends State<CheckInScreen>
 
     setState(() {
       _phase = CheckInPhase.verifying;
-      _statusMessage = 'Verifying identity...';
+      _statusMessage = _s.verifyingIdentity;
     });
 
     try {
@@ -772,8 +777,7 @@ class _CheckInScreenState extends State<CheckInScreen>
       if (result == null) {
         setState(() {
           _phase = CheckInPhase.error;
-          _errorMessage =
-              'Verification failed: camera is busy. Please tap Retry.';
+          _errorMessage = _s.verificationCameraBusy;
         });
         return;
       }
@@ -797,7 +801,7 @@ class _CheckInScreenState extends State<CheckInScreen>
       if (!mounted) return;
       setState(() {
         _phase = CheckInPhase.error;
-        _errorMessage = 'Verification failed: $e';
+        _errorMessage = _s.verificationFailed(e);
       });
     }
   }
@@ -904,6 +908,24 @@ class _CheckInScreenState extends State<CheckInScreen>
   /// the network, and [AttendancePunchNotifier] lets the dashboard re-sync once
   /// the real record lands (and warn if it did not).
   Future<void> _submitPunch() async {
+    if (!widget.isCheckOut) {
+      // The server enforces this same grace window; checking it here first is
+      // only a pre-flight, so a stale device clock cannot turn into a punch that
+      // is submitted and then rejected.
+      final profile = await _authService.getCurrentUserProfile();
+      final window = CheckInWindow.evaluate(
+        shiftStartTime: profile?.shiftStartTime,
+      );
+      if (window.isClosed) {
+        if (!mounted) return;
+        setState(() {
+          _phase = CheckInPhase.error;
+          _errorMessage = window.message!;
+        });
+        return;
+      }
+    }
+
     // An optimistic record so the dashboard can render the punch immediately.
     // The dashboard merges by calendar day, so the server row replaces this
     // cleanly when the background submission lands.
@@ -925,8 +947,8 @@ class _CheckInScreenState extends State<CheckInScreen>
         _punchSubmitted = true;
         _punchedRecord = optimistic;
         _statusMessage = widget.isCheckOut
-            ? 'Check-out request submitted!'
-            : 'Check-in request submitted!';
+            ? _s.successCheckOut
+            : _s.successCheckIn;
       });
     }
 
@@ -1041,7 +1063,8 @@ class _CheckInScreenState extends State<CheckInScreen>
       _errorMessage = '';
       _phase = CheckInPhase.scanning;
       _statusMessage = FaceRecognitionService.challengeInstruction(
-          _challenges[_currentChallengeIndex]);
+          _challenges[_currentChallengeIndex],
+          strings: _s);
     });
     _startImageStream();
   }
@@ -1057,7 +1080,7 @@ class _CheckInScreenState extends State<CheckInScreen>
       _needsFaceReregister = false;
       _errorMessage = '';
       _phase = CheckInPhase.initializing;
-      _statusMessage = 'Initializing...';
+      _statusMessage = _s.initializing;
     });
     await _init();
   }
@@ -1092,7 +1115,7 @@ class _CheckInScreenState extends State<CheckInScreen>
           icon: const Icon(Icons.arrow_back_ios, color: Colors.white),
           onPressed: _handleBack,
         ),
-        title: Text(widget.isCheckOut ? 'Check Out' : 'Check In',
+        title: Text(widget.isCheckOut ? _s.appBarCheckOut : _s.appBarCheckIn,
             style: GoogleFonts.poppins(
                 fontSize: 18,
                 fontWeight: FontWeight.w600,
@@ -1187,7 +1210,7 @@ class _CheckInScreenState extends State<CheckInScreen>
               ),
               const SizedBox(width: ui.AppSpace.xs),
               Text(
-                'Liveness challenges',
+                _s.livenessChallenges,
                 style: ui.AppType.h3.copyWith(color: Colors.white),
               ),
             ],
@@ -1247,7 +1270,8 @@ class _CheckInScreenState extends State<CheckInScreen>
                   const SizedBox(width: ui.AppSpace.sm),
                   Expanded(
                     child: Text(
-                      FaceRecognitionService.challengeInstruction(challenge),
+                      FaceRecognitionService.challengeInstruction(challenge,
+                          strings: _s),
                       style: ui.AppType.bodySm.copyWith(
                         color: passed
                             ? ui.AppColors.success
@@ -1300,13 +1324,13 @@ class _CheckInScreenState extends State<CheckInScreen>
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('Identity Verified',
+                Text(_s.identityVerified,
                     style: GoogleFonts.poppins(
                         fontSize: 14,
                         fontWeight: FontWeight.w600,
                         color: AppColors.success)),
                 Text(
-                    '${_verificationConfidence.toStringAsFixed(1)}% match',
+                    _s.matchPercent(_verificationConfidence.toStringAsFixed(1)),
                     style: GoogleFonts.poppins(
                         fontSize: 12, color: Colors.white60)),
               ],
@@ -1354,8 +1378,8 @@ class _CheckInScreenState extends State<CheckInScreen>
               children: [
                 Text(
                     _position != null
-                        ? 'Location Captured'
-                        : 'Capturing Location...',
+                        ? _s.locationCaptured
+                        : _s.capturingLocation,
                     style: GoogleFonts.poppins(
                         fontSize: 14,
                         fontWeight: FontWeight.w600,
@@ -1419,37 +1443,37 @@ class _CheckInScreenState extends State<CheckInScreen>
 
     switch (_phase) {
       case CheckInPhase.initializing:
-        label = 'Initializing…';
+        label = _s.buttonInitializing;
         onPressed = null;
         bgColor = Colors.white.withValues(alpha: 0.12);
         icon = PhosphorIconsDuotone.hourglass;
         break;
       case CheckInPhase.scanning:
-        label = 'Scanning face…';
+        label = _s.buttonScanning;
         onPressed = null;
         bgColor = ui.AppColors.primaryLight.withValues(alpha: 0.35);
         icon = PhosphorIconsDuotone.scan;
         break;
       case CheckInPhase.verifying:
-        label = 'Verifying…';
+        label = _s.buttonVerifying;
         onPressed = null;
         bgColor = ui.AppColors.primaryLight.withValues(alpha: 0.35);
         icon = PhosphorIconsDuotone.shieldCheck;
         break;
       case CheckInPhase.gps:
-        label = 'Capturing location…';
+        label = _s.buttonCapturingLocation;
         onPressed = null;
         bgColor = ui.AppColors.mGeo.withValues(alpha: 0.35);
         icon = PhosphorIconsDuotone.mapPinLine;
         break;
       case CheckInPhase.success:
-        label = 'Done';
+        label = _s.buttonDone;
         onPressed = _handleDone;
         bgColor = ui.AppColors.success;
         icon = PhosphorIconsFill.checkCircle;
         break;
       case CheckInPhase.error:
-        label = _needsFaceReregister ? 'Register face' : 'Retry';
+        label = _needsFaceReregister ? _s.buttonRegisterFace : _s.buttonRetry;
         onPressed = _needsFaceReregister ? _openFaceRegistration : _retry;
         bgColor = ui.AppColors.warning;
         icon = _needsFaceReregister

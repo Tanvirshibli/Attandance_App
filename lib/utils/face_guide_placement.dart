@@ -1,6 +1,7 @@
 import 'dart:math';
 import 'dart:ui';
 
+import '../l10n/face_capture_strings.dart';
 import '../widgets/face_capture_stage.dart';
 
 /// Maps a live face box onto the on-screen rounded frame (BoxFit.cover + optional mirror).
@@ -63,19 +64,21 @@ class FaceGuidePlacement {
 
   /// Null when the face fills and sits inside the frame; otherwise coaching text.
   /// [angled] uses a looser center inset so yaw/pitch poses are not treated as off-guide.
+  /// Defaults to English, which keeps the face-registration screen on English.
   static String? issue({
     required Rect faceBox,
     required Size imageSize,
     required Size previewSize,
     bool mirrorX = false,
     bool angled = false,
+    FaceCaptureStrings strings = FaceCaptureStrings.english,
   }) {
     if (imageSize.width <= 0 ||
         imageSize.height <= 0 ||
         previewSize.width <= 0 ||
         previewSize.height <= 0 ||
         faceBox.isEmpty) {
-      return 'Hold still while the camera focuses';
+      return strings.holdStillWhileFocusing;
     }
 
     final mapped = mapImageRectToPreview(
@@ -86,15 +89,15 @@ class FaceGuidePlacement {
     );
     final frame = faceGuideRect(previewSize);
     if (frame.height <= 0) {
-      return 'Hold still while the camera focuses';
+      return strings.holdStillWhileFocusing;
     }
 
     final heightFill = mapped.height / frame.height;
     if (heightFill < minOvalHeightFill) {
-      return 'Move closer and fill the face guide';
+      return strings.moveCloser;
     }
     if (heightFill > maxOvalHeightFill) {
-      return 'Move back a little — your face is too close';
+      return strings.moveBack;
     }
 
     final inset = insetGuideRect(
@@ -103,7 +106,7 @@ class FaceGuidePlacement {
     );
     final centerInside = buildFaceGuidePath(inset).contains(mapped.center);
     if (!centerInside) {
-      return 'Center your face inside the guide';
+      return strings.centerFace;
     }
     return null;
   }

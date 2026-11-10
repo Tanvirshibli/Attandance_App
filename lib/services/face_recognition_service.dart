@@ -6,6 +6,7 @@ import 'package:google_mlkit_face_detection/google_mlkit_face_detection.dart';
 import 'package:image/image.dart' as img;
 import 'package:tflite_flutter/tflite_flutter.dart';
 
+import '../l10n/face_capture_strings.dart';
 import '../models/face_registration_data.dart';
 
 /// Face angle for registration and verification challenges
@@ -378,6 +379,7 @@ class FaceRecognitionService {
 
   /// Check if the image appears to be from the front camera (selfie).
   /// Front camera selfies have a large, centered face.
+  /// Defaults to English, which keeps the face-registration screen on English.
   FrontCameraCheckResult checkFrontCamera(
     Face face,
     int imageWidth,
@@ -385,6 +387,7 @@ class FaceRecognitionService {
     bool requireCentering = true,
     double centerTolerance = 0.3,
     bool forLiveGuidance = false,
+    FaceCaptureStrings strings = FaceCaptureStrings.english,
   }) {
     final faceArea = face.boundingBox.width * face.boundingBox.height;
     final imageArea = imageWidth * imageHeight;
@@ -392,6 +395,7 @@ class FaceRecognitionService {
     final ratioIssue = faceFramingIssue(
       faceRatio,
       forLiveGuidance: forLiveGuidance,
+      strings: strings,
     );
 
     final faceCenterX = face.boundingBox.center.dx / imageWidth;
@@ -405,7 +409,7 @@ class FaceRecognitionService {
 
     String? issue = ratioIssue;
     if (issue == null && requireCentering && !isCentered) {
-      issue = 'Center your face inside the guide';
+      issue = strings.centerFace;
     }
 
     return FrontCameraCheckResult(
@@ -416,17 +420,19 @@ class FaceRecognitionService {
   }
 
   /// Size gate used by live preview and still capture (no ML Kit needed).
+  /// Defaults to English, which keeps the face-registration screen on English.
   static String? faceFramingIssue(
     double faceRatio, {
     required bool forLiveGuidance,
+    FaceCaptureStrings strings = FaceCaptureStrings.english,
   }) {
     if (faceRatio < minAcceptableFaceRatio) {
       return forLiveGuidance
-          ? 'Move closer and fill the face guide'
+          ? strings.moveCloser
           : 'Face appears too small — please use the front camera and hold the phone closer.';
     }
     if (forLiveGuidance && faceRatio > maxLiveFaceRatio) {
-      return 'Move back a little — your face is too close';
+      return strings.moveBack;
     }
     return null;
   }
@@ -443,11 +449,13 @@ class FaceRecognitionService {
   }
 
   /// Live placement with a width/height swap fallback for inverted frames.
+  /// Defaults to English, which keeps the face-registration screen on English.
   FrontCameraCheckResult evaluateLivePlacement(
     Face face,
     int imageWidth,
-    int imageHeight,
-  ) {
+    int imageHeight, {
+    FaceCaptureStrings strings = FaceCaptureStrings.english,
+  }) {
     final primary = checkFrontCamera(
       face,
       imageWidth,
@@ -455,6 +463,7 @@ class FaceRecognitionService {
       requireCentering: true,
       centerTolerance: liveCenterTolerance,
       forLiveGuidance: true,
+      strings: strings,
     );
     if (primary.isFrontCamera || imageWidth == imageHeight) {
       return primary;
@@ -476,6 +485,7 @@ class FaceRecognitionService {
       requireCentering: true,
       centerTolerance: liveCenterTolerance,
       forLiveGuidance: true,
+      strings: strings,
     );
     return swapped.isFrontCamera ? swapped : primary;
   }
@@ -568,37 +578,49 @@ class FaceRecognitionService {
   }
 
   /// Get human-readable name for a face angle
-  static String angleDisplayName(FaceAngle angle) {
+  /// Defaults to English, which keeps the face-registration screen on English.
+  static String angleDisplayName(
+    FaceAngle angle, {
+    FaceCaptureStrings strings = FaceCaptureStrings.english,
+  }) {
     switch (angle) {
-      case FaceAngle.straight: return 'Look Straight';
-      case FaceAngle.left: return 'Turn Left';
-      case FaceAngle.right: return 'Turn Right';
-      case FaceAngle.up: return 'Look Up';
-      case FaceAngle.down: return 'Look Down';
-      case FaceAngle.unknown: return 'Adjust Position';
+      case FaceAngle.straight: return strings.angleStraight;
+      case FaceAngle.left: return strings.angleLeft;
+      case FaceAngle.right: return strings.angleRight;
+      case FaceAngle.up: return strings.angleUp;
+      case FaceAngle.down: return strings.angleDown;
+      case FaceAngle.unknown: return strings.angleUnknown;
     }
   }
 
   /// Get instruction text for a face angle during registration
-  static String angleInstruction(FaceAngle angle) {
+  /// Defaults to English, which keeps the face-registration screen on English.
+  static String angleInstruction(
+    FaceAngle angle, {
+    FaceCaptureStrings strings = FaceCaptureStrings.english,
+  }) {
     switch (angle) {
-      case FaceAngle.straight: return 'Look straight at the camera';
-      case FaceAngle.left: return 'Slowly turn your face to the left';
-      case FaceAngle.right: return 'Slowly turn your face to the right';
-      case FaceAngle.up: return 'Slightly tilt your head upward';
-      case FaceAngle.down: return 'Slightly tilt your head downward';
-      case FaceAngle.unknown: return 'Position your face in the guide';
+      case FaceAngle.straight: return strings.instructStraight;
+      case FaceAngle.left: return strings.instructLeft;
+      case FaceAngle.right: return strings.instructRight;
+      case FaceAngle.up: return strings.instructUp;
+      case FaceAngle.down: return strings.instructDown;
+      case FaceAngle.unknown: return strings.instructUnknown;
     }
   }
 
   /// Get instruction text for a check-in challenge
-  static String challengeInstruction(ChallengeType challenge) {
+  /// Defaults to English, which keeps the face-registration screen on English.
+  static String challengeInstruction(
+    ChallengeType challenge, {
+    FaceCaptureStrings strings = FaceCaptureStrings.english,
+  }) {
     switch (challenge) {
-      case ChallengeType.lookStraight: return 'Look straight at the camera';
-      case ChallengeType.smile: return 'Smile! 😄';
-      case ChallengeType.blink: return 'Blink your eyes';
-      case ChallengeType.turnLeft: return 'Turn your face slightly left';
-      case ChallengeType.turnRight: return 'Turn your face slightly right';
+      case ChallengeType.lookStraight: return strings.challengeStraight;
+      case ChallengeType.smile: return strings.challengeSmile;
+      case ChallengeType.blink: return strings.challengeBlink;
+      case ChallengeType.turnLeft: return strings.challengeLeft;
+      case ChallengeType.turnRight: return strings.challengeRight;
     }
   }
 
