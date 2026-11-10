@@ -5,7 +5,8 @@ import '../../models/marketing_models.dart';
 import '../../models/zone_scope.dart';
 import '../../services/marketing_service.dart';
 import '../../services/zone_scope_service.dart';
-import '../../widgets/filter_chip_row.dart';
+import '../../utils/marketing_filters.dart';
+import '../../widgets/marketing_filter_bar.dart';
 import '../../widgets/marketing_photo_widgets.dart';
 import '../../widgets/ui/ui.dart';
 import '../../widgets/voice_input_field.dart';
@@ -32,8 +33,7 @@ class _PartyListScreenState extends State<PartyListScreen> {
   bool _loading = true;
   String? _error;
   List<Party> _parties = const [];
-  late String _typeFilter;
-  String _statusFilter = 'All';
+  MarketingFilters _filters = const MarketingFilters();
   ZoneScope? _scope;
 
   static const _typeOptions = ['All', 'dealer', 'farm', 'farmer', 'outlet', 'prospect'];
@@ -43,9 +43,13 @@ class _PartyListScreenState extends State<PartyListScreen> {
   void initState() {
     super.initState();
     final initial = widget.initialPartyType?.toLowerCase();
-    _typeFilter = (initial != null && _typeOptions.contains(initial))
-        ? initial
-        : 'All';
+    // The Farms / Dealers entry points lock the type, so it seeds the filter
+    // instead of being offered as a dimension.
+    _filters = MarketingFilters(
+      type: (initial != null && _typeOptions.contains(initial))
+          ? initial
+          : 'All',
+    );
     _load();
   }
 
@@ -71,9 +75,9 @@ class _PartyListScreenState extends State<PartyListScreen> {
     // market they sit in.
     final marketDistricts = await ZoneScopeService.instance.loadMarketDistricts();
     final result = await _service.listParties(
-      partyType: _typeFilter == 'All' ? null : _typeFilter,
+      partyType: _filters.type == 'All' ? null : _filters.type,
       q: _searchController.text,
-      status: _statusFilter,
+      status: _filters.status,
       marketId: widget.marketId,
     );
 
@@ -89,21 +93,52 @@ class _PartyListScreenState extends State<PartyListScreen> {
       return;
     }
 
+    // The area pill compares against the market's district, which the query
+    // cannot express, so the remaining dimensions narrow here too.
+    final List<Party> inScope = scope == null || scope.isEmpty
+        ? (result.data ?? const [])
+        : (result.data ?? const [])
+            .where((p) => scope.matches(
+                  zoneId: p.zoneId,
+                  zoneName: p.zoneName,
+                  district: p.marketId == null
+                      ? null
+                      : marketDistricts[p.marketId],
+                ))
+            .toList();
+
     setState(() {
-      _parties = scope == null || scope.isEmpty
-          ? (result.data ?? const [])
-          : (result.data ?? const [])
-              .where((p) => scope.matches(
-                    zoneId: p.zoneId,
-                    zoneName: p.zoneName,
-                    district: p.marketId == null
-                        ? null
-                        : marketDistricts[p.marketId],
-                  ))
-              .toList();
+      _parties = inScope
+          .where((p) =>
+              marketingStatusMatches(p.status, _filters.status) &&
+              marketingTypeMatches(p.partyType, _filters.type) &&
+              marketingAreaMatches(
+                zoneId: p.zoneId,
+                zoneName: p.zoneName,
+                district:
+                    p.marketId == null ? null : marketDistricts[p.marketId],
+                area: _filters.area,
+              ))
+          .toList();
       _loading = false;
     });
   }
+
+  /// Applies [next] and refetches, carrying a locked party type through a
+  /// clear — the bar does not offer that dimension, so it must not widen.
+  void _applyFilters(MarketingFilters next) {
+    final locked = widget.initialPartyType != null;
+    setState(() {
+      _filters = locked ? next.copyWith(type: _filters.type) : next;
+    });
+    _load();
+  }
+
+  /// The bar's view of the filters. A locked type is not a choice the user
+  /// made, so it stays out of the pill, the active count and the empty state.
+  MarketingFilters get _barFilters => widget.initialPartyType == null
+      ? _filters
+      : _filters.copyWith(type: 'All');
 
   Color _statusColor(String? status) {
     switch ((status ?? '').toLowerCase()) {
@@ -173,35 +208,21 @@ class _PartyListScreenState extends State<PartyListScreen> {
                         ),
                       ),
                     ),
-                    if (!lockType) ...[
-                      const SizedBox(height: 10),
-                      Text(
-                        'Type',
-                        style: AppType.meta.copyWith(fontWeight: FontWeight.w500, color: AppColors.inkMuted),
-                      ),
-                      const SizedBox(height: 6),
-                      FilterChipRow(
-                        options: _typeOptions,
-                        selected: _typeFilter,
-                        onSelected: (v) {
-                          setState(() => _typeFilter = v);
-                          _load();
-                        },
-                      ),
-                    ],
-                    const SizedBox(height: 8),
-                    Text(
-                      'Status',
-                      style: AppType.meta.copyWith(fontWeight: FontWeight.w500, color: AppColors.inkMuted),
-                    ),
-                    const SizedBox(height: 6),
-                    FilterChipRow(
-                      options: _statusOptions,
-                      selected: _statusFilter,
-                      onSelected: (v) {
-                        setState(() => _statusFilter = v);
-                        _load();
+                    const SizedBox(height: 10),
+                    MarketingFilterBar(
+                      filters: _barFilters,
+                      dimensions: [
+                        MarketingFilterDimension.status,
+                        if (!lockType) MarketingFilterDimension.type,
+                        MarketingFilterDimension.area,
+                      ],
+                      options: {
+                        MarketingFilterDimension.status: _statusOptions,
+                        MarketingFilterDimension.type: _typeOptions,
+                        MarketingFilterDimension.area:
+                            marketingAreaOptions(_scope),
                       },
+                      onChanged: _applyFilters,
                     ),
                   ],
                 ),
@@ -227,16 +248,36 @@ class _PartyListScreenState extends State<PartyListScreen> {
               )
             else if (_parties.isEmpty)
               SliverFillRemaining(
+                // The clear action makes the column taller than the viewport on
+                // short screens, so let the sliver grow with it.
+                hasScrollBody: false,
                 child: Center(
                   child: Padding(
                     padding: const EdgeInsets.all(AppSpace.lg),
-                    child: AppEmptyState(
-                      icon: Icons.storefront_outlined,
-                      title: 'No parties found',
-                      subtitle: _scope == null || _scope!.isEmpty
-                          ? 'Create a dealer or farm to get started.'
-                          : 'No dealers or farms in ${_scope!.label} yet.',
-                      onRetry: _load,
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        AppEmptyState(
+                          icon: Icons.storefront_outlined,
+                          title: 'No parties found',
+                          subtitle: _barFilters.isActive
+                              ? 'No parties match these filters.'
+                              : (_scope == null || _scope!.isEmpty
+                                  ? 'Create a dealer or farm to get started.'
+                                  : 'No dealers or farms in ${_scope!.label} yet.'),
+                          // Retrying would only repeat the same query, so the
+                          // filtered dead end offers the way out instead.
+                          onRetry: _barFilters.isActive ? null : _load,
+                        ),
+                        if (_barFilters.isActive)
+                          AppButton(
+                            label: 'Clear filters',
+                            icon: Icons.close_rounded,
+                            kind: AppButtonKind.secondary,
+                            expand: false,
+                            onPressed: () => _applyFilters(_filters.cleared),
+                          ),
+                      ],
                     ),
                   ),
                 ),

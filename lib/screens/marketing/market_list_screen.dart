@@ -5,6 +5,8 @@ import '../../models/marketing_models.dart';
 import '../../models/zone_scope.dart';
 import '../../services/marketing_service.dart';
 import '../../services/zone_scope_service.dart';
+import '../../utils/marketing_filters.dart';
+import '../../widgets/marketing_filter_bar.dart';
 import '../../widgets/marketing_photo_widgets.dart';
 import '../../widgets/ui/ui.dart';
 import '../../widgets/voice_input_field.dart';
@@ -24,7 +26,10 @@ class _MarketListScreenState extends State<MarketListScreen> {
   bool _loading = true;
   String? _error;
   List<Market> _markets = const [];
+  MarketingFilters _filters = const MarketingFilters();
   ZoneScope? _scope;
+
+  static const _statusOptions = ['All', 'active', 'inactive'];
 
   @override
   void initState() {
@@ -75,8 +80,37 @@ class _MarketListScreenState extends State<MarketListScreen> {
     });
   }
 
+  /// The rows the bar lets through. Client-side because the fetch is already
+  /// unfiltered for the zone-scope reason above.
+  List<Market> get _visible => _markets
+      .where((m) =>
+          marketingStatusMatches(m.status, _filters.status) &&
+          marketingTypeListMatches(m.productTypes, _filters.type) &&
+          marketingAreaMatches(
+            zoneId: m.zoneId,
+            zoneName: m.zoneName,
+            district: m.district,
+            area: _filters.area,
+          ))
+      .toList();
+
+  /// Product types actually present in the loaded markets — a pill offering a
+  /// type nobody carries would only ever empty the list.
+  List<String> get _typeOptions {
+    final types = <String>{};
+    for (final market in _markets) {
+      for (final type in market.productTypes) {
+        final value = type.trim();
+        if (value.isNotEmpty) types.add(value);
+      }
+    }
+    final sorted = types.toList()..sort();
+    return ['All', ...sorted];
+  }
+
   @override
   Widget build(BuildContext context) {
+    final markets = _visible;
     return Scaffold(
       backgroundColor: AppColors.canvas,
       body: RefreshIndicator(
@@ -122,6 +156,26 @@ class _MarketListScreenState extends State<MarketListScreen> {
                 ),
               ),
             ),
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(AppSpace.gutter, AppSpace.sm, AppSpace.gutter, 0),
+                child: MarketingFilterBar(
+                  filters: _filters,
+                  dimensions: const [
+                    MarketingFilterDimension.status,
+                    MarketingFilterDimension.type,
+                    MarketingFilterDimension.area,
+                  ],
+                  options: {
+                    MarketingFilterDimension.status: _statusOptions,
+                    MarketingFilterDimension.type: _typeOptions,
+                    MarketingFilterDimension.area:
+                        marketingAreaOptions(_scope),
+                  },
+                  onChanged: (f) => setState(() => _filters = f),
+                ),
+              ),
+            ),
             if (_loading)
               const SliverFillRemaining(
                 child: Center(child: CircularProgressIndicator()),
@@ -140,17 +194,43 @@ class _MarketListScreenState extends State<MarketListScreen> {
                   ),
                 ),
               )
-            else if (_markets.isEmpty)
+            else if (markets.isEmpty)
               SliverFillRemaining(
+                // The clear action makes the column taller than the viewport on
+                // short screens, so let the sliver grow with it.
+                hasScrollBody: false,
                 child: Center(
                   child: Padding(
                     padding: const EdgeInsets.all(AppSpace.lg),
-                    child: AppEmptyState(
-                      icon: Icons.store_mall_directory_outlined,
-                      title: 'No markets yet',
-                      subtitle: _scope == null || _scope!.isEmpty
-                          ? 'Create a market to assign dealers and farms.'
-                          : 'No markets in ${_scope!.label} yet.',
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (_filters.isActive && _markets.isNotEmpty)
+                          const AppEmptyState(
+                            icon: Icons.filter_alt_off_outlined,
+                            title: 'No markets match',
+                            subtitle: 'Clear the filters to see every market again.',
+                          )
+                        else
+                          AppEmptyState(
+                            icon: Icons.store_mall_directory_outlined,
+                            title: 'No markets yet',
+                            subtitle: _scope == null || _scope!.isEmpty
+                                ? 'Create a market to assign dealers and farms.'
+                                : 'No markets in ${_scope!.label} yet.',
+                          ),
+                        // This state has no retry on purpose; a filtered dead
+                        // end still needs a way out.
+                        if (_filters.isActive)
+                          AppButton(
+                            label: 'Clear filters',
+                            icon: Icons.close_rounded,
+                            kind: AppButtonKind.secondary,
+                            expand: false,
+                            onPressed: () =>
+                                setState(() => _filters = _filters.cleared),
+                          ),
+                      ],
                     ),
                   ),
                 ),
@@ -161,7 +241,7 @@ class _MarketListScreenState extends State<MarketListScreen> {
                 sliver: SliverList(
                   delegate: SliverChildBuilderDelegate(
                     (context, index) {
-                      final m = _markets[index];
+                      final m = markets[index];
                       final loc = m.locationLine;
                       return FadeInUp(
                         delay: Duration(milliseconds: 30 * index),
@@ -228,7 +308,7 @@ class _MarketListScreenState extends State<MarketListScreen> {
                         ),
                       );
                     },
-                    childCount: _markets.length,
+                    childCount: markets.length,
                   ),
                 ),
               ),

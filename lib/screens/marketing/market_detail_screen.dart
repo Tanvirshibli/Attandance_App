@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 
 import '../../models/marketing_models.dart';
 import '../../services/marketing_service.dart';
+import '../../utils/marketing_filters.dart';
+import '../../widgets/marketing_filter_bar.dart';
 import '../../widgets/marketing_photo_widgets.dart';
 import '../../widgets/ui/ui.dart';
 import 'market_form_screen.dart';
@@ -26,6 +28,10 @@ class _MarketDetailScreenState extends State<MarketDetailScreen> {
   bool _loading = true;
   String? _error;
   List<Party> _parties = const [];
+  MarketingFilters _filters = const MarketingFilters();
+
+  static const _statusOptions = ['All', 'active', 'inactive', 'prospect'];
+  static const _typeOptions = ['All', 'dealer', 'farm', 'farmer', 'outlet', 'prospect'];
 
   @override
   void initState() {
@@ -180,6 +186,12 @@ class _MarketDetailScreenState extends State<MarketDetailScreen> {
   Widget build(BuildContext context) {
     final market = _market;
     final loc = market.locationLine;
+    // Already loaded with the market, so the bar narrows in place.
+    final parties = _parties
+        .where((p) =>
+            marketingStatusMatches(p.status, _filters.status) &&
+            marketingTypeMatches(p.partyType, _filters.type))
+        .toList();
     return Scaffold(
       backgroundColor: AppColors.canvas,
       body: RefreshIndicator(
@@ -257,6 +269,23 @@ class _MarketDetailScreenState extends State<MarketDetailScreen> {
                 ),
               ),
             ),
+            SliverPadding(
+              padding: const EdgeInsets.fromLTRB(AppSpace.gutter, AppSpace.xs, AppSpace.gutter, 0),
+              sliver: SliverToBoxAdapter(
+                child: MarketingFilterBar(
+                  filters: _filters,
+                  dimensions: const [
+                    MarketingFilterDimension.status,
+                    MarketingFilterDimension.type,
+                  ],
+                  options: {
+                    MarketingFilterDimension.status: _statusOptions,
+                    MarketingFilterDimension.type: _typeOptions,
+                  },
+                  onChanged: (f) => setState(() => _filters = f),
+                ),
+              ),
+            ),
             if (_loading)
               const SliverFillRemaining(
                 child: Center(child: CircularProgressIndicator()),
@@ -288,13 +317,43 @@ class _MarketDetailScreenState extends State<MarketDetailScreen> {
                   ),
                 ),
               )
+            else if (parties.isEmpty)
+              SliverFillRemaining(
+                // The clear action makes the column taller than the viewport on
+                // short screens, so let the sliver grow with it.
+                hasScrollBody: false,
+                child: Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(AppSpace.lg),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        AppEmptyState(
+                          icon: Icons.filter_alt_off_outlined,
+                          title: 'No parties match',
+                          subtitle:
+                              'This market has parties, none of them match these filters.',
+                        ),
+                        AppButton(
+                          label: 'Clear filters',
+                          icon: Icons.close_rounded,
+                          kind: AppButtonKind.secondary,
+                          expand: false,
+                          onPressed: () =>
+                              setState(() => _filters = _filters.cleared),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              )
             else
               SliverPadding(
                 padding: const EdgeInsets.fromLTRB(AppSpace.gutter, AppSpace.xs, AppSpace.gutter, AppSpace.xl),
                 sliver: SliverList(
                   delegate: SliverChildBuilderDelegate(
                     (context, index) {
-                      final party = _parties[index];
+                      final party = parties[index];
                       return FadeInUp(
                         delay: Duration(milliseconds: 30 * index),
                         child: Padding(
@@ -342,7 +401,7 @@ class _MarketDetailScreenState extends State<MarketDetailScreen> {
                         ),
                       );
                     },
-                    childCount: _parties.length,
+                    childCount: parties.length,
                   ),
                 ),
               ),
