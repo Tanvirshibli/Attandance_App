@@ -19,6 +19,7 @@ import '../services/attendance_request_service.dart';
 import '../services/attendance_punch_notifier.dart';
 import '../services/auth_service.dart';
 import '../services/face_recognition_service.dart';
+import '../utils/check_in_window.dart';
 import '../widgets/stat_card.dart';
 import '../widgets/syncing_time.dart';
 import '../widgets/attendance_tile.dart';
@@ -548,6 +549,19 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           content: Text('You are already checked in. Use Check Out.'),
         ),
       );
+      return;
+    }
+
+    // Refuse a late check-in here rather than letting the employee sit through
+    // a face scan for a punch the server will reject anyway. Check-out is not
+    // gated: the grace period says nothing about leaving.
+    final window = CheckInWindow.evaluate(
+      shiftStartTime: _profile.shiftStartTime,
+    );
+    if (!isCheckOut && window.isClosed) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(window.message!)));
       return;
     }
 

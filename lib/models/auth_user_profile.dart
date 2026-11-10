@@ -11,6 +11,9 @@ class AuthUserProfile {
     required this.phone,
     required this.joiningDate,
     this.canonicalEmployeeId,
+    this.shiftStartTime,
+    this.shiftEndTime,
+    this.shiftName,
     this.faceRegistration,
     this.zoneIds = const [],
     this.zoneName,
@@ -30,6 +33,15 @@ class AuthUserProfile {
   final String joiningDate;
   final int? canonicalEmployeeId;
   final FaceRegistrationData? faceRegistration;
+
+  /// The employee's shift as HRM stores it: bare `HH:mm:ss` times plus the
+  /// shift's name. `get-my-info` only flattens these onto `user` when HRM
+  /// actually holds a shift row for the employee, so all three are nullable and
+  /// the app must keep working without them — see `CheckInWindow`, which fails
+  /// open rather than locking someone out over a missing rota.
+  final String? shiftStartTime;
+  final String? shiftEndTime;
+  final String? shiftName;
 
   /// Hierarchy zones of the logged-in employee (company > zone > sector > depot).
   /// HRM stores this as a jsonb array, so an employee can hold several zones and
@@ -105,6 +117,7 @@ class AuthUserProfile {
   static AuthUserProfile fromJson(Map<String, dynamic> json) {
     final employee = _readMap(json['employee']);
     final facility = _readMap(json['current_facility']);
+    final facilityShift = _readMap(facility['shift']);
 
     return AuthUserProfile(
       name: _firstNonEmpty([
@@ -156,6 +169,29 @@ class AuthUserProfile {
         employee['date_of_joining'],
       ], fallback: 'N/A'),
       canonicalEmployeeId: _parseCanonicalEmployeeId(json, employee),
+      // `get-my-info` flattens the shift onto `user` as snake_case; the
+      // nested facility shape is a fallback for payloads that only carry the
+      // relationship. Absent keys stay null so the check-in window can tell
+      // "no rota" from "shift starts at 00:00".
+      shiftStartTime: _firstNonEmptyOrNull([
+        json['shift_start_time'],
+        json['shiftStartTime'],
+        facilityShift['startTime'],
+        facilityShift['start_time'],
+      ]),
+      shiftEndTime: _firstNonEmptyOrNull([
+        json['shift_end_time'],
+        json['shiftEndTime'],
+        facilityShift['endTime'],
+        facilityShift['end_time'],
+      ]),
+      shiftName: _firstNonEmptyOrNull([
+        json['shift_name'],
+        json['shiftName'],
+        facilityShift['shiftName'],
+        facilityShift['shift_name'],
+        facilityShift['name'],
+      ]),
       faceRegistration: FaceRegistrationData.fromJson(
         json['face_registration'],
         // The engine (and its model width) may not be initialised when the
@@ -368,5 +404,18 @@ class AuthUserProfile {
       }
     }
     return fallback;
+  }
+
+  /// Same test as [_firstNonEmpty] but null instead of a fallback placeholder:
+  /// callers that must distinguish "key absent" from "key says N/A" — shift
+  /// times being the case in point, where a placeholder would parse as a shift.
+  static String? _firstNonEmptyOrNull(List<Object?> values) {
+    for (final value in values) {
+      final text = value?.toString().trim() ?? '';
+      if (text.isNotEmpty && text.toLowerCase() != 'null') {
+        return text;
+      }
+    }
+    return null;
   }
 }
