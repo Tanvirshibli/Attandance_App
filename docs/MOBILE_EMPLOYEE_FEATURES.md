@@ -140,6 +140,28 @@ Handoff for backend teams: **[SALES_AND_PAYMENTS_API_CONTRACT.md](SALES_AND_PAYM
 - Picking/uploading is unchanged: images are still compressed to WebP on the phone (`ImageUploadService`) and sent as `image[]` through `MarketingService.uploadAttachments`
 - See [FARM_DEALER_MOBILE.md](FARM_DEALER_MOBILE.md#photos-across-the-app)
 
+### Marketing list filters
+
+One filter bar, one behaviour, on every marketing list — farms, dealers, markets, the visits and follow-ups tabs
+of a farm/dealer, the party list inside a market, and the standalone visit list.
+
+- Pills, not stacked chip rows: `Filters` (with an active-filter count), then one pill per dimension that screen
+  offers, then `Clear all` once anything is active. A pill shows its chosen value (`Status · active`,
+  `Date · This week`) and animates into the tinted state; tapping it opens a bottom sheet for that dimension only,
+  while the `Filters` pill opens all of them with a single Apply.
+- Dimensions: **status** and **search** on every list; **type** (party type, product type, visit or survey type)
+  where the entity has one; **date** (`All / Today / This week / This month / Custom` with an inclusive custom
+  range); **area** (the employee's `ZoneScope` zones) where the rows carry a zone.
+- Farms and dealers share one list widget, so a locked entry point (the hub's `All farms` / `All dealers` tiles)
+  keeps its type through `Clear all` and does not report it as an active filter.
+- Filtering is client-side over the payload each screen already holds — no list endpoint paginates and none
+  supports a date range or a visit type, so no refetch happens on a filter change (the visit list still sends
+  `status` to the endpoint because it always did).
+- Option lists follow the data where the server does not fix it: a farm's visit-report statuses and types come
+  from its own rows, as do dealer visit types and market product types.
+- A filtered dead end says so ("No parties match these filters") and offers `Clear filters`; the genuine
+  "nothing created yet" copy is unchanged and takes precedence when the list is truly empty.
+
 ### Zone scoping (v2.3.0+92)
 
 - Marketing lists, form pickers and dealer dropdowns are narrowed to the employee's zones. HRM returns `user.zoneId` as a **jsonb array**; the app resolves those ids against Sales `GET /api/get-zone` (public) for names and districts
