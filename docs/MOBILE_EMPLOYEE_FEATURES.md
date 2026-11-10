@@ -216,7 +216,8 @@ Handoff for backend teams: **[SALES_AND_PAYMENTS_API_CONTRACT.md](SALES_AND_PAYM
 
 - Profile → Settings → **Face capture in Bangla** switches the whole check-in/check-out capture screen to Bangla: status and coaching lines, challenge names and instructions, the button labels and the error card
 - Stored in `SharedPreferences` (`face_capture_bangla`), read once at startup, and applied to the next capture without a restart or a re-login
-- The face **registration** screen stays English by design. Deep verification diagnostics (face-quality and sharpness reports) also remain English — they are technical failure reports rather than placement guidance
+- Both capture screens follow the toggle: check-in/check-out **and** face registration (including its angle instructions, different-person dialog, progress labels and tips). Deep verification diagnostics (face-quality and sharpness reports) remain English — they are technical failure reports rather than placement guidance
+- The coaching line asks for a Bengali font family behind Poppins, which has no Bengali coverage; without it those glyphs fall back to tofu on devices with a narrow fallback stack
 
 ### Searchable dropdown overlay on tap (v2.2.3+72)
 

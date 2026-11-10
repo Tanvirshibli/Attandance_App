@@ -428,6 +428,7 @@ the employee id — so they overlap. Two things follow, and both are load-bearin
 | **Angle Detection** | Live `startImageStream` (~4–5 FPS, Android NV21) → 2 s first-open positioning (0.6 s after each capture) → frame-fill gate (Cover-mapped box + front-mirror X) then size/center (±20%) → `isTargetAngle(face, targetAngle)` (straight requires non-null Euler). Strict quality only on final `takePicture()` capture. Target angle held for **5 frames (~1 s)**, then camera-idle wait before JPEG. Preview uses `ResolutionPreset.medium`. |
 | **5 Angles** | Straight (\|yaw\|<14, \|pitch\|<14), Left (yaw 15–55°), Right (yaw -55– -15°), Up (pitch 9–45°), Down (pitch -70– -6°) |
 | **Same-Person** | Each new embedding checked against all previous captures via cosine similarity ≥ 65% |
+| **Language** | Copy comes from the same `FaceCaptureStrings` as check-in, so the profile toggle switches this screen too (angle names/instructions, status lines, different-person dialog, progress and tips) |
 | **Quality** | Every step is pre-validated in live analysis (`checkFrontCamera` placement + `checkFaceQuality`) before angle hold/capture. Capture-time validation still runs via `registerFaceCapture()` pipeline. |
 | **UI** | Step indicator dots (5), camera preview with one centered rounded frame (`FaceGuidePainter`), clockwise progress on that same path, angle icon + instruction overlay, capture flash animation, completion overlay with green checkmark, progress list card, tips card, done button |
 
@@ -1083,7 +1084,8 @@ The current stack uses **ML Kit for detection** and **MobileFaceNet for identity
 - `CheckInWindow.evaluate({required String? shiftStartTime, DateTime? now})` decides whether a self check-in is still inside the 15-minute grace window. Contract twin of the HRM guard (`CHECK_IN_GRACE_MINUTES`, the `now > deadline` boundary, and the night-shift day rollback). Fails open on a null, blank or unparseable shift start. Pinned by `test/check_in_window_test.dart`.
 
 ### `lib/l10n/face_capture_strings.dart`
-- Two const instances (English / Bangla) covering every string on the face-capture screen. English is also the default argument of the shared placement/instruction helpers, which keeps `face_registration_screen.dart` English without changing it.
+- Two const instances (English / Bangla) covering every string on the check-in/check-out **and** face-registration capture screens. English is also the default argument of the shared placement/instruction helpers, so callers that do not pass a set keep the original English copy.
+- `fontFamilyFallback` carries the Bengali family chain for the coaching line (Poppins has no Bengali glyphs).
 
 ### `lib/services/app_settings_service.dart`
 - `SharedPreferences`-backed singleton (`AppSettingsService.instance`) for account-independent preferences: currently the `face_capture_bangla` flag, exposed as a `ValueNotifier` and read once in `main()`.

@@ -298,6 +298,21 @@ After publishing build **N**:
 
 ---
 
+## November 10, 2026 Update (v2.5.4+113) — main channel
+
+**The face registration screen follows the Bangla toggle.**
+
+> Published from `2.5.4+112` → `2.5.4+113`. Tag `v2.5.4-build113`; the live manifest was verified after publishing (channel `prod`, `version_code` 113, `force_update` true, both APK entries present with sizes and SHA-256).
+
+- **Re-registering a face stayed English** while the check-in capture screen followed the toggle: the string set covered only the check-in flow. The registration screen now reads the same persisted preference, so its status lines, angle names and instructions, different-person dialog, step/progress labels, tips and action labels all switch with it
+- Its coaching icon matched English keywords, which stopped matching once the copy was Bangla; it compares against the same string object now, as check-in does
+- The shared capture stage accepts a Bengali font fallback for the coaching line: Poppins has no Bengali coverage, so the fallback chain carries those glyphs instead of leaving them to the device's default stack
+- Deep verification diagnostics (face-quality and sharpness reports) remain English by design — they are technical failure reports, not placement guidance
+
+**Pubspec stays on the prod line at `2.5.4+113`** after this release (the beta line is paused at `2.5.3-beta.1+9036`).
+
+---
+
 ## November 10, 2026 Update (v2.5.4+112) — main channel
 
 **Check-in closes after the grace window, the capture screen speaks Bangla, and the preview shows placement state around the guide.**
@@ -306,7 +321,7 @@ After publishing build **N**:
 
 - **A self check-in now closes 15 minutes after the shift start.** The dashboard refuses it before the camera opens and the capture screen re-checks before submitting, so a screen left open past the deadline cannot post a punch. Check-out is unaffected. The rule mirrors the server guard exactly (`CHECK_IN_GRACE_MINUTES`, the `now > deadline` boundary, and the night-shift day rollback) and fails open when HRM holds no shift for the employee
 - **The preview outside the face guide is tinted** with the same colour the border uses (idle grey, orange off-position, teal placed, green verified) at very low alpha. The guide square is still never filled — the face window stays untouched — and the underlying dim was lowered from 0.48 to 0.20 so the coaching strip stays legible
-- **Face capture can be switched to Bangla** from Profile → Settings. Every string on the check-in/check-out capture screen follows the toggle (coaching, challenge names, instructions, buttons, error card); the face-registration screen stays English by design, as do deep verification diagnostics. The flag persists in `SharedPreferences` and applies to the next capture without a restart
+- **Face capture can be switched to Bangla** from Profile → Settings. Every string on the check-in/check-out capture screen follows the toggle (coaching, challenge names, instructions, buttons, error card); the face-registration screen stayed English in this build and follows the toggle from `2.5.4+113`, as do deep verification diagnostics. The flag persists in `SharedPreferences` and applies to the next capture without a restart
 - Guard: `test/check_in_window_test.dart` pins the window cases (inside, exact deadline, one minute late, night shift, fail-open on missing or malformed shift values)
 
 **Pubspec stays on the prod line at `2.5.4+112`** after this release (the beta line is paused at `2.5.3-beta.1+9036`).
