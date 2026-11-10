@@ -382,6 +382,9 @@ markets, the visits and follow-ups tabs of a farm/dealer, the party list inside 
 Full reference: [OTA_UPDATES.md](OTA_UPDATES.md)
 
 - On cold start, `UpdateGate` checks `UPDATE_MANIFEST_URL` (GitHub raw `ota/manifest.json` on [ciphercall/rocket-launcher](https://github.com/ciphercall/rocket-launcher))
+- The request carries a per-call `?ts=` query string: the feed is CDN-served and ignores `Cache-Control`, so without it a phone (or an ISP proxy) can keep reading the previous publish and a released build never appears. This was the cause of the "OTA not received" report on 2026-11-10
+- **Profile → Check for updates** runs the check on demand and reports `installed N, latest M (channel …)` or the failure text. The cold-start gate itself stays silent on failure so an offline phone still opens
+- A build whose Profile shows a 9000+ number is on the **beta** feed, which only reads `ota/beta/manifest.json` — production publishes never reach it
 - APKs download from GitHub Release asset URLs in the manifest (public, no auth)
 - When remote `version_code` > installed build: blocking **Update required** screen (`force_update: true` — no skip except offline on fetch errors)
 - Download shows progress bar with size and percentage; interrupted downloads restart on next launch (no resume)

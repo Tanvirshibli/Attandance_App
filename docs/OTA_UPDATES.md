@@ -298,6 +298,21 @@ After publishing build **N**:
 
 ---
 
+## November 10, 2026 Update (v2.5.4+116) — main channel
+
+**The update check cannot be answered from a cache any more, and it can be run on demand.**
+
+> Published from `2.5.4+115` → `2.5.4+116`. Tag `v2.5.4-build116`. **This release also diagnosed a live delivery problem:** minutes after `+116` was published, the manifest URL returned the `+115` document while the repository and the local publisher manifest already held `+116`, and the same URL with a query string returned `+116`. `raw.githubusercontent.com` is CDN-served and ignores the request's `Cache-Control`, so a phone — or an ISP proxy in front of one — can keep reading the previous publish and the app looks like it never received the update.
+
+- **Every manifest request now carries `?ts=<millis>`.** Each check is a URL no cache holds a prior response for, so the newest manifest is always fetched. This is the fix that makes a publish arrive; everything else was already correct
+- **Profile → Check for updates** runs the same check on demand and states the outcome plainly: a newer build opens the update screen; otherwise it reports `installed N, latest M (channel prod)`, or the failure text with the channel and manifest URL. The cold-start gate stays silent on failure by design (an offline phone must still open), which is precisely why "no update appeared" had no evidence on the device before this row existed
+- `AppUpdateCheckResult` now carries the remote build number, so both numbers in that comparison are visible instead of a bare "up to date"
+- **Devices already on a published build receive this one; a device stuck behind the cache needs `app-arm64-v8a-release.apk` (or the armeabi-v7a asset) installed once from the `v2.5.4-build116` release**, after which every future check is cache-proof
+
+**Pubspec stays on the prod line at `2.5.4+116`** after this release (the beta line is paused at `2.5.3-beta.1+9036`).
+
+---
+
 ## November 10, 2026 Update (v2.5.4+115) — main channel
 
 **The Farms, Dealers and Markets hub tabs carry the filter bar too.**
