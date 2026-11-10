@@ -13,6 +13,8 @@ import 'package:wakelock_plus/wakelock_plus.dart';
 
 import '../widgets/ui/ui.dart' as ui;
 import '../config/theme.dart';
+import '../l10n/face_capture_strings.dart';
+import '../services/app_settings_service.dart';
 import '../services/face_recognition_service.dart';
 import '../services/face_registration_api_service.dart';
 import '../services/auth_service.dart';
@@ -38,11 +40,14 @@ class _FaceRegistrationScreenState extends State<FaceRegistrationScreen>
   final _authService = AuthService();
   CameraController? _cameraController;
 
+  late final FaceCaptureStrings _s =
+      AppSettingsService.instance.faceCaptureStrings;
+
   // ---- State flags ----
   bool _cameraReady = false;
   bool _isCompleted = false;
   bool _isCapturing = false;
-  String _statusMessage = 'Initializing camera...';
+  late String _statusMessage;
   double _previewStageWidth = 0;
   double _previewStageHeight = 0;
   bool _facePlacedCorrectly = false;
@@ -54,8 +59,6 @@ class _FaceRegistrationScreenState extends State<FaceRegistrationScreen>
   static const Duration _firstPositioningWindow = Duration(seconds: 2);
   static const Duration _postCaptureSettle = Duration(milliseconds: 600);
   static const Duration _rejectMessageHold = Duration(seconds: 2);
-  static const String _positioningMessage =
-      'Position your face in the guide…';
   DateTime? _analysisArmedAt;
   DateTime? _rejectMessageUntil;
   bool _isFirstStreamStart = true;
@@ -102,6 +105,7 @@ class _FaceRegistrationScreenState extends State<FaceRegistrationScreen>
   @override
   void initState() {
     super.initState();
+    _statusMessage = _s.initializingCamera;
     _captureFlashAnim = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 300),
@@ -140,7 +144,7 @@ class _FaceRegistrationScreenState extends State<FaceRegistrationScreen>
       final status = await Permission.camera.request();
       if (!status.isGranted) {
         if (!mounted) return;
-        setState(() => _statusMessage = 'Camera permission denied');
+        setState(() => _statusMessage = _s.cameraPermissionDeniedShort);
         return;
       }
 
@@ -165,13 +169,13 @@ class _FaceRegistrationScreenState extends State<FaceRegistrationScreen>
       setState(() {
         _cameraReady = true;
         _statusMessage =
-            FaceRecognitionService.angleInstruction(_targetAngle);
+            FaceRecognitionService.angleInstruction(_targetAngle, strings: _s);
       });
 
       _startImageStream();
     } catch (e) {
       if (!mounted) return;
-      setState(() => _statusMessage = 'Camera error: $e');
+      setState(() => _statusMessage = _s.cameraError(e));
     }
   }
 
@@ -190,14 +194,13 @@ class _FaceRegistrationScreenState extends State<FaceRegistrationScreen>
       );
       _angleHoldFrames = 0;
       if (isFirst && mounted) {
-        setState(() => _statusMessage = _positioningMessage);
+        setState(() => _statusMessage = _s.positionFaceInGuideEllipsis);
       }
     } catch (e) {
       debugPrint('Image stream start failed: $e');
       if (mounted) {
         setState(() {
-          _statusMessage =
-              'Camera stream failed. Close other camera apps and retry.';
+          _statusMessage = _s.cameraStreamFailed;
         });
       }
     }
@@ -259,7 +262,7 @@ class _FaceRegistrationScreenState extends State<FaceRegistrationScreen>
             if (!_holdingRejectMessage &&
                 _currentCapture == 0 &&
                 !_captureResults[0]) {
-              _statusMessage = _positioningMessage;
+              _statusMessage = _s.positionFaceInGuideEllipsis;
             }
           });
         }
@@ -278,8 +281,7 @@ class _FaceRegistrationScreenState extends State<FaceRegistrationScreen>
             _faceDetected = false;
             _facePlacedCorrectly = false;
             _angleHoldFrames = 0;
-            _statusMessage =
-                'Camera format not supported — close and reopen this screen';
+            _statusMessage = _s.registrationFormatUnsupported;
           });
         }
         return;
@@ -310,14 +312,14 @@ class _FaceRegistrationScreenState extends State<FaceRegistrationScreen>
           _faceDetected = false;
           _facePlacedCorrectly = false;
           _angleHoldFrames = 0;
-          _statusMessage = 'Position your face in the frame';
+          _statusMessage = _s.positionFaceInFrame;
         });
       } else if (faces.length > 1) {
         setState(() {
           _faceDetected = false;
           _facePlacedCorrectly = false;
           _angleHoldFrames = 0;
-          _statusMessage = 'Only one face should be visible';
+          _statusMessage = _s.onlyOneFace;
         });
       } else {
         final face = faces.first;
@@ -340,20 +342,21 @@ class _FaceRegistrationScreenState extends State<FaceRegistrationScreen>
         if (_faceService.isTargetAngle(face, _targetAngle)) {
           _angleHoldFrames++;
           if (_angleHoldFrames >= _requiredHoldFrames) {
-            setState(() => _statusMessage = 'Capturing...');
+            setState(() => _statusMessage = _s.capturingNow);
             await _captureFromCamera();
           } else {
-            setState(() => _statusMessage = 'Hold steady...');
+            setState(() => _statusMessage = _s.holdSteady);
           }
         } else {
           _angleHoldFrames = 0;
           setState(() {
             if (_targetAngle == FaceAngle.down) {
-              _statusMessage =
-                  'Lower your chin slightly and keep eyes visible';
+              _statusMessage = _s.lowerChin;
             } else {
-              _statusMessage =
-                  FaceRecognitionService.angleInstruction(_targetAngle);
+              _statusMessage = FaceRecognitionService.angleInstruction(
+                _targetAngle,
+                strings: _s,
+              );
             }
           });
         }
@@ -394,7 +397,7 @@ class _FaceRegistrationScreenState extends State<FaceRegistrationScreen>
       if (xFile == null) {
         setState(() {
           _angleHoldFrames = 0;
-          _statusMessage = 'Capture failed. Try again.';
+          _statusMessage = _s.captureFailed;
         });
         return;
       }
@@ -404,7 +407,7 @@ class _FaceRegistrationScreenState extends State<FaceRegistrationScreen>
     } catch (e) {
       setState(() {
         _angleHoldFrames = 0;
-        _statusMessage = 'Capture failed. Try again.';
+        _statusMessage = _s.captureFailed;
       });
     } finally {
       _isCapturing = false;
@@ -420,12 +423,12 @@ class _FaceRegistrationScreenState extends State<FaceRegistrationScreen>
   String? _facePlacementIssue(Face face) {
     final dimensions = _streamFrameDimensions();
     if (dimensions == null) {
-      return 'Hold still while the camera focuses';
+      return _s.holdStillWhileFocusing;
     }
 
     final previewSize = _previewWidgetSize();
     if (previewSize == null) {
-      return 'Hold still while the camera focuses';
+      return _s.holdStillWhileFocusing;
     }
 
     final ovalIssue = FaceGuidePlacement.issue(
@@ -439,6 +442,7 @@ class _FaceRegistrationScreenState extends State<FaceRegistrationScreen>
           CameraLensDirection.front,
       angled: _targetAngle != FaceAngle.straight &&
           _targetAngle != FaceAngle.unknown,
+      strings: _s,
     );
     if (ovalIssue != null) return ovalIssue;
 
@@ -446,9 +450,10 @@ class _FaceRegistrationScreenState extends State<FaceRegistrationScreen>
       face,
       dimensions.width,
       dimensions.height,
+      strings: _s,
     );
     if (placement.isFrontCamera) return null;
-    return placement.issue ?? 'Fill the face guide';
+    return placement.issue ?? _s.fillTheFaceGuide;
   }
 
   Size? _previewWidgetSize() {
@@ -507,8 +512,10 @@ class _FaceRegistrationScreenState extends State<FaceRegistrationScreen>
             _progress =
                 _currentCapture / FaceRecognitionService.registrationCaptures;
             _angleHoldFrames = 0;
-            _statusMessage =
-                FaceRecognitionService.angleInstruction(_targetAngle);
+            _statusMessage = FaceRecognitionService.angleInstruction(
+              _targetAngle,
+              strings: _s,
+            );
           });
           _progressAnimationStart = _animatedProgress;
           _progressAnim.forward(from: 0);
@@ -544,8 +551,8 @@ class _FaceRegistrationScreenState extends State<FaceRegistrationScreen>
             _isCompleted = true;
             _progress = 1.0;
             _statusMessage = savedToBackend
-                ? 'Registration complete!'
-                : 'Face saved locally for this session, but backend sync failed.';
+                ? _s.registrationComplete
+                : _s.registrationLocalOnly;
           });
           _progressAnimationStart = _animatedProgress;
           _progressAnim.forward(from: 0);
@@ -556,7 +563,7 @@ class _FaceRegistrationScreenState extends State<FaceRegistrationScreen>
           _angleHoldFrames = 0;
           _rejectMessageUntil = DateTime.now().add(_rejectMessageHold);
           _statusMessage = result.isDifferentPerson
-              ? 'Different person detected! Try again.'
+              ? _s.differentPersonDetected
               : result.message;
         });
         if (result.isDifferentPerson) _showDifferentPersonDialog();
@@ -565,7 +572,7 @@ class _FaceRegistrationScreenState extends State<FaceRegistrationScreen>
       setState(() {
         _angleHoldFrames = 0;
         _rejectMessageUntil = DateTime.now().add(_rejectMessageHold);
-        _statusMessage = 'Capture failed. Try again.';
+        _statusMessage = _s.captureFailed;
       });
     }
   }
@@ -582,7 +589,7 @@ class _FaceRegistrationScreenState extends State<FaceRegistrationScreen>
             const Icon(Icons.warning_amber_rounded,
                 color: AppColors.error, size: 26),
             const SizedBox(width: 10),
-            Text('Different Person!',
+            Text(_s.differentPersonTitle,
                 style: GoogleFonts.poppins(
                     fontSize: 18,
                     fontWeight: FontWeight.w600,
@@ -590,14 +597,13 @@ class _FaceRegistrationScreenState extends State<FaceRegistrationScreen>
           ],
         ),
         content: Text(
-          'The captured face doesn\'t match the previous captures. '
-          'All registration photos must be of the same person.',
+          _s.differentPersonBody,
           style: GoogleFonts.poppins(fontSize: 13, color: Colors.white70),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: Text('OK, I\'ll retry',
+            child: Text(_s.okRetry,
                 style: GoogleFonts.poppins(
                     fontWeight: FontWeight.w600, color: AppColors.primary)),
           ),
@@ -628,7 +634,7 @@ class _FaceRegistrationScreenState extends State<FaceRegistrationScreen>
           icon: const Icon(Icons.arrow_back_ios, color: Colors.white),
           onPressed: () => Navigator.pop(context),
         ),
-        title: Text('Face Registration',
+        title: Text(_s.registrationTitle,
             style: GoogleFonts.poppins(
                 fontSize: 18,
                 fontWeight: FontWeight.w600,
@@ -739,6 +745,7 @@ class _FaceRegistrationScreenState extends State<FaceRegistrationScreen>
             tickScale: _tickScale,
             coachingMessage: _isCompleted ? null : _statusMessage,
             coachingIcon: _coachingIcon,
+            textFallback: _s.fontFamilyFallback,
             topBadge: Container(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
               decoration: BoxDecoration(
@@ -747,8 +754,11 @@ class _FaceRegistrationScreenState extends State<FaceRegistrationScreen>
               ),
               child: Text(
                 _isCompleted
-                    ? 'Done!'
-                    : 'Step ${_currentCapture + 1} of ${FaceRecognitionService.registrationCaptures}',
+                    ? _s.doneExclaim
+                    : _s.stepOf(
+                        _currentCapture + 1,
+                        FaceRecognitionService.registrationCaptures,
+                      ),
                 style: GoogleFonts.poppins(
                   fontSize: 12,
                   fontWeight: FontWeight.w600,
@@ -785,7 +795,7 @@ class _FaceRegistrationScreenState extends State<FaceRegistrationScreen>
                           child: Align(
                             alignment: Alignment.bottomCenter,
                             child: Text(
-                              'Registration Complete!',
+                              _s.registrationCompleteTitle,
                               textAlign: TextAlign.center,
                               style: GoogleFonts.poppins(
                                 fontSize: 16,
@@ -827,13 +837,11 @@ class _FaceRegistrationScreenState extends State<FaceRegistrationScreen>
   }
 
   IconData get _coachingIcon {
-    final message = _statusMessage.toLowerCase();
+    final message = _statusMessage;
     if (!_faceDetected) return Icons.face_retouching_off_outlined;
-    if (message.contains('too close')) return Icons.zoom_out_rounded;
-    if (message.contains('closer') || message.contains('too small')) {
-      return Icons.zoom_in_rounded;
-    }
-    if (message.contains('center')) return Icons.center_focus_strong_rounded;
+    if (message == _s.moveBack) return Icons.zoom_out_rounded;
+    if (message == _s.moveCloser) return Icons.zoom_in_rounded;
+    if (message == _s.centerFace) return Icons.center_focus_strong_rounded;
     if (!_facePlacedCorrectly) return Icons.zoom_in_rounded;
     return Icons.center_focus_strong_rounded;
   }
@@ -877,7 +885,7 @@ class _FaceRegistrationScreenState extends State<FaceRegistrationScreen>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('Registration Progress',
+          Text(_s.registrationProgress,
               style: GoogleFonts.poppins(
                   fontSize: 14,
                   fontWeight: FontWeight.w600,
@@ -897,7 +905,10 @@ class _FaceRegistrationScreenState extends State<FaceRegistrationScreen>
                   const SizedBox(width: 12),
                   Expanded(
                     child: Text(
-                      FaceRecognitionService.angleDisplayName(angle),
+                      FaceRecognitionService.angleDisplayName(
+                        angle,
+                        strings: _s,
+                      ),
                       style: GoogleFonts.poppins(
                         fontSize: 13,
                         color: done
@@ -948,7 +959,7 @@ class _FaceRegistrationScreenState extends State<FaceRegistrationScreen>
               const Icon(Icons.lightbulb_outline,
                   color: AppColors.info, size: 18),
               const SizedBox(width: 8),
-              Text('Tips',
+              Text(_s.tipsTitle,
                   style: GoogleFonts.poppins(
                       fontSize: 14,
                       fontWeight: FontWeight.w600,
@@ -957,11 +968,11 @@ class _FaceRegistrationScreenState extends State<FaceRegistrationScreen>
           ),
           const SizedBox(height: 10),
           ...[
-            'Ensure good, even lighting on your face',
-            'Follow the angle instructions carefully',
-            'Hold each position steady for about 1 second',
-            'Keep both eyes open during captures',
-            'Only your face should be visible in the frame',
+            _s.tipLighting,
+            _s.tipFollowAngles,
+            _s.tipHoldSteady,
+            _s.tipEyesOpen,
+            _s.tipOnlyFace,
           ].map((tip) => Padding(
                 padding: const EdgeInsets.only(bottom: 4),
                 child: Row(
@@ -1002,7 +1013,7 @@ class _FaceRegistrationScreenState extends State<FaceRegistrationScreen>
                   borderRadius: BorderRadius.circular(16)),
               elevation: 0,
             ),
-            child: Text('Done ✓',
+            child: Text(_s.doneWithTick,
                 style: GoogleFonts.poppins(
                     fontSize: 16, fontWeight: FontWeight.w600)),
           ),

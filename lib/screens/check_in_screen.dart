@@ -1180,6 +1180,7 @@ class _CheckInScreenState extends State<CheckInScreen>
         tickScale: _tickScale,
         coachingMessage: _statusMessage,
         coachingIcon: _coachingIcon,
+        textFallback: _s.fontFamilyFallback,
       ),
     );
   }

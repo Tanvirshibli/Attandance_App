@@ -61,6 +61,7 @@ class FaceCaptureStage extends StatelessWidget {
     this.topBadge,
     this.flash,
     this.borderRadius = 24,
+    this.textFallback = const [],
   });
 
   final double height;
@@ -76,6 +77,10 @@ class FaceCaptureStage extends StatelessWidget {
   final Widget? topBadge;
   final Widget? flash;
   final double borderRadius;
+
+  /// Font families behind the coaching text, for scripts Poppins does not cover
+  /// (Bangla). Empty keeps the default Latin-only stack.
+  final List<String> textFallback;
 
   @override
   Widget build(BuildContext context) {
@@ -208,6 +213,10 @@ class FaceCaptureStage extends StatelessWidget {
                 fontSize: 13,
                 fontWeight: FontWeight.w600,
                 color: Colors.white,
+              ).copyWith(
+                // Poppins carries no Bengali glyphs, so the coaching line needs
+                // a Bengali family behind it or it falls back to tofu.
+                fontFamilyFallback: textFallback.isEmpty ? null : textFallback,
               ),
             ),
           ),

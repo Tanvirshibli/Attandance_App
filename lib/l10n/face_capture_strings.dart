@@ -90,6 +90,44 @@ abstract class FaceCaptureStrings {
   String cameraInitFailed(Object error);
   String verificationFailed(Object error);
   String matchPercent(String value);
+
+  // Face registration screen. It shares the capture stage with check-in, so the
+  // two stay in one place: a toggle that covered only one of them would leave
+  // the re-register flow in English.
+  String get registrationTitle;
+  String get initializingCamera;
+  String get positionFaceInGuideEllipsis;
+  String get cameraPermissionDeniedShort;
+  String get registrationFormatUnsupported;
+  String get positionFaceInFrame;
+  String get capturingNow;
+  String get lowerChin;
+  String get captureFailed;
+  String get registrationComplete;
+  String get registrationLocalOnly;
+  String get differentPersonDetected;
+  String get differentPersonTitle;
+  String get differentPersonBody;
+  String get okRetry;
+  String get doneExclaim;
+  String get registrationCompleteTitle;
+  String get registrationProgress;
+  String get tipsTitle;
+  String get tipLighting;
+  String get tipFollowAngles;
+  String get tipHoldSteady;
+  String get tipEyesOpen;
+  String get tipOnlyFace;
+  String get doneWithTick;
+
+  String cameraError(Object error);
+  String stepOf(int current, int total);
+
+  /// Families that actually carry Bengali glyphs.
+  ///
+  /// The capture screens set Poppins for the Latin copy; Poppins has no Bengali
+  /// coverage, so these are offered as the fallback chain behind it.
+  List<String> get fontFamilyFallback;
 }
 
 class _EnglishStrings extends FaceCaptureStrings {
@@ -236,6 +274,69 @@ class _EnglishStrings extends FaceCaptureStrings {
   String verificationFailed(Object error) => 'Verification failed: $error';
   @override
   String matchPercent(String value) => '$value% match';
+
+  @override
+  String get registrationTitle => 'Face Registration';
+  @override
+  String get initializingCamera => 'Initializing camera...';
+  @override
+  String get positionFaceInGuideEllipsis => 'Position your face in the guide…';
+  @override
+  String get cameraPermissionDeniedShort => 'Camera permission denied';
+  @override
+  String get registrationFormatUnsupported =>
+      'Camera format not supported — close and reopen this screen';
+  @override
+  String get positionFaceInFrame => 'Position your face in the frame';
+  @override
+  String get capturingNow => 'Capturing...';
+  @override
+  String get lowerChin => 'Lower your chin slightly and keep eyes visible';
+  @override
+  String get captureFailed => 'Capture failed. Try again.';
+  @override
+  String get registrationComplete => 'Registration complete!';
+  @override
+  String get registrationLocalOnly =>
+      'Face saved locally for this session, but backend sync failed.';
+  @override
+  String get differentPersonDetected => 'Different person detected! Try again.';
+  @override
+  String get differentPersonTitle => 'Different Person!';
+  @override
+  String get differentPersonBody =>
+      'The captured face does not match the previous captures. '
+      'All registration photos must be of the same person.';
+  @override
+  String get okRetry => "OK, I'll retry";
+  @override
+  String get doneExclaim => 'Done!';
+  @override
+  String get registrationCompleteTitle => 'Registration Complete!';
+  @override
+  String get registrationProgress => 'Registration Progress';
+  @override
+  String get tipsTitle => 'Tips';
+  @override
+  String get tipLighting => 'Ensure good, even lighting on your face';
+  @override
+  String get tipFollowAngles => 'Follow the angle instructions carefully';
+  @override
+  String get tipHoldSteady => 'Hold each position steady for about 1 second';
+  @override
+  String get tipEyesOpen => 'Keep both eyes open during captures';
+  @override
+  String get tipOnlyFace => 'Only your face should be visible in the frame';
+  @override
+  String get doneWithTick => 'Done ✓';
+
+  @override
+  String cameraError(Object error) => 'Camera error: $error';
+  @override
+  String stepOf(int current, int total) => 'Step $current of $total';
+
+  @override
+  List<String> get fontFamilyFallback => const [];
 }
 
 class _BanglaStrings extends FaceCaptureStrings {
@@ -381,4 +482,68 @@ class _BanglaStrings extends FaceCaptureStrings {
   String verificationFailed(Object error) => 'যাচাই ব্যর্থ: $error';
   @override
   String matchPercent(String value) => 'মিল $value%';
+
+  @override
+  String get registrationTitle => 'মুখ রেজিস্ট্রেশন';
+  @override
+  String get initializingCamera => 'ক্যামেরা চালু হচ্ছে...';
+  @override
+  String get positionFaceInGuideEllipsis => 'আপনার মুখ গাইডের ভিতরে রাখুন…';
+  @override
+  String get cameraPermissionDeniedShort => 'ক্যামেরার অনুমতি দেওয়া হয়নি';
+  @override
+  String get registrationFormatUnsupported =>
+      'ক্যামেরা ফরম্যাট সমর্থিত নয় — এই স্ক্রিনটি বন্ধ করে আবার খুলুন';
+  @override
+  String get positionFaceInFrame => 'আপনার মুখ ফ্রেমের ভিতরে রাখুন';
+  @override
+  String get capturingNow => 'ছবি নেওয়া হচ্ছে...';
+  @override
+  String get lowerChin => 'চিবুক সামান্য নিচু করুন এবং চোখ দৃশ্যমান রাখুন';
+  @override
+  String get captureFailed => 'ছবি নেওয়া যায়নি। আবার চেষ্টা করুন।';
+  @override
+  String get registrationComplete => 'রেজিস্ট্রেশন সম্পন্ন!';
+  @override
+  String get registrationLocalOnly =>
+      'মুখ শুধু এই সেশনের জন্য সেভ হয়েছে, সার্ভারে পাঠানো যায়নি।';
+  @override
+  String get differentPersonDetected => 'অন্য ব্যক্তি শনাক্ত হয়েছে! আবার চেষ্টা করুন।';
+  @override
+  String get differentPersonTitle => 'অন্য ব্যক্তি!';
+  @override
+  String get differentPersonBody =>
+      'নেওয়া ছবিটি আগের ছবিগুলোর সাথে মিলছে না। '
+      'রেজিস্ট্রেশনের সব ছবি একই ব্যক্তির হতে হবে।';
+  @override
+  String get okRetry => 'ঠিক আছে, আবার চেষ্টা করব';
+  @override
+  String get doneExclaim => 'সম্পন্ন!';
+  @override
+  String get registrationCompleteTitle => 'রেজিস্ট্রেশন সম্পন্ন!';
+  @override
+  String get registrationProgress => 'রেজিস্ট্রেশন অগ্রগতি';
+  @override
+  String get tipsTitle => 'পরামর্শ';
+  @override
+  String get tipLighting => 'মুখে সমান আলো আছে কি না দেখুন';
+  @override
+  String get tipFollowAngles => 'প্রতিটি কোণের নির্দেশনা মনোযোগ দিয়ে মানুন';
+  @override
+  String get tipHoldSteady => 'প্রতিটি অবস্থানে প্রায় ১ সেকেন্ড স্থির থাকুন';
+  @override
+  String get tipEyesOpen => 'ছবি নেওয়ার সময় দুই চোখ খোলা রাখুন';
+  @override
+  String get tipOnlyFace => 'ফ্রেমে শুধু আপনার মুখ থাকবে';
+  @override
+  String get doneWithTick => 'সম্পন্ন ✓';
+
+  @override
+  String cameraError(Object error) => 'ক্যামেরা ত্রুটি: $error';
+  @override
+  String stepOf(int current, int total) => 'ধাপ $current / $total';
+
+  @override
+  List<String> get fontFamilyFallback =>
+      const ['Noto Sans Bengali', 'Noto Sans Bengali UI', 'Bangla'];
 }
