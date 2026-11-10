@@ -1,6 +1,6 @@
 # OTA (Over-The-Air) Updates — PPHL Attendance App
 
-Last updated: October 15, 2026
+Last updated: November 10, 2026
 
 Production OTA uses **GitHub** (public repo + GitHub Releases). There is **no Cloudinary** or HRM server involved in APK hosting.
 
@@ -295,6 +295,21 @@ After publishing build **N**:
 - [`rocket launcher/README.md`](../../rocket%20launcher/README.md) — publisher scripts and GitHub API flow
 - [`SERVER_COMMANDS.md`](../../SERVER_COMMANDS.md) — workspace command reference (OTA section)
 - [`MOBILE_EMPLOYEE_FEATURES.md`](MOBILE_EMPLOYEE_FEATURES.md) — feature summary including OTA
+
+---
+
+## November 10, 2026 Update (v2.5.4+112) — main channel
+
+**Check-in closes after the grace window, the capture screen speaks Bangla, and the preview shows placement state around the guide.**
+
+> Published from `2.5.4+111` → `2.5.4+112`. Tag `v2.5.4-build112`; the live manifest was verified after publishing (channel `prod`, `version_code` 112, `force_update` true, both APK entries present with sizes and SHA-256). Release notes are the user-facing text carried in the manifest.
+
+- **A self check-in now closes 15 minutes after the shift start.** The dashboard refuses it before the camera opens and the capture screen re-checks before submitting, so a screen left open past the deadline cannot post a punch. Check-out is unaffected. The rule mirrors the server guard exactly (`CHECK_IN_GRACE_MINUTES`, the `now > deadline` boundary, and the night-shift day rollback) and fails open when HRM holds no shift for the employee
+- **The preview outside the face guide is tinted** with the same colour the border uses (idle grey, orange off-position, teal placed, green verified) at very low alpha. The guide square is still never filled — the face window stays untouched — and the underlying dim was lowered from 0.48 to 0.20 so the coaching strip stays legible
+- **Face capture can be switched to Bangla** from Profile → Settings. Every string on the check-in/check-out capture screen follows the toggle (coaching, challenge names, instructions, buttons, error card); the face-registration screen stays English by design, as do deep verification diagnostics. The flag persists in `SharedPreferences` and applies to the next capture without a restart
+- Guard: `test/check_in_window_test.dart` pins the window cases (inside, exact deadline, one minute late, night shift, fail-open on missing or malformed shift values)
+
+**Pubspec stays on the prod line at `2.5.4+112`** after this release (the beta line is paused at `2.5.3-beta.1+9036`).
 
 ---
 

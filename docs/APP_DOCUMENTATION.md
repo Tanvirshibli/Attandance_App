@@ -383,6 +383,9 @@ the employee id — so they overlap. Two things follow, and both are load-bearin
 | **Props** | `VoidCallback onCheckIn` — called on success |
 | **Layout** | Fixed top (full-preview rounded frame + progress), scrollable middle (challenge status, verification/GPS cards), fixed bottom (action button) |
 | **Camera** | Live front-camera preview using `camera` package via `FaceCaptureStage` (full frame, dimmed rounded square — not clipped) |
+| **Overlay** | Everything outside the guide is dimmed (`faceGuideDimAlpha` 0.20) and tinted with the guide's state colour (`faceGuideTintAlpha` 0.16); the guide square itself is never filled |
+| **Language** | All copy comes from `FaceCaptureStrings` (`AppSettingsService` picks English or Bangla). The toggle lives in Profile → Settings; registration stays English |
+| **Window** | A check-in is refused once 15 minutes have passed since the shift start (`CheckInWindow`, twin of the server guard); re-checked in `_submitPunch` so an idle screen cannot post a late punch. Check-out is not gated |
 | **Flow** | Face-placement-gated dynamic challenge flow. See [Check-In Flow](#check-in-flow) below |
 
 #### Check-In Flow
@@ -409,6 +412,7 @@ the employee id — so they overlap. Two things follow, and both are load-bearin
 #### Face-Path Progress Animation
 
 - `FaceGuidePainter` draws a clockwise progress stroke on the **same** centered rounded frame used for the dim cutout and L-corners
+- The region outside that frame is dimmed and then tinted with the current guide colour (idle `white54`, `warning` orange, `primary` teal, `success` green) at very low alpha, so placement state is visible across the whole preview without touching the face window
 - Progress fills in 20% increments for each accepted challenge and can jump to completion on early verification
 - There is no separate faint track; progress color is `AppColors.primary` (blue) → `AppColors.success` (green) when complete
 - On 100%: `ScaleTransition` with `Curves.elasticOut` shows a green circle with checkmark icon
@@ -450,7 +454,8 @@ the employee id — so they overlap. Two things follow, and both are load-bearin
 | Aspect | Detail |
 |---|---|
 | **State** | `StatefulWidget` |
-| **Sections** | Header (avatar, name, designation, employee ID), Personal Info card, Quick Actions (Leave Request, View Reports, **Register Face**, My QR Code), Settings (Notifications, Location, Dark Mode, Language, Password, Help, About), Sign Out |
+| **Sections** | Header (avatar, name, designation, employee ID), Personal Info card, Quick Actions (Leave Request, View Reports, **Register Face**, My QR Code), Settings (Notifications, Location, Dark Mode, **Face capture in Bangla** switch, Password, Help, About), Sign Out |
+| **Face capture language** | The Language row is a real toggle backed by `AppSettingsService` (`SharedPreferences` key `face_capture_bangla`); it switches the check-in/check-out capture screen's copy to Bangla on the next capture |
 | **About** | Trailing label from `PackageInfo` as `v{version}+{buildNumber}` (not hardcoded) |
 | **Face Reg** | "Register Face" quick action card navigates to `FaceRegistrationScreen` |
 | **Sign Out** | `pushAndRemoveUntil` → `LoginScreen` |
@@ -504,16 +509,16 @@ Home, Check-in, and Profile prompt: “Your face data is missing or unreadable. 
 | `initialize()` | `Future<void>` | Loads TFLite model + creates ML Kit FaceDetector |
 | `detectFaces(File)` | `Future<List<Face>>` | Raw ML Kit face detection |
 | `checkLiveness(File, {bool requireSmile})` | `Future<LivenessResult>` | Full liveness analysis (multi-face, smile, eyes, face size, sharpness) |
-| `checkFrontCamera(Face, int, int, {bool requireCentering = true, double centerTolerance = 0.3})` | `FrontCameraCheckResult` | Validates front-camera selfie via face size, and optionally centering |
+| `checkFrontCamera(Face, int, int, {bool requireCentering = true, double centerTolerance = 0.3, FaceCaptureStrings strings = FaceCaptureStrings.english})` | `FrontCameraCheckResult` | Validates front-camera selfie via face size, and optionally centering |
 | `detectFaceAngle(Face)` | `FaceAngle` | Detect current face angle from ML Kit euler angles |
 | `isTargetAngle(Face, FaceAngle)` | `bool` | Check if face matches a target angle with tolerance |
 | `isSmiling(Face)` | `bool` | Check if smilingProbability ≥ 55% |
 | `areEyesClosed(Face)` | `bool` | Check if both eyes are closed (probability < 0.3) |
 | `areEyesOpen(Face)` | `bool` | Check if both eyes are open (probability > 0.5, with angled-capture quality check tolerance handled in `checkFaceQuality`) |
 | `detectFacesFromInputImage(InputImage)` | `Future<List<Face>>` | Detect faces from InputImage (for live camera frames) |
-| `angleDisplayName(FaceAngle)` | `String` (static) | Human-readable angle name |
-| `angleInstruction(FaceAngle)` | `String` (static) | Instruction text for registration |
-| `challengeInstruction(ChallengeType)` | `String` (static) | Instruction text for check-in challenges |
+| `angleDisplayName(FaceAngle, {FaceCaptureStrings strings = FaceCaptureStrings.english})` | `String` (static) | Human-readable angle name |
+| `angleInstruction(FaceAngle, {FaceCaptureStrings strings = FaceCaptureStrings.english})` | `String` (static) | Instruction text for registration |
+| `challengeInstruction(ChallengeType, {FaceCaptureStrings strings = FaceCaptureStrings.english})` | `String` (static) | Instruction text for check-in challenges |
 | `isSamePerson(List<double>, List<List<double>>)` | `bool` | Compares new embedding against all existing embeddings |
 | `checkFaceQuality(Face, int, int, {skipRotationCheck})` | `FaceQualityResult` | Face size, rotation (yaw/pitch/roll), centering, eye-open checks. `skipRotationCheck` skips yaw/pitch/roll penalties (used for angled registration captures). |
 | `generateEmbedding(File, {checkQuality, checkLivenessSmile, checkFrontCam, requireFrontCamCentering, skipRotationCheck})` | `Future<EmbeddingResult>` | Full pipeline: detect → validate quality → validate front camera → check sharpness → check smile → crop → robust variant embeddings (original, flipped, grayscale, grayscale+flipped) → averaged embedding → L2 normalize. `requireFrontCamCentering` controls centering strictness; `skipRotationCheck` passed through to quality check. |
@@ -1031,6 +1036,7 @@ The current stack uses **ML Kit for detection** and **MobileFaceNet for identity
 
 ### `lib/screens/home_screen.dart`
 - Dashboard with gradient header, stats row (4 StatCards), clock-in card (navigates to CheckInScreen), weekly bar chart, recent attendance list.
+- Refuses a check-in before opening the camera when `CheckInWindow` reports the 15-minute grace window has closed (snackbar, check-out unaffected).
 - Warning card and Check In/Out redirect when face templates are missing or unreadable.
 
 ### `lib/screens/check_in_screen.dart`
@@ -1071,6 +1077,16 @@ The current stack uses **ML Kit for detection** and **MobileFaceNet for identity
 
 ### `lib/widgets/face_capture_stage.dart`
 - Shared full-preview camera stage for registration and check-in: dimmed outside one rounded frame, L-corner brackets on that path, success tick at the guide center, step/coaching strip above the frame, clockwise progress stroke.
+- The outside region carries the guide's state colour as a very light tint (`faceGuideTintAlpha` 0.16) over a light dim (`faceGuideDimAlpha` 0.20); the guide square is never filled, so the face window is untouched.
+
+### `lib/utils/check_in_window.dart`
+- `CheckInWindow.evaluate({required String? shiftStartTime, DateTime? now})` decides whether a self check-in is still inside the 15-minute grace window. Contract twin of the HRM guard (`CHECK_IN_GRACE_MINUTES`, the `now > deadline` boundary, and the night-shift day rollback). Fails open on a null, blank or unparseable shift start. Pinned by `test/check_in_window_test.dart`.
+
+### `lib/l10n/face_capture_strings.dart`
+- Two const instances (English / Bangla) covering every string on the face-capture screen. English is also the default argument of the shared placement/instruction helpers, which keeps `face_registration_screen.dart` English without changing it.
+
+### `lib/services/app_settings_service.dart`
+- `SharedPreferences`-backed singleton (`AppSettingsService.instance`) for account-independent preferences: currently the `face_capture_bangla` flag, exposed as a `ValueNotifier` and read once in `main()`.
 
 ### `lib/utils/face_guide_placement.dart`
 - Maps the live ML Kit box onto the preview frame (`BoxFit.cover`, front-camera X-mirror). Capture is blocked until the face fills ~70% of frame height. Straight poses use a 12% center inset; turned poses use 4%.

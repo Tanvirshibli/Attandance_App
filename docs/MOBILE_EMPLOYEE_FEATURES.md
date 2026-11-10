@@ -200,6 +200,24 @@ Handoff for backend teams: **[SALES_AND_PAYMENTS_API_CONTRACT.md](SALES_AND_PAYM
 - Success tick is pinned to the **center of the rounded guide**
 - Step badge, coaching, and check-in status sit in one horizontally centered strip **above** the guide. The location fix is fetched in the background from the moment the screen opens, so the punch carries it without a wait; if it is not ready the punch still goes out and a background call (`POST /mobile/attendance-requests/{id}/location`) patches the record afterwards. The face engine is warmed at app start so the capture screen is ready immediately.
 
+### Check-in grace window (v2.5.4+112)
+
+- A self check-in closes **15 minutes** after the employee's shift start. The dashboard refuses it before the camera opens, and the capture screen re-checks before submitting, so a screen left open past the deadline cannot post a punch either
+- Check-out is **not** gated: the grace period is about arriving, not leaving
+- The shift comes from `get-my-info` (`shift_start_time`, flattened by HRM). When HRM holds no approved facility or no shift row, the app **fails open** and lets the server decide — a missing rota never locks anyone out
+- The refusal text is identical to the server's 422, so an employee sees one rule rather than an app message followed by a server message. Night shifts are handled the same way on both sides: a deadline more than 12 hours ahead is treated as yesterday's
+
+### Preview tint outside the guide (v2.5.4+112)
+
+- The whole camera preview outside the rounded guide now carries a **very light** layer in the same colour as the guide border (idle grey, orange while the face is off-position, teal when placed, green when verified), so the state is readable without looking at the border
+- The guide square itself is **never filled**: the face window stays untouched. The dim under the tint dropped from 0.48 to 0.20 so the coaching strip above the guide stays legible; both alphas are constants in `face_capture_stage.dart`
+
+### Bangla face capture (v2.5.4+112)
+
+- Profile → Settings → **Face capture in Bangla** switches the whole check-in/check-out capture screen to Bangla: status and coaching lines, challenge names and instructions, the button labels and the error card
+- Stored in `SharedPreferences` (`face_capture_bangla`), read once at startup, and applied to the next capture without a restart or a re-login
+- The face **registration** screen stays English by design. Deep verification diagnostics (face-quality and sharpness reports) also remain English — they are technical failure reports rather than placement guidance
+
 ### Searchable dropdown overlay on tap (v2.2.3+72)
 
 - Searchable fields use a real overlay list (not Flutter Autocomplete), so options appear as soon as the field is tapped
