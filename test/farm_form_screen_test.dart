@@ -29,36 +29,36 @@ void main() {
         code: code,
       );
 
-  group('visit type', () {
+  group('farm type', () {
     test('offers exactly the three farm kinds', () {
       expect(
-        FarmFormScreen.visitTypes.map((t) => t.value),
+        FarmFormScreen.farmTypes.map((t) => t.value),
         ['regular_farm', 'model_farm', 'other_farm'],
       );
     });
 
     test('defaults to a regular farm', () {
-      expect(FarmFormScreen.defaultVisitType, 'regular_farm');
+      expect(FarmFormScreen.defaultFarmType, 'regular_farm');
       expect(
-        FarmFormScreen.visitTypes
-            .any((t) => t.value == FarmFormScreen.defaultVisitType),
+        FarmFormScreen.farmTypes
+            .any((t) => t.value == FarmFormScreen.defaultFarmType),
         isTrue,
       );
     });
   });
 
-  group('farm type', () {
+  group('farm category', () {
     test('offers exactly broiler, layer, color and all', () {
       expect(
-        FarmFormScreen.farmTypes.map((t) => t.value),
+        FarmFormScreen.farmCategories.map((t) => t.value),
         ['broiler', 'layer', 'color', 'all'],
       );
     });
 
     test('defaults to broiler', () {
       expect(
-        FarmFormScreen.farmTypes
-            .any((t) => t.value == FarmFormScreen.defaultFarmType),
+        FarmFormScreen.farmCategories
+            .any((t) => t.value == FarmFormScreen.defaultFarmCategory),
         isTrue,
       );
     });

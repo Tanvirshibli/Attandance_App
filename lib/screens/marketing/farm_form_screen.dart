@@ -115,31 +115,33 @@ class FarmFormScreen extends StatefulWidget {
   @override
   State<FarmFormScreen> createState() => _FarmFormScreenState();
 
-  /// How the officer classifies this farm. Not the same thing as
-  /// `mkt_visits.visit_type`, which records what a *visit* was — this is a
-  /// property of the farm itself, which is why it lives on `mkt_parties`.
+  /// The farm type — how the officer classifies this farm. Not the same thing
+  /// as `mkt_visits.visit_type`, which records what a *visit* was — this is a
+  /// property of the farm itself, which is why it lives on `mkt_parties` (in
+  /// the `mkt_parties.visit_type` column, whose name predates this label).
   ///
   /// The values are what the API stores; the labels are what the officer reads.
   /// The backend enforces the same set with
   /// `in:regular_farm,model_farm,other_farm`.
-  static const visitTypes = [
+  static const farmTypes = [
     (value: 'regular_farm', label: 'Regular farm'),
     (value: 'model_farm', label: 'Model farm'),
     (value: 'other_farm', label: 'Other farm'),
   ];
 
-  static const farmTypes = [
+  /// The farm category — the kind of poultry the farm keeps.
+  static const farmCategories = [
     (value: 'broiler', label: 'Broiler'),
     (value: 'layer', label: 'Layer'),
     (value: 'color', label: 'Color'),
     (value: 'all', label: 'All'),
   ];
 
-  /// The visit type a new farm gets before the officer picks another.
-  static const defaultVisitType = 'regular_farm';
-
   /// The farm type a new farm gets before the officer picks another.
-  static const defaultFarmType = 'broiler';
+  static const defaultFarmType = 'regular_farm';
+
+  /// The farm category a new farm gets before the officer picks another.
+  static const defaultFarmCategory = 'broiler';
 
   /// Seven digits is the shortest run that cannot be an ordinary word, so a
   /// numeric string of at least this length is read as a phone.
@@ -303,8 +305,13 @@ class _FarmFormScreenState extends State<FarmFormScreen> {
   /// in the payload without ever being rendered.
   static const String _partyType = 'farm';
 
-  String _visitType = FarmFormScreen.defaultVisitType;
+  /// The regular / model / other classification, stored server-side in the
+  /// `mkt_parties.visit_type` column.
   String _farmType = FarmFormScreen.defaultFarmType;
+
+  /// The poultry kind (broiler / layer / color / all), stored server-side in
+  /// the `mkt_parties.farm_type` column.
+  String _farmCategory = FarmFormScreen.defaultFarmCategory;
 
   // ---------------------------------------------------------------------
   // Existing-farm lookup
@@ -844,8 +851,11 @@ class _FarmFormScreenState extends State<FarmFormScreen> {
         'company_name': _selectedCompany!.displayName,
       if (_employeeZone != null) 'zone_id': _employeeZone!.id,
       if (_employeeZone != null) 'zone_name': _employeeZone!.name,
-      'visit_type': _visitType,
-      'farm_type': _farmType,
+      // Wire keys are frozen: the server column for the regular/model/other
+      // classification is `visit_type`, and the poultry kind is `farm_type`.
+      // The UI labels now read the other way round, but these must not move.
+      'visit_type': _farmType,
+      'farm_type': _farmCategory,
       if (_capacity.text.trim().isNotEmpty)
         'capacity': double.tryParse(_capacity.text.trim()),
       if (_capacityUnit != null) 'capacity_unit_id': _capacityUnit!.id,
@@ -1292,17 +1302,17 @@ class _FarmFormScreenState extends State<FarmFormScreen> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           _sectionTitle('Farm details'),
-          _label('Visit type'),
+          _label('Farm type'),
           DropdownButtonFormField<String>(
-            initialValue: _visitType,
+            initialValue: _farmType,
             decoration: _decoration(),
-            items: FarmFormScreen.visitTypes
+            items: FarmFormScreen.farmTypes
                 .map(
                   (t) => DropdownMenuItem(value: t.value, child: Text(t.label)),
                 )
                 .toList(),
             onChanged: (v) {
-              if (v != null) setState(() => _visitType = v);
+              if (v != null) setState(() => _farmType = v);
             },
           ),
           const SizedBox(height: 14),
@@ -1385,17 +1395,17 @@ class _FarmFormScreenState extends State<FarmFormScreen> {
             decoration: _decoration(hint: 'Owner / proprietor'),
           ),
           const SizedBox(height: 14),
-          _label('Farm type'),
+          _label('Farm category'),
           DropdownButtonFormField<String>(
-            initialValue: _farmType,
+            initialValue: _farmCategory,
             decoration: _decoration(),
-            items: FarmFormScreen.farmTypes
+            items: FarmFormScreen.farmCategories
                 .map(
                   (t) => DropdownMenuItem(value: t.value, child: Text(t.label)),
                 )
                 .toList(),
             onChanged: (v) {
-              if (v != null) setState(() => _farmType = v);
+              if (v != null) setState(() => _farmCategory = v);
             },
           ),
           const SizedBox(height: 14),

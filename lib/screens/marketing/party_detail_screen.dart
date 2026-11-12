@@ -400,9 +400,11 @@ class _PartyDetailScreenState extends State<PartyDetailScreen>
           // saved with a model-farm classification looked
           // identical to a regular one.
           if (party.isFarm && party.visitType != null)
-            _row('Visit type', _label(party.visitType!)),
-          if (party.isFarm && party.farmType != null)
-            _row('Farm type', _label(party.farmType!)),
+            _row('Farm type', _label(party.visitType!)),
+          if (party.isFarm &&
+              party.farmType != null &&
+              party.farmType!.isNotEmpty)
+            _row('Farm category', _label(party.farmType!)),
           if (party.isFarm && party.capacity != null)
             _row('Capacity', '${party.capacity}'),
           if (party.isFarm && party.capacityLimit != null)
