@@ -12,6 +12,30 @@ import '../config/app_config.dart';
 /// a real TCP handshake.
 typedef ConnectivityProbe = Future<bool> Function();
 
+/// What one connection attempt concluded.
+enum _Reach {
+  connected,
+
+  /// The OS answered: no route to host, or the port refused the connection.
+  /// Airplane mode, a pulled cable and a dead tower all land here.
+  refused,
+
+  /// No answer within the timeout. A congested radio looks exactly like a dead
+  /// one, so this is not conclusive on its own.
+  timedOut,
+}
+
+/// The verdict of one full probe across every configured host.
+class _ProbeOutcome {
+  const _ProbeOutcome({required this.reachable, required this.definitive});
+
+  final bool reachable;
+
+  /// True when nothing connected **and** every attempt was refused rather than
+  /// timed out — the OS itself said there is no network.
+  final bool definitive;
+}
+
 /// Samples whether the backend is reachable and publishes the answer.
 ///
 /// The app already knows how to *fail* when the network is gone — it just does
@@ -46,10 +70,12 @@ class ConnectivityService {
     ConnectivityProbe? probe,
     Duration? checkInterval,
     Duration? offlineRetryInterval,
-  })  : _probe = probe ?? _probeConfiguredHosts,
-        _checkInterval = checkInterval ?? const Duration(seconds: 3),
+    Duration? confirmDelay,
+  })  : _customProbe = probe,
+        _checkInterval = checkInterval ?? const Duration(milliseconds: 1500),
         _offlineRetryInterval =
-            offlineRetryInterval ?? const Duration(seconds: 2);
+            offlineRetryInterval ?? const Duration(seconds: 1),
+        _confirmDelay = confirmDelay ?? const Duration(milliseconds: 250);
 
   /// The app-wide sampler, used by `ConnectivityGuard` when nothing is injected.
   static final ConnectivityService instance = ConnectivityService();
@@ -57,16 +83,41 @@ class ConnectivityService {
   /// Failed probes needed before the state is published as offline.
   static const int _failuresBeforeOffline = 2;
 
-  static const Duration _connectTimeout = Duration(seconds: 3);
+  /// Ceiling on one TCP handshake.
+  ///
+  /// A handshake to a healthy host on mobile data completes in well under 300ms.
+  /// This used to be 3s, which set the detection floor: a blackholed packet cost
+  /// three full seconds *per sample*, and the tolerance below needs two samples.
+  /// 800ms still clears any realistic handshake while capping that cost.
+  static const Duration _connectTimeout = Duration(milliseconds: 800);
 
-  final ConnectivityProbe _probe;
+  /// Pause before the confirming sample when the first failure was a timeout
+  /// rather than a definitive refusal.
+  ///
+  /// A refused or unroutable connect is the OS answering a question — airplane
+  /// mode, a pulled cable, a dead tower — so the confirming sample starts
+  /// immediately. A *timeout* is ambiguous (a congested radio looks identical to
+  /// a dead one), so the second attempt waits a beat; without that, one slow
+  /// handshake could produce two failures in a row with no chance of recovering
+  /// between them.
+  final Duration _confirmDelay;
 
-  /// Slower while healthy: the only job of a sample here is to notice a drop,
-  /// and 3s is already far faster than a user can act on.
+  /// The injected probe, when a test supplies one.
+  ///
+  /// Tests only need "up" or "down", so the public contract stays a bool. The
+  /// refusal/timeout distinction is used solely to decide how fast the
+  /// confirming sample follows, and a fake link has no transport to classify.
+  final ConnectivityProbe? _customProbe;
+
+  /// How long to wait before the next scheduled sample while healthy.
+  ///
+  /// Halved from 3s. This interval, not the timeout, is most of the latency a
+  /// user feels: a drop that happens just after a successful sample waits here
+  /// first.
   final Duration _checkInterval;
 
-  /// Faster while offline, so the overlay clears within a couple of seconds of
-  /// the network returning instead of leaving the user staring at it.
+  /// Faster while offline, so the overlay clears within a second of the network
+  /// returning instead of leaving the user staring at it.
   final Duration _offlineRetryInterval;
 
   /// Starts `true`: at launch the app has not yet proved otherwise, and claiming
@@ -77,6 +128,15 @@ class ConnectivityService {
   ValueNotifier<bool> get isOnline => _isOnline;
 
   Timer? _timer;
+
+  /// One-shot second sample, fired the moment the first one fails.
+  ///
+  /// Waiting for the periodic tick was the largest single source of lag: a drop
+  /// just after a good sample paid up to a full [_checkInterval] before the
+  /// confirming sample even started, so the user saw the spinner/overlay arrive
+  /// seconds after the network was gone. Confirming here instead cuts that wait
+  /// to [_confirmDelay].
+  Timer? _confirmTimer;
 
   /// The probe currently awaiting its handshake, if any.
   ///
@@ -115,10 +175,11 @@ class ConnectivityService {
     // Any probe still open belongs to the generation just abandoned, so the one
     // below must not be merged into it — its result will be thrown away.
     _inFlight = null;
+    _cancelConfirm();
     _armTimer(_isOnline.value ? _checkInterval : _offlineRetryInterval);
 
     // Probed now rather than after one interval, so a session that resumes with
-    // the network already gone is covered immediately instead of 3 seconds in.
+    // the network already gone is covered immediately instead of 1.5 seconds in.
     unawaited(probeNow());
   }
 
@@ -136,6 +197,7 @@ class ConnectivityService {
     _generation++;
     _consecutiveFailures = 0;
     _inFlight = null;
+    _cancelConfirm();
   }
 
   /// Runs one probe right now, outside the timer cadence.
@@ -170,23 +232,29 @@ class ConnectivityService {
   Future<void> _probeOnce() async {
     final generation = _generation;
 
-    bool reachable;
+    _ProbeOutcome outcome;
     try {
-      reachable = await _probe();
+      outcome = await _runProbe();
     } catch (error) {
       // A throwing prober is a failed probe, never a crash: this runs on a timer
-      // for the entire life of the app.
+      // for the entire life of the app. A thrown [SocketException] still carries
+      // the transport's verdict, so a refusal keeps its fast path; anything else
+      // says nothing about why and takes the cautious route.
       debugPrint('ConnectivityService: probe threw ($error)');
-      reachable = false;
+      outcome = _ProbeOutcome(
+        reachable: false,
+        definitive: error is SocketException && _isRefusal(error),
+      );
     }
 
     // Stopped, restarted or disposed while this probe was in flight — discard.
     if (_disposed || generation != _generation) return;
 
-    if (reachable) {
+    if (outcome.reachable) {
       // One success is enough to come back. A user who has just reconnected
       // should not be made to wait through a second sample to get their screen
       // back.
+      _cancelConfirm();
       _consecutiveFailures = 0;
       _publish(true);
       return;
@@ -194,8 +262,56 @@ class ConnectivityService {
 
     _consecutiveFailures++;
     if (_consecutiveFailures >= _failuresBeforeOffline) {
+      _cancelConfirm();
       _publish(false);
+      return;
     }
+
+    // First failure: the tolerance says stay online, but do not sit on the
+    // question until the next tick. Schedule the confirming sample immediately
+    // so the second answer arrives in [_confirmDelay] rather than up to
+    // [_checkInterval] later.
+    _scheduleConfirm(definitive: outcome.definitive);
+  }
+
+  /// Arms the one-shot confirming sample after a first failure.
+  ///
+  /// [definitive] means the OS itself answered — no route, connection refused.
+  /// There is nothing still in flight to give a second chance to, so the
+  /// confirming sample starts at once and airplane mode is detected in one
+  /// round trip instead of two. An ambiguous failure (a timeout, where a
+  /// congested radio looks exactly like a dead one) waits [_confirmDelay] first.
+  ///
+  /// Only while the sampler is running. A manual [probeNow] against a stopped
+  /// service (the guard never does this, but a test or a future caller might)
+  /// must not leave a timer alive that wakes the process after [stop].
+  void _scheduleConfirm({bool definitive = false}) {
+    if (_disposed || _timer == null) return;
+
+    // Replaced rather than stacked: two failure results landing together must
+    // still produce only one confirming sample.
+    _confirmTimer?.cancel();
+    _confirmTimer = Timer(definitive ? Duration.zero : _confirmDelay, () {
+      _confirmTimer = null;
+      unawaited(probeNow());
+    });
+  }
+
+  /// Runs one probe: the injected fake when there is one, otherwise a real
+  /// handshake against every configured host.
+  Future<_ProbeOutcome> _runProbe() async {
+    final custom = _customProbe;
+    if (custom != null) {
+      // An injected link has no transport, so nothing can be called "definitive".
+      // Tests that care about the fast path drive it through the real prober.
+      return _ProbeOutcome(reachable: await custom(), definitive: false);
+    }
+    return _probeConfiguredHosts();
+  }
+
+  void _cancelConfirm() {
+    _confirmTimer?.cancel();
+    _confirmTimer = null;
   }
 
   void _publish(bool next) {
@@ -214,18 +330,26 @@ class ConnectivityService {
     // Cancelled before a replacement is created so two timers can never be
     // alive at once after a state flip.
     _timer?.cancel();
-    _timer = Timer.periodic(interval, (_) => unawaited(probeNow()));
+    _timer = Timer.periodic(interval, (_) {
+      // A confirming sample is already on its way. Probing here too would run two
+      // handshakes describing the same instant, and the second one could advance
+      // the failure count on a single real drop — the anti-flap rule would be
+      // satisfied by one event.
+      if (_confirmTimer != null) return;
+      unawaited(probeNow());
+    });
   }
 
   /// Opens a TCP connection to every configured API host and reports whether any
-  /// of them answered.
+  /// of them answered, and — when none did — whether that was the OS refusing or
+  /// merely silence.
   ///
   /// Every candidate is tried because the app itself fails over between them;
   /// reporting offline while a fallback host is reachable would block a session
   /// that could have worked. `eagerError: false` keeps the remaining candidates
   /// in the race after the first one fails — the primary host is exactly the one
   /// most likely to be unreachable on a tunnel-only development network.
-  static Future<bool> _probeConfiguredHosts() async {
+  static Future<_ProbeOutcome> _probeConfiguredHosts() async {
     final bases = AppConfig.authApiBaseUrlCandidates.isNotEmpty
         ? AppConfig.authApiBaseUrlCandidates
         : AppConfig.attendanceApiBaseUrlCandidates;
@@ -242,7 +366,7 @@ class ConnectivityService {
 
     if (targets.isEmpty) {
       debugPrint('ConnectivityService: no API host configured to probe');
-      return false;
+      return const _ProbeOutcome(reachable: false, definitive: false);
     }
 
     final results = await Future.wait(
@@ -250,7 +374,15 @@ class ConnectivityService {
       eagerError: false,
     );
 
-    return results.any((reachable) => reachable);
+    if (results.any((result) => result == _Reach.connected)) {
+      return const _ProbeOutcome(reachable: true, definitive: false);
+    }
+
+    // Definitive only when *every* host refused outright. One silent host means
+    // a firewall or a blackhole may be hiding a working network, and that
+    // deserves the cautious confirmation delay rather than an instant verdict.
+    final refusedEverywhere = results.every((result) => result == _Reach.refused);
+    return _ProbeOutcome(reachable: false, definitive: refusedEverywhere);
   }
 
   /// An explicit `https`/`http` scheme decides the port, because a base URL is
@@ -264,17 +396,40 @@ class ConnectivityService {
     };
   }
 
-  static Future<bool> _canConnect(String host, int port) async {
+  static Future<_Reach> _canConnect(String host, int port) async {
     try {
       final socket = await Socket.connect(host, port, timeout: _connectTimeout);
       // Destroyed rather than closed: nothing is written to this socket, so a
       // graceful close would only hold the probe open for as long as the peer
       // cares to keep the connection.
       socket.destroy();
-      return true;
-    } catch (error) {
+      return _Reach.connected;
+    } on SocketException catch (error) {
       debugPrint('ConnectivityService: $host:$port unreachable ($error)');
-      return false;
+      return _isRefusal(error) ? _Reach.refused : _Reach.timedOut;
+    } catch (error) {
+      debugPrint('ConnectivityService: $host:$port failed ($error)');
+      return _Reach.timedOut;
     }
+  }
+
+  /// Whether a failed connect was the OS saying "no", rather than silence.
+  ///
+  /// The errno set differs per platform, so both are listed: Android is Linux, so
+  /// airplane mode surfaces as ENETUNREACH (101) or EHOSTUNREACH (113) and a
+  /// closed port as ECONNREFUSED (111); the values in parentheses are the BSD /
+  /// Windows equivalents (51 / 65 / 61) for a probe run on a desktop host.
+  ///
+  /// Anything else — including the timeout sentinel, which carries no OS error at
+  /// all — stays ambiguous on purpose.
+  static bool _isRefusal(SocketException error) {
+    final code = error.osError?.errorCode;
+    if (code == null) return false;
+    return code == 101 || // ENETUNREACH
+        code == 113 || // EHOSTUNREACH
+        code == 111 || // ECONNREFUSED
+        code == 51 || // ENETUNREACH (BSD/macOS)
+        code == 65 || // EHOSTUNREACH (BSD/macOS)
+        code == 61; // ECONNREFUSED (BSD/macOS)
   }
 }
