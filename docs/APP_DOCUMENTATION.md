@@ -768,6 +768,7 @@ through, where a large headline over a small icon reads as an error dialog.
 | Feature | Detail |
 |---|---|
 | **Blur** | `BackdropFilter` at a constant sigma 12 behind a radial vignette (lighter at the centre, darker at the edges; off-centre weight pushes the eye to the card) |
+| **Material** | Wraps the card as `MaterialType.transparency`. Required, not decorative: this overlay renders beside the Navigator, so it inherits no `Scaffold` and Flutter's fallback text style would draw the debug yellow double underline under every line |
 | **Artwork** | 176 dp signal cluster: two expanding pulse rings (2.6 s, half a cycle apart), an orbiting accent dot (9 s), and a 96 dp disc holding a 42 dp Phosphor duotone cloud-slash with a warm halo |
 | **Type** | Deliberately small under the artwork: headline 17 (Poppins w600), body 13, status caption 11 |
 | **Entry** | 280 ms — fade, 0.96→1 scale and a short rise |

@@ -298,6 +298,20 @@ After publishing build **N**:
 
 ---
 
+## November 14, 2026 Update (v2.5.4+120) — main channel
+
+**The underline under the offline screen's text is gone.**
+
+> Published from `2.5.4+119` → `2.5.4+120`. Tag `v2.5.4-build120`. Checked after publishing: `version_code` 120 in the manifest and both `arm64-v8a` and `armeabi-v7a` APK entries present with sizes and SHA-256.
+
+- **Root cause: no `Material` ancestor.** Flutter's fallback text style when nothing above a `Text` supplies a Material is the debug "missing Material" style — `TextDecoration.underline`, double style, yellow. Every screen gets its Material from a `Scaffold`; this overlay is mounted in `MaterialApp.builder`, beside the Navigator rather than inside a route, so it inherited none and every line of the card rendered double-underlined. A `Material(type: MaterialType.transparency)` now wraps the card: it supplies the theme's real text style and paints nothing, so the card's own gradient stays visible
+- **Guard:** `test/connectivity_guard_test.dart` gains "the overlay brings its own Material", which asserts the resolved style carries no underline *and* that the nearest Material above the headline is the overlay's own transparent one. It fails against `+119` with `Expected: not TextDecoration.underline / Actual: TextDecoration.underline`
+- No change to the artwork, the copy, or the detection timings from `+119`
+
+**Pubspec stays on the prod line at `2.5.4+120`** after this release (the beta line is paused at `2.5.3-beta.1+9036`).
+
+---
+
 ## November 14, 2026 Update (v2.5.4+119) — main channel
 
 **The offline screen is now built around a large animated signal mark, and a dropped connection is
