@@ -72,10 +72,16 @@ class AppUpdateService {
 
     try {
       final packageInfo = await PackageInfo.fromPlatform();
-      final preferredAbi = await getPreferredAbi();
+      // The installed APK's own ABI, deliberately not the device's preferred
+      // one. A 64-bit phone running the armeabi-v7a split reports arm64-v8a as
+      // preferred, but its build number carries the armeabi offset (1120). Using
+      // the preferred offset (2000) subtracted nothing, so 1120 was compared
+      // against the manifest's base 120, read as "already newer", and that device
+      // was never offered another update.
+      final installedAbi = await getInstalledAbi();
       final installedCode = normalizeVersionCode(
         packageInfo.buildNumber,
-        abiOffset: abiOffsetFor(preferredAbi),
+        abiOffset: abiOffsetFor(installedAbi),
       );
 
       final response = await _dio.get<dynamic>(
@@ -156,6 +162,26 @@ class AppUpdateService {
       debugPrint('AppUpdateService.getPreferredAbi: $e');
     }
     return 'arm64-v8a';
+  }
+
+  /// The ABI of the installed APK, used to undo the split-APK build-number
+  /// offset.
+  ///
+  /// Distinct from [getPreferredAbi], which answers what the *device* can run.
+  /// The two disagree whenever a 64-bit handset has the 32-bit split installed,
+  /// and that disagreement is what made those devices look permanently up to
+  /// date. Falls back to the preferred ABI only if the platform cannot report
+  /// the installed one — the old, wrong-on-arm64 behaviour, but better than
+  /// having no number to compare at all.
+  Future<String> getInstalledAbi() async {
+    if (!Platform.isAndroid) return 'arm64-v8a';
+    try {
+      final abi = await _channel.invokeMethod<String>('getInstalledAbi');
+      if (abi != null && abi.isNotEmpty) return abi;
+    } catch (e) {
+      debugPrint('AppUpdateService.getInstalledAbi: $e');
+    }
+    return getPreferredAbi();
   }
 
   Future<File> downloadApk({

@@ -48,7 +48,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Future<void> _loadAppVersion() async {
     try {
       final info = await PackageInfo.fromPlatform();
-      final abi = await AppUpdateService().getPreferredAbi();
+      // The installed APK's ABI, not the device's preferred one: a 64-bit phone
+      // running the 32-bit split must show +120, not the raw +1120.
+      final abi = await AppUpdateService().getInstalledAbi();
       if (!mounted) return;
       // Split-per-ABI APKs encode versionCode as base + abi offset, so a beta
       // build 9008 reports 11008 on arm64. Shared with the update check so the

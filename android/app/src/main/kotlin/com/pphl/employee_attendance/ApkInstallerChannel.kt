@@ -3,6 +3,7 @@ package com.pphl.employee_attendance
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
+import android.os.Process
 import androidx.core.content.FileProvider
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodCall
@@ -33,6 +34,37 @@ class ApkInstallerChannel(
                     else -> abis.firstOrNull() ?: "arm64-v8a"
                 }
                 result.success(preferred)
+            }
+
+            // The ABI of the APK that is actually installed, which is not the
+            // same question as `getPreferredAbi` above.
+            //
+            // A 64-bit phone running the armeabi-v7a split reports arm64-v8a as
+            // its preferred ABI, while the installed versionCode carries the
+            // armeabi offset (1000). Comparing that raw number against the
+            // manifest's base build (1120 vs 120) reads as "already newer", so
+            // the device was never offered an update again — and the version
+            // display showed the same mistake as "+1120".
+            //
+            // `ApplicationInfo.primaryCpuAbi` is the field that answers this
+            // exactly, but it is @hide and cannot be referenced at compile time.
+            // `Process.is64Bit()` is public and follows the installed APK rather
+            // than the hardware: the 32-bit split on a 64-bit handset runs a
+            // 32-bit process. Pairing it with SUPPORTED_ABIS recovers the ABI
+            // name the Dart side needs to pick the offset.
+            "getInstalledAbi" -> {
+                val abis = Build.SUPPORTED_ABIS?.toList().orEmpty()
+                val is64Bit = Process.is64Bit()
+                val installed = if (is64Bit) {
+                    abis.firstOrNull { it.contains("64") }
+                } else {
+                    abis.firstOrNull { !it.contains("64") }
+                }
+                result.success(
+                    installed
+                        ?: abis.firstOrNull()
+                        ?: "arm64-v8a",
+                )
             }
 
             "installApk" -> {
