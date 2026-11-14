@@ -263,6 +263,21 @@ class AppConfig {
     defaultValue: true,
   );
 
+  /// Set `--dart-define=CONNECTIVITY_GUARD_ENABLED=false` to skip the offline
+  /// guard (dev).
+  ///
+  /// The guard decides reachability by opening a TCP connection to the
+  /// configured API hosts. A build that deliberately points somewhere else — an
+  /// emulator against `10.0.2.2`, a Cloudflare-tunnel build against a staging
+  /// host — still probes whatever `AppConfig` resolves to, so an unreachable
+  /// production host would cover the screen with the offline overlay even though
+  /// the build itself works. Defaults to on: production builds must never ship
+  /// with this quietly disabled.
+  static const bool connectivityGuardEnabled = bool.fromEnvironment(
+    'CONNECTIVITY_GUARD_ENABLED',
+    defaultValue: true,
+  );
+
   static const String appPackageId = 'com.pphl.employee_attendance';
 
   /// Android app id of the Google offline speech pack installer, used to offer a

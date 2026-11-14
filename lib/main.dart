@@ -3,9 +3,11 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import 'config/app_config.dart';
 import 'config/theme.dart';
 import 'services/app_settings_service.dart';
 import 'services/geo_tracking_service.dart';
+import 'widgets/connectivity_guard.dart';
 import 'widgets/location_guard.dart';
 import 'widgets/update_gate.dart';
 
@@ -55,10 +57,18 @@ class AttendEaseApp extends StatelessWidget {
       title: 'PPHL Attendance System',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.lightTheme,
-      // Above the Navigator, so the location check covers every screen
-      // including ones pushed later and survives back navigation.
-      builder: (context, child) =>
-          LocationGuard(child: child ?? const SizedBox.shrink()),
+      // Above the Navigator, so the location check and the offline overlay cover
+      // every screen including ones pushed later and survive back navigation.
+      //
+      // Connectivity sits outside LocationGuard deliberately: when the network is
+      // gone the app cannot resolve its location gate either, and an offline
+      // overlay that is itself covered by a "location is off" sheet would tell
+      // the user to fix the wrong thing. The outer guard wins.
+      builder: (context, child) {
+        final app = LocationGuard(child: child ?? const SizedBox.shrink());
+        if (!AppConfig.connectivityGuardEnabled) return app;
+        return ConnectivityGuard(child: app);
+      },
       home: const UpdateGate(),
     );
   }
