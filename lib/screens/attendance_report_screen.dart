@@ -4,8 +4,8 @@ import 'package:intl/intl.dart';
 import '../widgets/ui/ui.dart' as ui;
 import '../models/attendance_request_record.dart';
 import '../models/attendance_summary.dart';
-import '../services/attendance_report_service.dart';
 import '../services/attendance_request_service.dart';
+import '../services/attendance_stats_service.dart';
 import '../services/auth_service.dart';
 import '../widgets/attendance_tile.dart';
 import '../widgets/date_range_field.dart';
@@ -20,7 +20,6 @@ class AttendanceReportScreen extends StatefulWidget {
 
 class _AttendanceReportScreenState extends State<AttendanceReportScreen> {
   final AttendanceRequestService _attendanceService = AttendanceRequestService();
-  final AttendanceReportService _reportService = AttendanceReportService();
   final AuthService _authService = AuthService();
 
   String _selectedFilter = 'All';
@@ -63,27 +62,24 @@ class _AttendanceReportScreenState extends State<AttendanceReportScreen> {
       to: _to,
     );
 
-    AttendanceSummary? summary;
-    if (employeeId != null && employeeId > 0) {
-      final summaryResult = await _reportService.getSummary(
-        employeeId: employeeId,
-        from: _from,
-        to: _to,
-      );
-      if (summaryResult.success && summaryResult.data != null) {
-        summary = summaryResult.data;
-      }
-    }
+    // Punch evidence for the KPIs must not inherit the list filter. With
+    // "Rejected" selected, the filtered list holds no punches at all, and the
+    // month would report every working day absent — the filter would silently
+    // rewrite the summary. Reuse the list when it is already unfiltered.
+    final statRecords = status == null
+        ? records
+        : await _attendanceService.getAttendanceRecords(
+            employeeId: employeeId,
+            from: _from,
+            to: _to,
+          );
 
-    summary ??= AttendanceSummary.fromRecords(
-      approved: records.where((r) => r.status.toLowerCase() == 'approved').length,
-      requested: records.where((r) => r.status.toLowerCase() == 'requested').length,
-      rejected: records.where((r) => r.status.toLowerCase() == 'rejected').length,
+    final summary = await AttendanceStatsService.instance.load(
+      employeeId: employeeId ?? 0,
+      from: _from,
+      to: _to,
+      punchRecords: statRecords,
     );
-
-    // HRM rows can mark punched days absent (mobile punches live in
-    // ZKTeco) — move days with a real punch back to present.
-    summary = summary.reconciledWithPunchDays(_punchDaysFrom(records));
 
     if (!mounted) return;
     setState(() {
@@ -92,19 +88,6 @@ class _AttendanceReportScreenState extends State<AttendanceReportScreen> {
       _isLoading = false;
       _error = records.isEmpty ? 'No attendance records for this period.' : null;
     });
-  }
-
-  /// Calendar days with a non-rejected check-in or check-out.
-  Set<DateTime> _punchDaysFrom(List<AttendanceRequestRecord> records) {
-    final days = <DateTime>{};
-    for (final record in records) {
-      if (record.isRejected) continue;
-      if (!record.hasCheckIn && !record.hasCheckOut) continue;
-      final day = record.effectiveCalendarDay;
-      if (day == null) continue;
-      days.add(DateTime(day.year, day.month, day.day));
-    }
-    return days;
   }
 
   List<Map<String, dynamic>> get _filteredRecords {

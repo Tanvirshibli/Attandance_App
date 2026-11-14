@@ -14,8 +14,8 @@ import '../widgets/ui/ui.dart' as ui;
 import '../models/attendance_request_record.dart';
 import '../models/attendance_summary.dart';
 import '../models/auth_user_profile.dart';
-import '../services/attendance_report_service.dart';
 import '../services/attendance_request_service.dart';
+import '../services/attendance_stats_service.dart';
 import '../services/attendance_punch_notifier.dart';
 import '../services/auth_service.dart';
 import '../services/face_recognition_service.dart';
@@ -36,7 +36,6 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   final AttendanceRequestService _attendanceRequestService =
       AttendanceRequestService();
-  final AttendanceReportService _reportService = AttendanceReportService();
   final AuthService _authService = AuthService();
   final FaceRecognitionService _faceService = FaceRecognitionService();
 
@@ -387,105 +386,33 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   /// Loads the month KPIs.
   ///
-  /// [recordsDone] is the concurrent punch-list load. The backend call starts
-  /// immediately, so the two requests genuinely overlap, but the decision about
-  /// which value to trust reads the punch records — so that part has to wait for
-  /// [recordsDone] before it can be made.
+  /// The counting itself lives in [AttendanceStatsService] so this screen, the
+  /// history list and the report cannot disagree about the same month. The punch
+  /// records are only *evidence* here — a day with a real punch is present even
+  /// when HRM marks it absent — so the wait on [recordsDone] is about having them
+  /// in hand, not about deciding anything.
   Future<void> _loadSummary(int? employeeId, [Future<void>? recordsDone]) async {
     final now = DateTime.now();
     final from = DateTime(now.year, now.month, 1);
     final to = DateTime(now.year, now.month + 1, 0);
 
-    AttendanceSummary? fetched;
-
-    // Without an id there is nothing to ask the backend about; the fallback
-    // below still produces a usable estimate from the punch records.
-    if (employeeId != null && employeeId > 0) {
-      final result = await _reportService.getSummary(
-        employeeId: employeeId,
-        from: from,
-        to: to,
-      );
-
-      if (result.success && result.data != null) {
-        fetched = result.data;
-      }
-    }
-
-    // Both the decision below and the reconciliation read the punch records, and
-    // those arrive from the concurrent load above. Judging the backend response
-    // before they land would compare it against the *previous* refresh's rows —
-    // or against an empty list on a first load.
+    // The classification reads the punch records, and those arrive from the
+    // concurrent load above. Classifying before they land would judge the month
+    // against the previous refresh's punches — or against an empty list on a
+    // first load, which reports the whole month absent.
     await recordsDone;
 
     if (!mounted) return;
 
-    final summary = fetched;
-
-    if (summary != null &&
-        summary.parsedFromKnownShape &&
-        (summary.hasAnyKpi || _monthPunchPresentDays(from, to) == 0)) {
-      setState(
-        () => _summary = summary.reconciledWithPunchDays(_punchDays()),
-      );
-      return;
-    }
-
-    setState(
-      () => _summary = _summaryFromPunchRecords(
-        from,
-        to,
-      ).reconciledWithPunchDays(_punchDays()),
+    final summary = await AttendanceStatsService.instance.load(
+      employeeId: employeeId ?? 0,
+      from: from,
+      to: to,
+      punchRecords: _requestedRecords,
     );
-  }
 
-  /// Calendar days with a non-rejected punch this employee made.
-  Set<DateTime> _punchDays() {
-    final days = <DateTime>{};
-    for (final record in _requestedRecords) {
-      if (record.isRejected) continue;
-      if (!record.hasCheckIn && !record.hasCheckOut) continue;
-      final day = record.effectiveCalendarDay;
-      if (day == null) continue;
-      days.add(DateTime(day.year, day.month, day.day));
-    }
-    return days;
-  }
-
-  int _monthPunchPresentDays(DateTime from, DateTime to) {
-    final days = <String>{};
-    for (final record in _requestedRecords) {
-      if (!record.hasCheckIn || record.isRejected) continue;
-      final day = record.effectiveCalendarDay;
-      if (day == null) continue;
-      if (day.isBefore(from) || day.isAfter(to)) continue;
-      days.add(
-        '${day.year.toString().padLeft(4, '0')}-'
-        '${day.month.toString().padLeft(2, '0')}-'
-        '${day.day.toString().padLeft(2, '0')}',
-      );
-    }
-    return days.length;
-  }
-
-  AttendanceSummary _summaryFromPunchRecords(DateTime from, DateTime to) {
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
-    final end = to.isBefore(today) ? to : today;
-    final punched = _punchDays();
-
-    // Days in [from, today] without any punch count as absent.
-    var absentDays = 0;
-    for (var i = 0; ; i++) {
-      final day = DateTime(from.year, from.month, from.day + i);
-      if (day.isAfter(end)) break;
-      if (!punched.contains(day)) absentDays++;
-    }
-
-    return AttendanceSummary.fromPunchRecords(
-      presentDays: _monthPunchPresentDays(from, to),
-      absentDays: absentDays,
-    );
+    if (!mounted) return;
+    setState(() => _summary = summary);
   }
 
   String _computeTodayHours(AttendanceRequestRecord? todayRecord) {

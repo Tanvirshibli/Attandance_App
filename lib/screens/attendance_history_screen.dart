@@ -5,8 +5,8 @@ import 'package:phosphor_flutter/phosphor_flutter.dart';
 import '../widgets/ui/ui.dart' as ui;
 import '../models/attendance_request_record.dart';
 import '../models/attendance_summary.dart';
-import '../services/attendance_report_service.dart';
 import '../services/attendance_request_service.dart';
+import '../services/attendance_stats_service.dart';
 import '../services/auth_service.dart';
 import '../widgets/attendance_tile.dart';
 import 'attendance_report_screen.dart';
@@ -22,7 +22,6 @@ class AttendanceHistoryScreen extends StatefulWidget {
 class _AttendanceHistoryScreenState extends State<AttendanceHistoryScreen> {
   final AttendanceRequestService _attendanceRequestService =
       AttendanceRequestService();
-  final AttendanceReportService _reportService = AttendanceReportService();
   final AuthService _authService = AuthService();
 
   String _selectedFilter = 'All';
@@ -45,36 +44,17 @@ class _AttendanceHistoryScreenState extends State<AttendanceHistoryScreen> {
       employeeId: employeeId,
     );
 
-    AttendanceSummary summary = const AttendanceSummary();
-    if (employeeId != null && employeeId > 0) {
-      final now = DateTime.now();
-      final from = DateTime(now.year, now.month, 1);
-      final to = DateTime(now.year, now.month + 1, 0);
-      final result = await _reportService.getSummary(
-        employeeId: employeeId,
-        from: from,
-        to: to,
-      );
-      if (result.success && result.data != null) {
-        summary = result.data!;
-      } else {
-        final approved =
-            records.where((r) => r.status.toLowerCase() == 'approved').length;
-        final requested =
-            records.where((r) => r.status.toLowerCase() == 'requested').length;
-        final rejected =
-            records.where((r) => r.status.toLowerCase() == 'rejected').length;
-        summary = AttendanceSummary.fromRecords(
-          approved: approved,
-          requested: requested,
-          rejected: rejected,
-        );
-      }
-    }
-
-    // HRM rows can mark punched days absent (mobile punches live in
-    // ZKTeco) — move days with a real punch back to present.
-    summary = summary.reconciledWithPunchDays(_punchDaysFrom(records));
+    // The month's counts come from the shared classifier, so this screen and the
+    // home KPIs and the report all answer the same question the same way. It
+    // reconciles HRM's rows with the holiday calendar, approved leave and the
+    // punch records by itself; nothing is computed here.
+    final now = DateTime.now();
+    final summary = await AttendanceStatsService.instance.load(
+      employeeId: employeeId ?? 0,
+      from: DateTime(now.year, now.month, 1),
+      to: DateTime(now.year, now.month + 1, 0),
+      punchRecords: records,
+    );
 
     if (!mounted) return;
     setState(() {
@@ -82,19 +62,6 @@ class _AttendanceHistoryScreenState extends State<AttendanceHistoryScreen> {
       _summary = summary;
       _isLoading = false;
     });
-  }
-
-  /// Calendar days with a non-rejected check-in or check-out.
-  Set<DateTime> _punchDaysFrom(List<AttendanceRequestRecord> records) {
-    final days = <DateTime>{};
-    for (final record in records) {
-      if (record.isRejected) continue;
-      if (!record.hasCheckIn && !record.hasCheckOut) continue;
-      final day = record.effectiveCalendarDay;
-      if (day == null) continue;
-      days.add(DateTime(day.year, day.month, day.day));
-    }
-    return days;
   }
 
   double get _attendancePercent {
