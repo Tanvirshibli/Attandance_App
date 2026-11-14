@@ -248,7 +248,7 @@ User must allow **Install unknown apps** for this app if Android prompts.
 
 ## Version display
 
-Profile screen shows `v{version}+{build}` with ABI-offset normalization (split APK `versionCode` like `2041` displays as `+41`).
+Profile screen shows `v{version}+{build}` with ABI-offset normalization (split APK `versionCode` like `2041` displays as `+41`). The offset is derived from the ABI of the **installed APK**, not from `Build.SUPPORTED_ABIS`: on a 64-bit phone running the armeabi-v7a split the two disagree, and using the preferred one left the number unnormalised (`+1120`), which is both a wrong label and a version comparison that never offers an update.
 
 ---
 
@@ -295,6 +295,21 @@ After publishing build **N**:
 - [`rocket launcher/README.md`](../../rocket%20launcher/README.md) — publisher scripts and GitHub API flow
 - [`SERVER_COMMANDS.md`](../../SERVER_COMMANDS.md) — workspace command reference (OTA section)
 - [`MOBILE_EMPLOYEE_FEATURES.md`](MOBILE_EMPLOYEE_FEATURES.md) — feature summary including OTA
+
+---
+
+## November 14, 2026 Update (v2.5.4+122) — main channel
+
+**A phone on the 32-bit build was told it was already up to date, so no update ever arrived.**
+
+> Published from `2.5.4+120` → `2.5.4+122` (build 121 was consumed by a failed Kotlin compile and never published). Tag `v2.5.4-build122`. Checked after publishing: `version_code` 122 in the manifest and both `arm64-v8a` and `armeabi-v7a` APK entries present with sizes and SHA-256; both assets downloaded and their `libapp.so` and `classes.dex` carry the new `getInstalledAbi` call.
+
+- **Root cause: the wrong ABI's offset.** A split APK's `versionCode` is `base + offset` (armeabi-v7a +1000, arm64-v8a +2000). The update check subtracted the offset of the *device's preferred* ABI, not of the APK actually installed. A 64-bit handset running the armeabi-v7a split therefore reported `1120`, `normalizeVersionCode` subtracted nothing (1120 is below arm64's 2000), and `120 > 1120` is false — "up to date" on every cold start, forever. Profile showed the same mistake as `+1120`
+- **Fix:** a new `getInstalledAbi` platform call (`Process.is64Bit()` paired with `Build.SUPPORTED_ABIS`, because `ApplicationInfo.primaryCpuAbi` is `@hide`) reports the installed APK's ABI, and both the update check and the Profile version label use it. `getPreferredAbi` keeps its own job — choosing which APK to download
+- **Devices already on an older 32-bit build must install this one by hand once.** The faulty comparison lives in the installed build, so it cannot be delivered to itself; after one manual install, OTA works normally
+- Guard: `test/ota_channel_test.dart` gains an "installed ABI offset" group pinning `1120` + armeabi → `120`, the same number + arm64 → `1120` (the failure), and that build 121 is offered to a phone on the 32-bit split
+
+**Pubspec stays on the prod line at `2.5.4+122`** after this release (the beta line is paused at `2.5.3-beta.1+9036`).
 
 ---
 
