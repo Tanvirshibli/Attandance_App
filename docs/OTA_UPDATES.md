@@ -298,6 +298,22 @@ After publishing build **N**:
 
 ---
 
+## November 14, 2026 Update (v2.5.4+123) — main channel
+
+**Holidays, approved leave and weekends are no longer counted as absences.**
+
+> Published from `2.5.4+122` → `2.5.4+123`. Tag `v2.5.4-build123`. Verify after publishing: `version_code` 123 in the manifest at the raw URL, and both the `arm64-v8a` and `armeabi-v7a` APK entries present with their sizes and SHA-256.
+
+- **Every calendar day now lands in exactly one bucket** — present, absent, leave, holiday or weekly off — instead of being read off HRM's `attendanceType` row with a fallback that marked every non-punched day absent. The classifier (`lib/models/attendance_classifier.dart`) is pure Dart: `DayBucket`, `classifyDay`, `classifyDays`, `AttendanceClassification` with `countedDays`, plus `calendarDay` and `isDefaultWeeklyOff`. Precedence is present → holiday → leave → weekly off → absent, first match wins. `AttendanceSummary.fromClassification` carries the result; `reconciledWithPunchDays` remains but is superseded
+- **Two counting consequences follow from that order.** Someone who punches on a holiday is credited **present** and the holiday count drops, so the day is never counted twice; a holiday that overlaps approved leave counts as **holiday**, so the leave is not consumed
+- **Weekends get their own bucket and leave the totals alone** — `weeklyOff` appears in none of the four KPI cards. The default workweek is Friday + Saturday; an HRM row typed `weekend` is honoured on any other weekday. Today is not counted absent while the day is still in progress, and a past working day with no punch and no explicit type is still absent
+- **The three attendance screens cannot disagree any more.** Home, Attendance History and Attendance Report all call `AttendanceStatsService.load({employeeId, from, to, punchRecords})`, which fetches the HRM rows and the calendar (`GET /api/v1/mobile/holidays`, `GET /api/v1/leaves?status=approved`) concurrently, caches the calendar 5 minutes per employee + window, and isolates each call: a failed holiday or leave fetch yields an empty set rather than an error, so the KPIs still render and holidays degrade to whatever the row types say. Guard: `test/attendance_classification_test.dart`
+- **The same change went to the beta channel as `2.5.4-beta.1+9037`.** The beta line was re-seated above the live test build `9036` so testers actually receive it
+
+**Pubspec stays on the prod line at `2.5.4+123`** after this release (the beta line is now at `2.5.4-beta.1+9037`).
+
+---
+
 ## November 14, 2026 Update (v2.5.4+122) — main channel
 
 **A phone on the 32-bit build was told it was already up to date, so no update ever arrived.**

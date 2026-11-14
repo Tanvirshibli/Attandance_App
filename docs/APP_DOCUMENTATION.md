@@ -373,7 +373,7 @@ loads the profile itself.
 | **Load order** | Profile first (it yields the employee id), then the attendance list and month summary **concurrently** |
 | **Resume** | Same sequence, throttled to at most once per 30s; pull-to-refresh bypasses the throttle |
 | **Header** | Gradient card with live backend avatar letters, employee name, designation/employee ID, greeting (dynamic AM/PM), today's check-in/out/hours |
-| **Quick Stats** | 4 `StatCard` widgets: Present / Absent / Holiday / Leave from HRM single-employee daily `rows` (`attendanceType`); punch-day fallback when rows empty |
+| **Quick Stats** | 4 `StatCard` widgets: Present / Absent / Holiday / Leave from the shared day classifier — HRM single-employee daily `rows` (`attendanceType`), the holiday calendar, the employee's approved leave, punch days and weekends — loaded through `AttendanceStatsService` |
 | **Clock-In Card** | Today-only; one punch button at a time (Check In **or** Check Out); day-complete hides both buttons → `CheckInScreen` |
 | **Face warning** | If templates are missing or corrupt, a warning card plus Check In/Out routes to `FaceRegistrationScreen` |
 | **Weekly Chart** | `BarChart` from punch records (open shifts use `now` as end) |
@@ -785,12 +785,12 @@ through, where a large headline over a small icon reads as an error dialog.
 
 ### 10.1 DummyData (`dummy_data.dart`)
 
-`DummyData` may still exist as a legacy file, but Home / Attendance History / Alerts no longer bind to it. Home KPIs use live punches + HRM single-employee daily rows; Alerts shows an empty state.
+`DummyData` may still exist as a legacy file, but Home / Attendance History / Alerts no longer bind to it. Home KPIs come from the shared day classifier (`AttendanceStatsService`): HRM single-employee daily rows, the holiday calendar, approved leave and live punches; Alerts shows an empty state.
 
 | Data | Source |
 |---|---|
 | **User profile** | Live backend profile from `GET /api/v1/get-my-info` |
-| **Attendance stats** | HRM `single-employee-attendance-details` `data.rows` by `attendanceType`; fallback = distinct punch check-in days in month |
+| **Attendance stats** | HRM `single-employee-attendance-details` `data.rows` by `attendanceType`, classified per calendar day together with the holiday calendar, approved leave and punch days; weekends are their own bucket and appear in no KPI |
 | **Today's status** | Today’s attendance request only (clocked-in = open check-in today) |
 | **Recent attendance** | Live JWT / ZKTeco attendance request list |
 | **Weekly hours** | Computed from punch in/out (open shift → hours until now) |
@@ -817,6 +817,43 @@ Singleton (`ConnectivityService.instance`) exposing a `ValueNotifier<bool> isOnl
 | **Hysteresis** | Two consecutive failures before it reports offline; one success restores online immediately, so a single dropped packet does not blur the screen |
 | **Lifecycle** | Sampling runs only in the foreground — started on `resumed`, stopped on `paused` / `inactive` / `detached` |
 | **Escape hatch** | `--dart-define=CONNECTIVITY_GUARD_ENABLED=false` disables the guard for builds that probe production hosts (emulator, Cloudflare-tunnel dev) |
+
+### 10.5 AttendanceCalendarService (`attendance_calendar_service.dart`)
+
+Turns the two server-side calendar sources into sets of local calendar days (`AttendanceCalendar.holidays` and `.approvedLeaveDays`, each normalised to midnight with `DateTime(y, m, d)`); a timestamp carrying a clock part would never match the punch days it is compared against.
+
+| Aspect | Detail |
+|---|---|
+| **Holiday source** | `GET /api/v1/mobile/holidays` with `startDate` / `endDate`, expanded inclusive; a row may also carry `date` or `holidayDate` |
+| **Leave source** | `GET /api/v1/leaves?status=approved`, expanded to the days each record covers; the status is re-checked per record, so a server that ignores the query cannot excuse a pending request |
+| **Window** | Both sets are clipped to the requested `from` / `to` before expanding, so a row with a wildly wrong end date cannot spin |
+| **Concurrency** | The two calls run together under `Future.wait` — the report is blocked on both |
+| **Cache** | 5 minutes (TTL), keyed `<employeeId>\|<from>\|<to>`; `clearCache()` forgets every window. A result where neither source answered is not cached, so an outage is retried immediately |
+| **Failure** | Each source fails independently to an empty set, and `load` never throws — the KPI load must not fail a screen |
+
+### 10.6 AttendanceStatsService (`attendance_stats_service.dart`)
+
+The single entry point for a month's attendance numbers. `load({employeeId, from, to, punchRecords})` issues the HRM summary fetch and the calendar fetch **concurrently**, derives punch days from the records it is handed (rejected rows and rows with neither check-in nor check-out are skipped), classifies every day in the window and returns `AttendanceSummary.fromClassification(...)`. Home, Attendance History and Attendance Report all call it, so the three screens cannot disagree about the same month. Days after today are never classified, so opening a month cannot invent absences.
+
+Classification lives in `lib/models/attendance_classifier.dart` — pure Dart, no network: `DayBucket` (`present`, `absent`, `leave`, `holiday`, `weeklyOff`), `classifyDay`, `classifyDays`, `AttendanceClassification` (per-bucket counts plus `countedDays`), `calendarDay` and `isDefaultWeeklyOff`. Precedence, first match wins:
+
+| Order | Bucket | Awarded when |
+|---|---|---|
+| 1 | `present` | A real punch, or an HRM row typed present / late |
+| 2 | `holiday` | Inside the holiday calendar, or a row typed holiday |
+| 3 | `leave` | Covered by approved leave, or a row typed leave |
+| 4 | `weeklyOff` | Friday or Saturday by default, or a row typed weekend |
+| 5 | `absent` | No punch, no leave, no holiday, not a weekly off (also an unrecognised row type) |
+
+Consequences worth knowing:
+
+- Someone who punches on a holiday is credited **present** and the holiday count drops, so the day is never counted twice.
+- A holiday that overlaps approved leave counts as **holiday**, so the leave is not consumed.
+- `weeklyOff` is excluded from `countedDays` and appears in none of the four KPI cards.
+- Today is not counted absent while the day is still in progress; a past working day with no punch and no explicit row type is still absent.
+- Weekly off defaults to **Friday and Saturday** (the app's existing `weekend` status and seed data); a row typed `weekend` is honoured on any other weekday. This is the one assumption in the design.
+- If the holiday or leave call fails, that set is empty and classification falls back to rows + punches + weekends: holidays degrade to whatever the row types say. The KPIs still render.
+- `AttendanceSummary.reconciledWithPunchDays` remains for callers that have not migrated, but `fromClassification` supersedes it — do not add new call sites.
 
 ---
 
@@ -1074,6 +1111,18 @@ The current stack uses **ML Kit for detection** and **MobileFaceNet for identity
 
 ### `lib/data/dummy_data.dart` (~170 lines)
 - Static class with all dummy data: user profile, attendance stats, recent records, weekly hours, notifications, team members.
+
+### `lib/models/attendance_classifier.dart`
+- Pure classification of one calendar day into exactly one bucket: `DayBucket` (`present`, `absent`, `leave`, `holiday`, `weeklyOff`), `classifyDay`, `classifyDays`, `AttendanceClassification` (counts + `countedDays`), `calendarDay`, `isDefaultWeeklyOff`.
+- No network or UI dependency; screens read its counts through `AttendanceStatsService`. Guarded by `test/attendance_classification_test.dart`.
+
+### `lib/services/attendance_calendar_service.dart`
+- `AttendanceCalendarService` expands `GET /api/v1/mobile/holidays` and `GET /api/v1/leaves?status=approved` into sets of calendar days, clipped to the requested window and cached 5 minutes per employee + window.
+- Each source fails independently to an empty set; `load` never throws.
+
+### `lib/services/attendance_stats_service.dart`
+- The single entry point (`load({employeeId, from, to, punchRecords})`) for month KPIs: HRM summary rows and the calendar load concurrently, punch days are derived, every day is classified, and an `AttendanceSummary.fromClassification(...)` comes back.
+- Home, Attendance History and Attendance Report all use it, so the three screens cannot disagree about the same month.
 
 ### `lib/services/face_recognition_service.dart` (~1048 lines)
 - Singleton service handling all face recognition, liveness, camera validation, angle detection, and registration.

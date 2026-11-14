@@ -47,7 +47,7 @@ Geo tracking turns on automatically once these are granted (`GeoTrackingService.
 | Feature | Endpoint | Status |
 |---------|----------|--------|
 | Attendance report (list) | ZKTeco `GET /api/v1/mobile/attendance-requests?employee_id=` (primary) + HRM JWT merge | **Wired** |
-| Attendance summary | HRM `GET /api/v1/single-employee-attendance-details` | **Wired** (Home KPIs count `data.rows[].attendanceType`) |
+| Attendance summary | HRM `GET /api/v1/single-employee-attendance-details` | **Wired** (Home KPIs classify `data.rows[].attendanceType` against the holiday calendar, approved leave and punch days) |
 | Home today status | Merged ZKTeco + HRM list (one row per day) | **Wired** |
 | Leave balance | HRM `GET /api/v1/new-leave-stocks?employeeId=` (+ enrich via `leavetypes` **id→lName** / code when `leaveName` empty; stocks often store legacy type ids) | **Wired** |
 | Leave history | HRM `GET /api/v1/leaves?employeeId=` | **Wired** |
@@ -139,6 +139,19 @@ Handoff for backend teams: **[SALES_AND_PAYMENTS_API_CONTRACT.md](SALES_AND_PAYM
 - Photos come from the records themselves (farm/dealer/market posts, visits, farm reports, follow-ups) — inlined by the backend's list **and** detail endpoints, so lists load no slower
 - Picking/uploading is unchanged: images are still compressed to WebP on the phone (`ImageUploadService`) and sent as `image[]` through `MarketingService.uploadAttachments`
 - See [FARM_DEALER_MOBILE.md](FARM_DEALER_MOBILE.md#photos-across-the-app)
+
+### Holidays and leave split out of absences (v2.5.4+123)
+
+Holidays, approved leave and weekends were being counted against you as if you had missed the day.
+Each day is now sorted into one of five outcomes — present, absent, leave, holiday or weekly off — and
+the monthly figures read the way payroll does.
+
+- A holiday from the company calendar shows under **Holiday** only. It is no longer added to the Absent figure
+- A day you took approved leave shows under **Leave** only, and the Absent figure no longer includes it either. A holiday that falls inside your leave counts once, as a holiday, and does not use up a day of your leave
+- Weekends (Friday and Saturday by default) appear in neither figure — they are simply days the company does not work. A day HRM marks as a weekend on another weekday is treated the same way
+- If you work a holiday, the day shows as **Present** and the holiday count drops by one, so the same day is never counted twice
+- Home, Attendance History and Attendance Report now use one shared calculation, so the same month no longer reads differently on two screens
+- Today is not counted as an absence while the day is still running; a past working day you did not punch and have no reason for still shows as **Absent**
 
 ### Marketing list filters (v2.5.4+114)
 
