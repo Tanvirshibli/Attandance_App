@@ -1,3 +1,5 @@
+import 'attendance_classifier.dart';
+
 class AttendanceSummary {
   const AttendanceSummary({
     this.presentCount = 0,
@@ -106,6 +108,35 @@ class AttendanceSummary {
     );
   }
 
+  /// Builds the KPI counts from an already-decided classification.
+  ///
+  /// This factory does no deciding of its own: every day has already been put
+  /// in exactly one bucket by [classifyDays], so the counts are read straight
+  /// off the classification's getters and [totalDays] is its
+  /// [AttendanceClassification.countedDays]. That keeps `absent` from being
+  /// double-counted against a punch, a holiday or an approved leave — the bug
+  /// [reconciledWithPunchDays] could only patch after the fact.
+  ///
+  /// [dayTypes] is carried through untouched so callers that render a per-day
+  /// strip keep the HRM row types alongside the counts. [parsedFromKnownShape]
+  /// defaults to `true` because a classification is a known shape even when its
+  /// inputs were partly empty.
+  factory AttendanceSummary.fromClassification(
+    AttendanceClassification classification, {
+    Map<DateTime, String> dayTypes = const {},
+    bool parsedFromKnownShape = true,
+  }) {
+    return AttendanceSummary(
+      presentCount: classification.presentCount,
+      leaveCount: classification.leaveCount,
+      absentCount: classification.absentCount,
+      holidayCount: classification.holidayCount,
+      totalDays: classification.countedDays,
+      parsedFromKnownShape: parsedFromKnownShape,
+      dayTypes: dayTypes,
+    );
+  }
+
   /// Moves punched days out of `absent` into `present`.
   ///
   /// Mobile punches live in the ZKTeco backend, not in HRM tables, so a
@@ -119,6 +150,12 @@ class AttendanceSummary {
   ///
   /// When there is no per-day data at all (local fallbacks, `summary`
   /// objects) the counts are already consistent and this returns `this`.
+  ///
+  /// Superseded by [AttendanceClassification] applied through
+  /// `AttendanceStatsService`: that path decides every day's bucket once (rows,
+  /// punches, holidays, leave, weekly off) instead of only shifting `absent`
+  /// into `present` on punched days. This method is kept unchanged only for
+  /// callers that have not migrated yet — do not add new call sites.
   AttendanceSummary reconciledWithPunchDays(Set<DateTime> punchDays) {
     if (punchDays.isEmpty || dayTypes.isEmpty) return this;
 
