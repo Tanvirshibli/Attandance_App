@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io' show OSError, SocketException;
 
 import 'package:employee_attendance/services/connectivity_service.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -40,11 +41,15 @@ void main() {
 
   /// Builds a service on the fake probe and guarantees its timer is cancelled
   /// even when an expectation fails halfway through a test.
-  ConnectivityService buildService({Duration interval = idleInterval}) {
+  ConnectivityService buildService({
+    Duration interval = idleInterval,
+    Duration? confirmDelay,
+  }) {
     final service = ConnectivityService(
       probe: probe.call,
       checkInterval: interval,
       offlineRetryInterval: interval,
+      confirmDelay: confirmDelay,
     );
     addTearDown(() {
       // Safe after dispose() too: `isRunning` is only a flag.
@@ -312,6 +317,131 @@ void main() {
       expect(probe.calls, parked);
     });
   });
+
+  /// The detection latency.
+  ///
+  /// The user-visible promise is "the app notices the drop within a second or
+  /// two", and that promise is made of two numbers a reader cannot check by
+  /// looking at the code: how soon the next sample starts, and how fast the
+  /// confirming sample follows. These cases pin both, so a future change that
+  /// quietly restores "wait for the next tick" fails here instead of in the
+  /// field. Everything runs on the test fake clock — no real waiting.
+  group('ConnectivityService - detection latency', () {
+    const Duration confirmDelay = Duration(milliseconds: 40);
+
+    /// The number of samples at the moment the first failure is recorded.
+    Future<int> settleStart(WidgetTester tester, ConnectivityService service) async {
+      // The eager start() probe needs one turn to land before the baseline.
+      await tester.pump();
+      return probe.calls;
+    }
+
+    testWidgets('the confirming sample does not wait for the poll interval',
+        (tester) async {
+      // Hour-long interval: if the confirm probe only ever came from the tick,
+      // this test would hang at the first assertion rather than pass.
+      final service = buildService(confirmDelay: confirmDelay)..start();
+      final baseline = await settleStart(tester, service);
+
+      probe.reachable = false;
+      await service.probeNow();
+      expect(probe.calls, baseline + 1, reason: 'the failing sample');
+      expect(
+        service.isOnline.value,
+        isTrue,
+        reason: 'the tolerance still holds after one failure',
+      );
+
+      await tester.pump(confirmDelay);
+      await tester.pump();
+
+      expect(
+        probe.calls,
+        greaterThanOrEqualTo(baseline + 2),
+        reason: 'the second sample must follow the first, not the 1-hour tick',
+      );
+      expect(service.isOnline.value, isFalse);
+
+      service.stop();
+    });
+
+    testWidgets('an OS refusal confirms immediately', (tester) async {
+      final service = buildService(confirmDelay: confirmDelay)..start();
+      await settleStart(tester, service);
+
+      // ENETUNREACH: what airplane mode actually reports on Android.
+      probe.error = const SocketException(
+        'No route to host',
+        osError: OSError('Network is unreachable', 101),
+      );
+      await service.probeNow();
+      expect(service.isOnline.value, isTrue);
+
+      // No delay at all is configured for a refusal, so even a zero pump fires it.
+      await tester.pump(Duration.zero);
+      await tester.pump();
+
+      expect(
+        service.isOnline.value,
+        isFalse,
+        reason: 'a refusal is the OS answering; one round trip is enough',
+      );
+
+      service.stop();
+    });
+
+    testWidgets('an ambiguous timeout waits before confirming', (tester) async {
+      final service = buildService(confirmDelay: confirmDelay)..start();
+      final baseline = await settleStart(tester, service);
+
+      // A generic failure carries no transport verdict: treat it as silence, not
+      // as a refusal, so the link gets a beat to come back before we blur.
+      probe.error = TimeoutException('no answer');
+      await service.probeNow();
+      expect(probe.calls, baseline + 1);
+
+      await tester.pump(confirmDelay ~/ 2);
+      expect(
+        probe.calls,
+        baseline + 1,
+        reason: 'a congested radio must not be confirmed instantly',
+      );
+
+      await tester.pump(confirmDelay);
+      await tester.pump();
+
+      expect(probe.calls, greaterThanOrEqualTo(baseline + 2));
+      expect(service.isOnline.value, isFalse);
+
+      service.stop();
+    });
+
+    testWidgets('the poll tick does not double-count while a confirm is pending',
+        (tester) async {
+      const Duration tick = Duration(milliseconds: 30);
+      final service = buildService(
+        interval: tick,
+        confirmDelay: const Duration(milliseconds: 90),
+      )..start();
+      final baseline = await settleStart(tester, service);
+
+      probe.reachable = false;
+      await service.probeNow();
+
+      // Two ticks pass before the confirm is due. Neither may start a sample, or
+      // one real drop would satisfy the two-failure rule by itself.
+      await tester.pump(const Duration(milliseconds: 65));
+
+      expect(
+        probe.calls,
+        baseline + 1,
+        reason: 'one drop must not be counted twice by tick plus confirm',
+      );
+      expect(service.isOnline.value, isTrue);
+
+      service.stop();
+    });
+  });
 }
 
 /// A probe backed by a mutable flag instead of a network call.
@@ -330,6 +460,13 @@ class _FakeProbe {
   /// When set, the next probe hangs on this future instead of answering.
   Completer<bool>? gate;
 
+  /// When set, probes throw this instead of answering.
+  ///
+  /// The service classifies a thrown [SocketException] by its errno, so a fake
+  /// refusal is a real `SocketException` carrying a real errno rather than a
+  /// bespoke test type — that keeps the classification under test.
+  Object? error;
+
   /// Whether a probe has already parked on [gate].
   bool gateTaken = false;
 
@@ -340,6 +477,8 @@ class _FakeProbe {
       gateTaken = true;
       return pending.future;
     }
+    final failure = error;
+    if (failure != null) return Future<bool>.error(failure);
     return Future<bool>.value(reachable);
   }
 }
