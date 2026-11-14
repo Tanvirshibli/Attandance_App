@@ -123,4 +123,61 @@ void main() {
       expect(betaVersionFloor, greaterThan(4000));
     });
   });
+
+  /// Which ABI's offset is subtracted decides whether an update is offered.
+  ///
+  /// A 64-bit handset can run arm64-v8a while having the armeabi-v7a split
+  /// installed. Its build number then carries the armeabi offset (1120), and
+  /// offsetting it with the *device's preferred* ABI subtracts nothing, because
+  /// 1120 is below arm64's 2000. The raw 1120 was compared against the
+  /// manifest's base build 120 and read as "already newer", so those phones were
+  /// never offered another update — the release went out and nothing arrived.
+  group('installed ABI offset', () {
+    test('the installed armeabi split normalises to the base build', () {
+      expect(
+        normalizeVersionCode('1120', abiOffset: abiOffsetFor('armeabi-v7a')),
+        120,
+      );
+    });
+
+    test('using the preferred ABI instead leaves it unnormalised', () {
+      // Pins the exact failure so a future refactor back to getPreferredAbi
+      // cannot look harmless.
+      expect(
+        normalizeVersionCode('1120', abiOffset: abiOffsetFor('arm64-v8a')),
+        1120,
+      );
+    });
+
+    test('so the comparison offers the next build and not a downgrade', () {
+      final installed = normalizeVersionCode(
+        '1120',
+        abiOffset: abiOffsetFor('armeabi-v7a'),
+      );
+
+      expect(
+        isUpdateRequired(installedVersionCode: installed, remoteVersionCode: 120),
+        isFalse,
+        reason: 'already on 120',
+      );
+      expect(
+        isUpdateRequired(installedVersionCode: installed, remoteVersionCode: 121),
+        isTrue,
+        reason: 'build 121 must reach a phone on the 32-bit split',
+      );
+    });
+
+    test('and the arm64 split on an arm64 device is unchanged', () {
+      final installed = normalizeVersionCode(
+        '2120',
+        abiOffset: abiOffsetFor('arm64-v8a'),
+      );
+
+      expect(installed, 120);
+      expect(
+        isUpdateRequired(installedVersionCode: installed, remoteVersionCode: 121),
+        isTrue,
+      );
+    });
+  });
 }
