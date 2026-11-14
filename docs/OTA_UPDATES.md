@@ -298,6 +298,22 @@ After publishing build **N**:
 
 ---
 
+## November 14, 2026 Update (v2.5.4+118) — main channel
+
+**The app blurs itself when the phone is really offline, and comes back on its own.**
+
+> Published from `2.5.4+117` → `2.5.4+118`. Tag `v2.5.4-build118`. Checked after publishing: `version_code` 118 in the manifest and both `arm64-v8a` and `armeabi-v7a` APK entries present.
+
+- **A global foreground connectivity guard wraps the app.** `ConnectivityService` (`lib/services/connectivity_service.dart`) probes real reachability with `Socket.connect` (3 s timeout) against the app's own backend hosts from `AppConfig.authApiBaseUrlCandidates`, falling back to the attendance hosts — online if any host accepts. It samples every 3 s while online and 2 s while offline, needs two consecutive failures before reporting offline, and restores online on the first success so a single dropped packet does not blur the screen. Sampling runs only in the foreground (`resumed` starts it; `paused` / `inactive` / `detached` stop it)
+- **`ConnectivityGuard`** (`lib/widgets/connectivity_guard.dart`) is mounted in `MaterialApp.builder` **outside** the existing `LocationGuard`. Offline it renders a `Stack` with the app under `IgnorePointer` plus `OfflineOverlay`, wrapped in `PopScope(canPop: false)`, so no tap, drag, text-field focus or Android back press reaches the app. The child widget instance is passed through unchanged, so the current screen, its scroll position, typed form input and route stack survive the transition without a reload
+- **`OfflineOverlay`** (`lib/widgets/offline_overlay.dart`) is the blurry screen: `BackdropFilter` at constant sigma 10 over a 55% black scrim, a 250 ms entry (scrim fade + panel rise), a repeating pulse on the icon only, the headline "Can't connect to the internet" and the line "Check your connection — this screen will close automatically when you're back online." It has no button on purpose — nothing is tappable while offline and recovery is automatic
+- **No connectivity plugin was added.** `connectivity_plus`-style plugins only report whether a network interface exists (wifi with a dead upstream or a captive portal still reads as connected) and each one needs a native plugin in the APK. The TCP probe tests actual reachability, adds no native payload so the 32-bit build does not grow, and sends no HTTP request to the PHP app or database — a handshake only. Dev builds that probe production hosts (emulator, Cloudflare tunnel) disable it with `--dart-define=CONNECTIVITY_GUARD_ENABLED=false`, alongside the existing `UPDATE_CHECK_ENABLED`
+- Guard: `test/connectivity_service_test.dart` and `test/connectivity_guard_test.dart`
+
+**Pubspec stays on the prod line at `2.5.4+118`** after this release (the beta line is paused at `2.5.3-beta.1+9036`).
+
+---
+
 ## November 10, 2026 Update (v2.5.4+116) — main channel
 
 **The update check cannot be answered from a cache any more, and it can be run on demand.**

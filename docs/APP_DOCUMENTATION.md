@@ -202,6 +202,21 @@ The app uses a **simple stateful widget architecture** without a state managemen
 - **On-device ML** — No network calls for face matching. ML Kit + TFLite run entirely on-device; templates are uploaded/fetched over JWT.
 - **Camera via camera package** — Uses the Flutter `camera` package for live camera preview directly within the app. Registration and check-in share `FaceCaptureStage` (full preview, one centered dimmed rounded frame, coaching). Auto-capture is gated by size, centering, and hold.
 
+### Guard chain (`main.dart`)
+
+Two guards sit above the Navigator, mounted from `MaterialApp.builder`:
+
+```
+ConnectivityGuard (outermost — offline blur + frozen input)
+  └─ LocationGuard (location check on start and resume)
+        └─ Navigator (every screen, including pushed routes)
+```
+
+- **`ConnectivityGuard` is outermost** so the offline state covers everything the app can show — login, the update screen, the location sheet, and every pushed route. While offline it renders the app under a 55% scrim inside an `IgnorePointer` with a `PopScope(canPop: false)`, so no tap, drag, text-field focus or Android back press reaches it.
+- **The child widget instance is passed through unchanged**, so the screen under the overlay keeps its scroll position, typed form input and route stack; recovery removes the overlay without reloading anything.
+- **`LocationGuard` stays inside it and above the Navigator**, unchanged — its check still covers every screen.
+- Sampling for the guard runs in the foreground only: started on `resumed`, stopped on `paused` / `inactive` / `detached`.
+
 ### Data Flow
 
 ```
@@ -732,6 +747,31 @@ A row widget displaying a single attendance record.
 
 **Status colors**: present→green, absent→red, late→warning, leave→info, weekend→hint gray.
 
+### 9.4 ConnectivityGuard (`connectivity_guard.dart`)
+
+The offline gate mounted outermost in `MaterialApp.builder`.
+
+| Feature | Detail |
+|---|---|
+| **Online** | Returns its `child` untouched — no wrapper, no rebuild of the subtree |
+| **Offline** | `Stack` of the child inside `IgnorePointer` plus `OfflineOverlay` on top |
+| **Input freeze** | `IgnorePointer` blocks taps and drags, so text fields cannot take focus; `PopScope(canPop: false)` blocks the Android back press |
+| **State preservation** | The child widget instance is forwarded unchanged, so scroll position, typed input and the route stack survive both transitions |
+| **Dismissal** | None — there is no control to tap. Recovery is automatic when the service reports online |
+
+### 9.5 OfflineOverlay (`offline_overlay.dart`)
+
+The animated blur screen drawn by `ConnectivityGuard` while offline.
+
+| Feature | Detail |
+|---|---|
+| **Blur** | `BackdropFilter` behind a 55% black scrim; sigma is a constant 10 and is not animated |
+| **Entry** | 250 ms animation — scrim fades in while the panel rises |
+| **Pulse** | Repeating opacity/scale pulse on the icon only; the rest of the overlay is static |
+| **Headline** | "Can't connect to the internet" |
+| **Supporting line** | "Check your connection — this screen will close automatically when you're back online." |
+| **No button** | Deliberate: nothing is tappable while offline, and recovery needs no action |
+
 ---
 
 ## 10. Data Layer
@@ -757,6 +797,19 @@ Face embeddings are **not** stored in SharedPreferences. Valid templates are 192
 ### 10.3 GPS Data
 
 GPS coordinates and reverse-geocoded address are captured at check-in time but **only displayed on the check-in screen**. They are **not persisted** to any storage after the screen is closed.
+
+### 10.4 ConnectivityService (`connectivity_service.dart`)
+
+Singleton (`ConnectivityService.instance`) exposing a `ValueNotifier<bool> isOnline` that starts `true`. `ConnectivityGuard` listens to it; nothing else reads it.
+
+| Aspect | Detail |
+|---|---|
+| **Probe** | `Socket.connect` on a 3 s timeout to the app's own backend hosts from `AppConfig.authApiBaseUrlCandidates`, falling back to the attendance hosts. Online when **any** host accepts the connection |
+| **Payload** | A TCP handshake only — no HTTP request reaches the PHP app or the database |
+| **Intervals** | 3 s while online, 2 s while offline |
+| **Hysteresis** | Two consecutive failures before it reports offline; one success restores online immediately, so a single dropped packet does not blur the screen |
+| **Lifecycle** | Sampling runs only in the foreground — started on `resumed`, stopped on `paused` / `inactive` / `detached` |
+| **Escape hatch** | `--dart-define=CONNECTIVITY_GUARD_ENABLED=false` disables the guard for builds that probe production hosts (emulator, Cloudflare-tunnel dev) |
 
 ---
 
@@ -865,6 +918,10 @@ android:label="PPHL Attendance"
 | `tflite_flutter` | ^0.12.1 | TensorFlow Lite inference for MobileFaceNet |
 | `image` | ^4.8.0 | Image decoding, cropping, resizing, pixel access |
 | `shared_preferences` | ^2.5.4 | Local key-value storage for face embeddings |
+
+### Connectivity: no package added
+
+The offline guard adds **no dependency**. `connectivity_plus`-style plugins only report whether a network interface exists — wifi with a dead upstream, or a captive portal, still reads as connected — and each one ships a native plugin inside the APK. `connectivity_service.dart` probes reachability with a plain `Socket.connect` instead: no native payload (the 32-bit build does not grow) and no HTTP request to the app or database, just a TCP handshake.
 
 ### Dev Dependencies
 
@@ -1097,11 +1154,20 @@ The current stack uses **ML Kit for detection** and **MobileFaceNet for identity
 ### `lib/services/app_settings_service.dart`
 - `SharedPreferences`-backed singleton (`AppSettingsService.instance`) for account-independent preferences: currently the `face_capture_bangla` flag, exposed as a `ValueNotifier` and read once in `main()`.
 
+### `lib/services/connectivity_service.dart`
+- `ConnectivityService.instance` — singleton with a `ValueNotifier<bool> isOnline` (starts `true`). Probes real reachability with `Socket.connect` (3 s timeout) against `AppConfig.authApiBaseUrlCandidates`, falling back to the attendance hosts; online if any host accepts. 3 s interval online, 2 s offline, two consecutive failures before reporting offline, one success restores it. Sampling runs only while the app is foregrounded (`resumed` starts it, `paused`/`inactive`/`detached` stop it).
+
 ### `lib/utils/face_guide_placement.dart`
 - Maps the live ML Kit box onto the preview frame (`BoxFit.cover`, front-camera X-mirror). Capture is blocked until the face fills ~70% of frame height. Straight poses use a 12% center inset; turned poses use 4%.
 
 ### `lib/widgets/face_oval_guide.dart`
 - Legacy face placement oval overlay. Current capture screens use `FaceCaptureStage` instead.
+
+### `lib/widgets/connectivity_guard.dart`
+- The outermost guard in `MaterialApp.builder`. Online it returns the child untouched. Offline it renders a `Stack` with the app under `IgnorePointer` plus `OfflineOverlay`, wrapped in `PopScope(canPop: false)` so no tap, drag, text-field focus or Android back press reaches the app. The child instance is forwarded unchanged, so the current screen, its scroll position, typed form input and route stack survive the transition.
+
+### `lib/widgets/offline_overlay.dart`
+- The animated blur screen: `BackdropFilter` (constant sigma 10) over a 55% black scrim, a 250 ms entry (scrim fade + panel rise) and a repeating pulse on the icon only. Headline "Can't connect to the internet", supporting line "Check your connection — this screen will close automatically when you're back online." No button, by design — nothing is tappable while offline and recovery is automatic.
 
 ### `lib/widgets/stat_card.dart` (68 lines)
 - Compact stat card widget for dashboard.

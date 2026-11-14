@@ -166,6 +166,17 @@ markets, the visits and follow-ups tabs of a farm/dealer, the party list inside 
 - A filtered dead end says so ("No parties match these filters") and offers `Clear filters`; the genuine
   "nothing created yet" copy is unchanged and takes precedence when the list is truly empty.
 
+### Offline guard (v2.5.4+118)
+
+When the phone loses real connectivity, the app blurs itself instead of failing form by form.
+
+- The screen goes blurry under a dark scrim and says **"Can't connect to the internet"**, with "Check your connection — this screen will close automatically when you're back online."
+- **Nothing is tappable while it is up** — no taps, drags, keyboard focus or Android back press reach the screen behind it. There is no button to press and no way to dismiss it from the app.
+- It **clears itself the moment the connection is back**. Your screen, its scroll position, anything already typed into a form and the route stack are all exactly where they were — nothing reloads.
+- The check runs only while the app is open, and it tolerates a single dropped packet, so a brief blip on the move does not blur the screen.
+- Recovery can also be triggered by getting closer to the backend rather than by the OS interface alone: a wifi network with a dead upstream counts as offline, because the app tests reachability rather than whether an interface exists.
+- Dev builds that probe production hosts from an emulator or tunnel can turn the guard off with `--dart-define=CONNECTIVITY_GUARD_ENABLED=false`.
+
 ### Zone scoping (v2.3.0+92)
 
 - Marketing lists, form pickers and dealer dropdowns are narrowed to the employee's zones. HRM returns `user.zoneId` as a **jsonb array**; the app resolves those ids against Sales `GET /api/get-zone` (public) for names and districts
