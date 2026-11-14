@@ -298,6 +298,23 @@ After publishing build **N**:
 
 ---
 
+## November 14, 2026 Update (v2.5.4+119) — main channel
+
+**The offline screen is now built around a large animated signal mark, and a dropped connection is
+noticed in about a second and a half instead of up to nine.**
+
+> Published from `2.5.4+118` → `2.5.4+119`. Tag `v2.5.4-build119`. Checked after publishing: `version_code` 119 in the manifest and both `arm64-v8a` and `armeabi-v7a` APK entries present with sizes and SHA-256.
+
+- **Detection latency was the real defect, not the drawing.** A drop cost up to ~9 s: a 3 s poll tick, a 3 s TCP timeout, then a second sample on the next tick. The timeout is now 800 ms, the online interval 1.5 s (offline retry 1 s), and the confirming sample runs on its own timer the moment the first one fails. A refusal (errno 101/111/113 — airplane mode, a pulled link) confirms at once; an ambiguous timeout waits 250 ms so one congested handshake cannot count twice. Typical case ≈ 1.5-2 s, silent blackhole ≈ 3.5 s
+- **The two-failure tolerance is unchanged.** Only *how fast the second sample arrives* changed, never that one is skipped, so a single dropped packet still does not blur the screen mid-punch. The poll tick is suppressed while a confirm is pending, so one real drop cannot satisfy the rule by itself
+- **`OfflineOverlay` is an artwork-led screen.** A 176 dp signal cluster — two expanding pulse rings 2.6 s apart, a slow 9 s orbiting accent dot, and a 96 dp disc holding a 42 dp Phosphor duotone cloud-slash with a warm halo — sits above deliberately small type (headline 17, body 13, caption 11). It uses `AppType`/`AppColors`/`AppSpace`/`AppRadius` and Phosphor icons instead of the raw `TextStyle`s and Material icon it shipped with in `+118`, and the copy drops the em dash: "Check your connection. This screen closes automatically when you're back online."
+- **Motion and access.** Only transform and opacity animate; the halo pulse is a second controller on the icon's own layer, a `RepaintBoundary` wraps the card, and the blur sigma is constant. `MediaQuery.maybeDisableAnimationsOf` drops both repeating loops on devices with animations off, and `Semantics(liveRegion: true)` announces the state
+- Guard: `test/connectivity_service_test.dart` gains a "detection latency" group (confirm-without-tick, refusal fast path, timeout delay, no double count); all four fail if the confirm probe is removed. `test/connectivity_guard_test.dart` is unchanged and still passes
+
+**Pubspec stays on the prod line at `2.5.4+119`** after this release (the beta line is paused at `2.5.3-beta.1+9036`).
+
+---
+
 ## November 14, 2026 Update (v2.5.4+118) — main channel
 
 **The app blurs itself when the phone is really offline, and comes back on its own.**

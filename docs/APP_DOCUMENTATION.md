@@ -761,15 +761,21 @@ The offline gate mounted outermost in `MaterialApp.builder`.
 
 ### 9.5 OfflineOverlay (`offline_overlay.dart`)
 
-The animated blur screen drawn by `ConnectivityGuard` while offline.
+The animated blur screen drawn by `ConnectivityGuard` while offline. The artwork is deliberately the
+largest thing on the screen and the type is small: a moving target reads as a state the app is working
+through, where a large headline over a small icon reads as an error dialog.
 
 | Feature | Detail |
 |---|---|
-| **Blur** | `BackdropFilter` behind a 55% black scrim; sigma is a constant 10 and is not animated |
-| **Entry** | 250 ms animation — scrim fades in while the panel rises |
-| **Pulse** | Repeating opacity/scale pulse on the icon only; the rest of the overlay is static |
+| **Blur** | `BackdropFilter` at a constant sigma 12 behind a radial vignette (lighter at the centre, darker at the edges; off-centre weight pushes the eye to the card) |
+| **Artwork** | 176 dp signal cluster: two expanding pulse rings (2.6 s, half a cycle apart), an orbiting accent dot (9 s), and a 96 dp disc holding a 42 dp Phosphor duotone cloud-slash with a warm halo |
+| **Type** | Deliberately small under the artwork: headline 17 (Poppins w600), body 13, status caption 11 |
+| **Entry** | 280 ms — fade, 0.96→1 scale and a short rise |
+| **Status pill** | "Reconnecting" with a breathing dot, so the wait reads as active rather than stalled |
+| **Reduced motion** | `MediaQuery.maybeDisableAnimationsOf` drops both repeating loops (static ring, static dot) and keeps the one-shot arrival fade |
 | **Headline** | "Can't connect to the internet" |
-| **Supporting line** | "Check your connection — this screen will close automatically when you're back online." |
+| **Supporting line** | "Check your connection. This screen closes automatically when you're back online." |
+| **Accessibility** | `Semantics(liveRegion: true)` announces the state; a screen-reader user gets no other signal that the app changed |
 | **No button** | Deliberate: nothing is tappable while offline, and recovery needs no action |
 
 ---
@@ -1155,7 +1161,7 @@ The current stack uses **ML Kit for detection** and **MobileFaceNet for identity
 - `SharedPreferences`-backed singleton (`AppSettingsService.instance`) for account-independent preferences: currently the `face_capture_bangla` flag, exposed as a `ValueNotifier` and read once in `main()`.
 
 ### `lib/services/connectivity_service.dart`
-- `ConnectivityService.instance` — singleton with a `ValueNotifier<bool> isOnline` (starts `true`). Probes real reachability with `Socket.connect` (3 s timeout) against `AppConfig.authApiBaseUrlCandidates`, falling back to the attendance hosts; online if any host accepts. 3 s interval online, 2 s offline, two consecutive failures before reporting offline, one success restores it. Sampling runs only while the app is foregrounded (`resumed` starts it, `paused`/`inactive`/`detached` stop it).
+- `ConnectivityService.instance` — singleton with a `ValueNotifier<bool> isOnline` (starts `true`). Probes real reachability with `Socket.connect` (800 ms timeout) against `AppConfig.authApiBaseUrlCandidates`, falling back to the attendance hosts; online if any host accepts. Two consecutive failures before reporting offline, one success restores it. **1.5 s interval online, 1 s offline, and the confirming sample fires on its own timer the moment the first one fails** rather than waiting for the next tick; a refusal (errno 101/111/113) confirms at once, a timeout after 250 ms. Worst case from drop to overlay is roughly 1.5-3.5 s depending on whether the link is refused or silently blackholed. Sampling runs only while the app is foregrounded (`resumed` starts it, `paused`/`inactive`/`detached` stop it).
 
 ### `lib/utils/face_guide_placement.dart`
 - Maps the live ML Kit box onto the preview frame (`BoxFit.cover`, front-camera X-mirror). Capture is blocked until the face fills ~70% of frame height. Straight poses use a 12% center inset; turned poses use 4%.
@@ -1167,7 +1173,7 @@ The current stack uses **ML Kit for detection** and **MobileFaceNet for identity
 - The outermost guard in `MaterialApp.builder`. Online it returns the child untouched. Offline it renders a `Stack` with the app under `IgnorePointer` plus `OfflineOverlay`, wrapped in `PopScope(canPop: false)` so no tap, drag, text-field focus or Android back press reaches the app. The child instance is forwarded unchanged, so the current screen, its scroll position, typed form input and route stack survive the transition.
 
 ### `lib/widgets/offline_overlay.dart`
-- The animated blur screen: `BackdropFilter` (constant sigma 10) over a 55% black scrim, a 250 ms entry (scrim fade + panel rise) and a repeating pulse on the icon only. Headline "Can't connect to the internet", supporting line "Check your connection — this screen will close automatically when you're back online." No button, by design — nothing is tappable while offline and recovery is automatic.
+- The animated blur screen: `BackdropFilter` at constant sigma 12 behind a radial vignette, a 280 ms arrival (fade + scale + rise), and a 176 dp signal cluster above deliberately small type — two expanding pulse rings, an orbiting accent dot, and a 42 dp Phosphor duotone cloud-slash on a 96 dp disc. Headline "Can't connect to the internet", supporting line "Check your connection. This screen closes automatically when you're back online.", and a small "Reconnecting" status pill. Only transform and opacity animate, `MediaQuery.maybeDisableAnimationsOf` drops both repeating loops, and `Semantics(liveRegion: true)` announces the state. No button, by design — nothing is tappable while offline and recovery is automatic.
 
 ### `lib/widgets/stat_card.dart` (68 lines)
 - Compact stat card widget for dashboard.

@@ -166,6 +166,21 @@ markets, the visits and follow-ups tabs of a farm/dealer, the party list inside 
 - A filtered dead end says so ("No parties match these filters") and offers `Clear filters`; the genuine
   "nothing created yet" copy is unchanged and takes precedence when the list is truly empty.
 
+### Offline guard redesign and faster detection (v2.5.4+119)
+
+The offline screen now leads with a large animated signal mark instead of a big block of text, and the
+app notices a dropped connection much sooner.
+
+- The centrepiece is a large pulsing signal cluster — expanding rings around a cloud-slash mark with a slow
+  orbiting dot — with the wording kept small beneath it. The screen reads as "the app is working on it"
+  rather than as an error dialog.
+- A drop is now detected in roughly **1.5-2 seconds** instead of up to 9. The check runs every 1.5 s, each
+  connection attempt gives up after 0.8 s, and the confirming second check starts the moment the first one
+  fails instead of waiting for the next cycle.
+- A brief blip is still tolerated: one failed check never blurs the screen, only two in a row.
+- Recovery is just as quick — the overlay clears within about a second of the connection returning.
+- Motion is trimmed on devices with animations turned off, and the state is announced to screen readers.
+
 ### Offline guard (v2.5.4+118)
 
 When the phone loses real connectivity, the app blurs itself instead of failing form by form.
