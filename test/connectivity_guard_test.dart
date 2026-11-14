@@ -1,6 +1,7 @@
 import 'package:employee_attendance/services/connectivity_service.dart';
 import 'package:employee_attendance/widgets/connectivity_guard.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 /// Widget coverage for the foreground connectivity guard.
@@ -105,7 +106,9 @@ void main() {
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
     final service = buildService();
     await tester.pumpWidget(
-      MaterialApp(home: ConnectivityGuard(service: service, child: child)),
+      MaterialApp(
+        home: ConnectivityGuard(service: service, child: child),
+      ),
     );
     await tester.pump();
     return service;
@@ -122,8 +125,11 @@ void main() {
     });
 
     testWidgets('leaving the foreground cancels sampling', (tester) async {
-      addTearDown(() => tester.binding
-          .handleAppLifecycleStateChanged(AppLifecycleState.resumed));
+      addTearDown(
+        () => tester.binding.handleAppLifecycleStateChanged(
+          AppLifecycleState.resumed,
+        ),
+      );
       final service = await pumpGuard(tester, const SizedBox.expand());
       await pumpUntilSamples(tester, 1);
       final parked = probeCalls;
@@ -150,8 +156,11 @@ void main() {
     });
 
     testWidgets('returning to the foreground resumes sampling', (tester) async {
-      addTearDown(() => tester.binding
-          .handleAppLifecycleStateChanged(AppLifecycleState.resumed));
+      addTearDown(
+        () => tester.binding.handleAppLifecycleStateChanged(
+          AppLifecycleState.resumed,
+        ),
+      );
       final service = await pumpGuard(tester, const SizedBox.expand());
       tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
       await tester.pump();
@@ -167,6 +176,42 @@ void main() {
   });
 
   group('ConnectivityGuard - offline overlay', () {
+    testWidgets('the overlay brings its own Material', (tester) async {
+      final service = await pumpGuard(
+        tester,
+        const Scaffold(body: Center(child: _TapCounter())),
+      );
+      await goOffline(tester);
+      expect(find.text(headline), findsOneWidget);
+
+      // The symptom first: the resolved style must carry no underline. Without a
+      // Material above, this is `TextDecoration.underline` with a double style
+      // and a yellow colour — the yellow double underline a user sees.
+      final paragraph = tester.renderObject<RenderParagraph>(
+        find.text(headline),
+      );
+      expect(
+        paragraph.text.style?.decoration ?? TextDecoration.none,
+        isNot(TextDecoration.underline),
+        reason: 'the missing-Material double underline must not be inherited',
+      );
+
+      // And the mechanism that prevents it: the nearest Material above the
+      // headline must be the overlay's own transparent one.
+      final nearest = tester.widget<Material>(
+        find
+            .ancestor(of: find.text(headline), matching: find.byType(Material))
+            .first,
+      );
+      expect(
+        nearest.type,
+        MaterialType.transparency,
+        reason: 'the overlay must not rely on an ancestor for its text style',
+      );
+
+      service.stop();
+    });
+
     testWidgets('the headline waits for the second failure', (tester) async {
       final service = await pumpGuard(
         tester,
@@ -189,8 +234,9 @@ void main() {
       service.stop();
     });
 
-    testWidgets('the headline clears on the first successful sample',
-        (tester) async {
+    testWidgets('the headline clears on the first successful sample', (
+      tester,
+    ) async {
       final service = await pumpGuard(
         tester,
         const Scaffold(body: Center(child: _TapCounter())),
@@ -206,8 +252,9 @@ void main() {
   });
 
   group('ConnectivityGuard - blocking', () {
-    testWidgets('taps underneath are blocked, then work again online',
-        (tester) async {
+    testWidgets('taps underneath are blocked, then work again online', (
+      tester,
+    ) async {
       final service = await pumpGuard(
         tester,
         const Scaffold(body: Center(child: _TapCounter())),
@@ -249,8 +296,9 @@ void main() {
       service.stop();
     });
 
-    testWidgets('a system back does not leave the screen while offline',
-        (tester) async {
+    testWidgets('a system back does not leave the screen while offline', (
+      tester,
+    ) async {
       final service = buildService();
       await tester.pumpWidget(
         MaterialApp(
@@ -304,8 +352,9 @@ void main() {
   });
 
   group('ConnectivityGuard - child state', () {
-    testWidgets('a half-typed field keeps its text across the round trip',
-        (tester) async {
+    testWidgets('a half-typed field keeps its text across the round trip', (
+      tester,
+    ) async {
       final service = await pumpGuard(
         tester,
         const Scaffold(

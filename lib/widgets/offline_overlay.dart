@@ -67,9 +67,10 @@ class _OfflineOverlayState extends State<OfflineOverlay>
     _fade = CurvedAnimation(parent: _entry, curve: Curves.easeOutCubic);
     // 0.96 -> 1: enough to read as "this arrived" without the bounce that makes
     // a blocking screen feel like a toy.
-    _scale = Tween<double>(begin: 0.96, end: 1).animate(
-      CurvedAnimation(parent: _entry, curve: Curves.easeOutCubic),
-    );
+    _scale = Tween<double>(
+      begin: 0.96,
+      end: 1,
+    ).animate(CurvedAnimation(parent: _entry, curve: Curves.easeOutCubic));
     _slide = Tween<Offset>(
       begin: const Offset(0, 0.04),
       end: Offset.zero,
@@ -162,70 +163,83 @@ class _OfflineOverlayState extends State<OfflineOverlay>
   }
 
   Widget _card() {
-    return Semantics(
-      // A blocking state is worth announcing: a screen-reader user arriving here
-      // from a failed action gets no other signal that the app changed.
-      liveRegion: true,
-      container: true,
-      label: "Can't connect to the internet. "
-          'Check your connection. This screen closes automatically when '
-          "you're back online.",
-      child: Container(
-        constraints: const BoxConstraints(maxWidth: 330),
-        padding: const EdgeInsets.fromLTRB(
-          AppSpace.lg,
-          AppSpace.xl,
-          AppSpace.lg,
-          AppSpace.lg,
-        ),
-        decoration: BoxDecoration(
-          gradient: const LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [Color(0xFF19203A), Color(0xFF0C1222)],
+    // A transparent Material has to wrap this card, and not for ink.
+    //
+    // Flutter's fallback text style when nothing above a `Text` provides a
+    // Material is the debug "missing Material" style: a yellow double underline.
+    // This overlay is mounted in `MaterialApp.builder`, beside the Navigator
+    // rather than inside a route, so unlike every screen (which gets its
+    // Material from a Scaffold) it inherits none and every line came out
+    // double-underlined. A transparency Material supplies the theme's real text
+    // style and paints nothing, so the card's own gradient stays visible.
+    return Material(
+      type: MaterialType.transparency,
+      child: Semantics(
+        // A blocking state is worth announcing: a screen-reader user arriving here
+        // from a failed action gets no other signal that the app changed.
+        liveRegion: true,
+        container: true,
+        label:
+            "Can't connect to the internet. "
+            'Check your connection. This screen closes automatically when '
+            "you're back online.",
+        child: Container(
+          constraints: const BoxConstraints(maxWidth: 330),
+          padding: const EdgeInsets.fromLTRB(
+            AppSpace.lg,
+            AppSpace.xl,
+            AppSpace.lg,
+            AppSpace.lg,
           ),
-          borderRadius: BorderRadius.circular(AppRadius.xxl),
-          // White at low alpha rather than AppColors.line: this card sits over
-          // arbitrary content, and the light-mode border token disappears
-          // against a pale screen while a low-alpha white holds its edge on any
-          // backdrop.
-          border: Border.all(color: Colors.white.withValues(alpha: 0.09)),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.45),
-              blurRadius: 40,
-              offset: const Offset(0, 18),
+          decoration: BoxDecoration(
+            gradient: const LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [Color(0xFF19203A), Color(0xFF0C1222)],
             ),
-          ],
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            _cluster(),
-            const SizedBox(height: AppSpace.lg),
-            Text(
-              "Can't connect to the internet",
-              textAlign: TextAlign.center,
-              style: AppType.h3.copyWith(
-                fontSize: 17,
-                height: 1.3,
-                letterSpacing: -0.2,
-                color: Colors.white,
+            borderRadius: BorderRadius.circular(AppRadius.xxl),
+            // White at low alpha rather than AppColors.line: this card sits over
+            // arbitrary content, and the light-mode border token disappears
+            // against a pale screen while a low-alpha white holds its edge on any
+            // backdrop.
+            border: Border.all(color: Colors.white.withValues(alpha: 0.09)),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.45),
+                blurRadius: 40,
+                offset: const Offset(0, 18),
               ),
-            ),
-            const SizedBox(height: AppSpace.xs),
-            Text(
-              'Check your connection. This screen closes automatically when '
-              "you're back online.",
-              textAlign: TextAlign.center,
-              style: AppType.bodySm.copyWith(
-                height: 1.55,
-                color: Colors.white.withValues(alpha: 0.66),
+            ],
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _cluster(),
+              const SizedBox(height: AppSpace.lg),
+              Text(
+                "Can't connect to the internet",
+                textAlign: TextAlign.center,
+                style: AppType.h3.copyWith(
+                  fontSize: 17,
+                  height: 1.3,
+                  letterSpacing: -0.2,
+                  color: Colors.white,
+                ),
               ),
-            ),
-            const SizedBox(height: AppSpace.md),
-            _statusPill(),
-          ],
+              const SizedBox(height: AppSpace.xs),
+              Text(
+                'Check your connection. This screen closes automatically when '
+                "you're back online.",
+                textAlign: TextAlign.center,
+                style: AppType.bodySm.copyWith(
+                  height: 1.55,
+                  color: Colors.white.withValues(alpha: 0.66),
+                ),
+              ),
+              const SizedBox(height: AppSpace.md),
+              _statusPill(),
+            ],
+          ),
         ),
       ),
     );
@@ -321,10 +335,8 @@ class _OfflineOverlayState extends State<OfflineOverlay>
 
     return AnimatedBuilder(
       animation: _spin,
-      builder: (context, child) => Transform.rotate(
-        angle: _spin.value * 2 * math.pi,
-        child: child,
-      ),
+      builder: (context, child) =>
+          Transform.rotate(angle: _spin.value * 2 * math.pi, child: child),
       child: SizedBox(
         width: 132,
         height: 132,
