@@ -8,6 +8,7 @@ import 'permissions_gate_screen.dart';
 import 'server_bootstrap_screen.dart';
 import '../services/app_permissions_service.dart';
 import '../services/auth_service.dart';
+import '../services/biometric_preferences_service.dart';
 import '../services/camera_prewarm.dart';
 import '../services/endpoint_config_service.dart';
 import '../services/face_recognition_service.dart';
@@ -119,6 +120,16 @@ class _AppBootstrapState extends State<AppBootstrap>
   /// Everything the app needs once the user is known to be signed in, none of
   /// which the shell cannot render without.
   Future<void> _warmAuthenticatedSession() async {
+    // A stored token means a live session, so the biometric switches the login
+    // and check-in gates read can be pulled now — before the officer taps
+    // check-in. Previously only the Profile screen ever called this, so a cold
+    // start decided both gates from an empty (and wrongly face-enabled) mirror.
+    try {
+      await BiometricPreferencesService.instance.load();
+    } catch (_) {
+      // Offline: the local mirror stands in, as it does for the profile below.
+    }
+
     try {
       final profile = await _authService.getCurrentUserProfile();
       _faceRecognitionService.hydrateRegistration(profile?.faceRegistration);

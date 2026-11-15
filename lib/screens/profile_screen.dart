@@ -13,6 +13,8 @@ import '../models/auth_user_profile.dart';
 import '../services/app_settings_service.dart';
 import '../services/auth_service.dart';
 import '../services/app_update_service.dart';
+import '../services/biometric_auth_service.dart';
+import '../services/biometric_preferences_service.dart';
 import '../services/face_recognition_service.dart';
 import 'login_screen.dart';
 import 'app_update_screen.dart';
@@ -37,12 +39,21 @@ class _ProfileScreenState extends State<ProfileScreen> {
   String _appVersionLabel = '…';
   bool _faceRegistered = true;
   bool _checkingUpdates = false;
+  bool _biometricBusy = false;
 
   @override
   void initState() {
     super.initState();
     _loadProfile();
     _loadAppVersion();
+    _loadBiometricPreferences();
+  }
+
+  /// The server is the source of truth for the switches, but the local mirror is
+  /// what renders instantly and what the offline app must fall back to.
+  Future<void> _loadBiometricPreferences() async {
+    await BiometricPreferencesService.instance.load();
+    if (mounted) setState(() {});
   }
 
   Future<void> _loadAppVersion() async {
@@ -216,6 +227,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 delay: const Duration(milliseconds: 350),
                 duration: const Duration(milliseconds: 500),
                 child: _buildSettingsSection(),
+              ),
+            ),
+          ),
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
+              child: FadeInUp(
+                delay: const Duration(milliseconds: 400),
+                duration: const Duration(milliseconds: 500),
+                child: _buildBiometricsSection(),
               ),
             ),
           ),
@@ -678,6 +699,270 @@ class _ProfileScreenState extends State<ProfileScreen> {
         ],
       ),
     );
+  }
+
+  /// Fingerprint and face switches. Both replace a password with something the
+  /// device holds, so each row states the prerequisite it needs before it can be
+  /// switched on rather than silently doing nothing.
+  Widget _buildBiometricsSection() {
+    final settings = AppSettingsService.instance;
+    final preferences = BiometricPreferencesService.instance;
+    final hasCredential = settings.hasBiometricCredential;
+
+    return Container(
+      decoration: BoxDecoration(
+        color: legacy.AppColors.surface,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: legacy.AppColors.shadow.withValues(alpha: 0.06),
+            blurRadius: 15,
+            offset: const Offset(0, 5),
+          ),
+        ],
+      ),
+      child: Column(
+        children: [
+          _biometricSectionHeader('Biometrics'),
+          _biometricSwitchTile(
+            icon: Icons.fingerprint_rounded,
+            title: 'Fingerprint login',
+            subtitle: hasCredential
+                ? 'Sign in without typing your password'
+                : 'Enroll your fingerprint first',
+            value: preferences.loginFingerprint.value,
+            enabled: hasCredential,
+            color: ui.AppColors.mGeo,
+            onChanged: () => _saveBiometricPreferences(
+              loginFingerprint: !preferences.loginFingerprint.value,
+            ),
+          ),
+          _settingsDivider(),
+          _biometricSwitchTile(
+            icon: Icons.face_retouching_natural_rounded,
+            title: 'Face login',
+            subtitle: _faceRegistered
+                ? 'Sign in with a face scan'
+                : 'Register your face first',
+            value: preferences.loginFace.value,
+            enabled: _faceRegistered,
+            color: ui.AppColors.mHr,
+            onChanged: () => _toggleFaceLogin(),
+          ),
+          _settingsDivider(),
+          _biometricSwitchTile(
+            icon: Icons.fingerprint_rounded,
+            title: 'Fingerprint check-in',
+            subtitle: hasCredential
+                ? 'Confirm the punch with your fingerprint'
+                : 'Enroll your fingerprint first',
+            value: preferences.checkinFingerprint.value,
+            enabled: hasCredential,
+            color: ui.AppColors.mGeo,
+            onChanged: () => _saveBiometricPreferences(
+              checkinFingerprint: !preferences.checkinFingerprint.value,
+            ),
+          ),
+          _settingsDivider(),
+          _biometricSwitchTile(
+            icon: Icons.face_retouching_natural_rounded,
+            title: 'Face check-in',
+            subtitle: _faceRegistered
+                ? 'Confirm the punch with a face scan'
+                : 'Register your face first',
+            value: preferences.checkinFace.value,
+            enabled: _faceRegistered,
+            color: ui.AppColors.mAttendance,
+            onChanged: () => _saveBiometricPreferences(
+              checkinFace: !preferences.checkinFace.value,
+            ),
+          ),
+          _settingsDivider(),
+          _settingsTile(
+            Icons.fingerprint_rounded,
+            hasCredential ? 'Remove fingerprint' : 'Enroll fingerprint',
+            null,
+            color: hasCredential ? ui.AppColors.mAttendance : ui.AppColors.mGeo,
+            trailing: hasCredential ? 'Enrolled' : null,
+            onTap: _biometricBusy
+                ? null
+                : hasCredential
+                    ? _removeFingerprint
+                    : _enrollFingerprint,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _biometricSectionHeader(String title) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+      child: Align(
+        alignment: Alignment.centerLeft,
+        child: Text(
+          title,
+          style: GoogleFonts.poppins(
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+            color: legacy.AppColors.textSecondary,
+            letterSpacing: 0.6,
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Mirrors [_faceCaptureLanguageTile]'s layout, with an extra `enabled` gate:
+  /// a disabled row keeps the switch visible (so the feature is discoverable)
+  /// but explains what is missing instead of pretending to work.
+  Widget _biometricSwitchTile({
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required bool value,
+    required bool enabled,
+    required Color color,
+    required VoidCallback onChanged,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      child: ListTile(
+        contentPadding: EdgeInsets.zero,
+        enabled: enabled,
+        leading: Container(
+          width: 38,
+          height: 38,
+          decoration: BoxDecoration(
+            color: color.withValues(alpha: enabled ? 0.08 : 0.04),
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Icon(
+            icon,
+            size: 18,
+            color: enabled ? color : legacy.AppColors.textHint,
+          ),
+        ),
+        title: Text(
+          title,
+          style: GoogleFonts.poppins(
+            fontSize: 14,
+            fontWeight: FontWeight.w500,
+            color: enabled
+                ? legacy.AppColors.textPrimary
+                : legacy.AppColors.textHint,
+          ),
+        ),
+        subtitle: Text(
+          subtitle,
+          style: GoogleFonts.poppins(
+            fontSize: 12,
+            color: legacy.AppColors.textHint,
+          ),
+        ),
+        trailing: Switch(
+          value: value,
+          onChanged: enabled ? (_) => onChanged() : null,
+        ),
+      ),
+    );
+  }
+
+  Future<void> _saveBiometricPreferences({
+    bool? loginFace,
+    bool? loginFingerprint,
+    bool? checkinFace,
+    bool? checkinFingerprint,
+  }) async {
+    final saved = await BiometricPreferencesService.instance.save(
+      loginFace: loginFace,
+      loginFingerprint: loginFingerprint,
+      checkinFace: checkinFace,
+      checkinFingerprint: checkinFingerprint,
+    );
+    if (!mounted) return;
+    setState(() {});
+    if (!saved) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'The server did not accept that biometric setting. Check your '
+            'connection and try again.',
+          ),
+        ),
+      );
+    }
+  }
+
+  /// Face login is the one switch with a local side effect: the token it
+  /// refreshes from must be captured while a session exists, and dropped when
+  /// the feature is switched off.
+  Future<void> _toggleFaceLogin() async {
+    final enabled = !BiometricPreferencesService.instance.loginFace.value;
+    final saved =
+        await BiometricPreferencesService.instance.save(loginFace: enabled);
+    if (!mounted) return;
+    setState(() {});
+    if (!saved) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'The server did not accept that biometric setting. Check your '
+            'connection and try again.',
+          ),
+        ),
+      );
+      return;
+    }
+    await AppSettingsService.instance.setBiometricFaceLoginEnabled(enabled);
+    if (enabled) {
+      await _authService.storeFaceLoginSecrets();
+    } else {
+      await _authService.clearFaceLoginSecrets();
+    }
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _enrollFingerprint() async {
+    setState(() => _biometricBusy = true);
+    final result = await BiometricAuthService.instance.enrollFingerprint();
+    if (!mounted) return;
+    setState(() => _biometricBusy = false);
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(result.message)));
+  }
+
+  Future<void> _removeFingerprint() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Remove fingerprint?'),
+        content: const Text(
+          'This device will stop being able to sign in or check in with your '
+          'fingerprint. Your face and password still work.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('Remove'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    setState(() => _biometricBusy = true);
+    final result = await BiometricAuthService.instance.revoke();
+    if (!mounted) return;
+    setState(() => _biometricBusy = false);
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(result.message)));
   }
 
   /// On-demand update check, with the build and channel that decide it on the

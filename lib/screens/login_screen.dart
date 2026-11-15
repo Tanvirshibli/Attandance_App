@@ -6,7 +6,9 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../config/theme.dart';
 import '../screens/main_shell.dart';
+import '../services/app_settings_service.dart';
 import '../services/auth_service.dart';
+import '../services/biometric_login_service.dart';
 import '../services/endpoint_config_service.dart';
 import '../services/face_recognition_service.dart';
 import '../widgets/voice_input_field.dart';
@@ -26,6 +28,9 @@ class _LoginScreenState extends State<LoginScreen> {
   bool _obscurePassword = true;
   bool _rememberMe = true;
   bool _isLoading = false;
+
+  /// Which biometric sign-in is currently running, if any.
+  BiometricLoginMethod? _biometricBusy;
 
   @override
   void initState() {
@@ -86,11 +91,157 @@ class _LoginScreenState extends State<LoginScreen> {
     // app feel slow between tapping Sign In and seeing anything.
     unawaited(EndpointConfigService.instance.refreshConfig());
     unawaited(_hydrateProfileInBackground());
+    // Face sign-in needs a token to refresh from, and a password login is the
+    // only moment the app is allowed to write one.
+    if (AppSettingsService.instance.biometricFaceLoginEnabled.value) {
+      unawaited(_authService.storeFaceLoginSecrets());
+    }
 
     if (!mounted) return;
 
     Navigator.of(context).pushReplacement(
       MaterialPageRoute(builder: (_) => const MainShell()),
+    );
+  }
+
+  Future<void> _handleBiometricLogin(BiometricLoginMethod method) async {
+    if (_biometricBusy != null) return;
+
+    setState(() => _biometricBusy = method);
+
+    final outcome = switch (method) {
+      BiometricLoginMethod.fingerprint =>
+        await BiometricLoginService.instance.loginWithFingerprint(),
+      BiometricLoginMethod.face =>
+        await BiometricLoginService.instance.loginWithFace(
+          _faceRecognitionService,
+        ),
+    };
+
+    if (!mounted) return;
+    setState(() => _biometricBusy = null);
+
+    if (!outcome.success) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(outcome.message)),
+      );
+      return;
+    }
+
+    unawaited(EndpointConfigService.instance.refreshConfig());
+    unawaited(_hydrateProfileInBackground());
+
+    if (!mounted) return;
+
+    Navigator.of(context).pushReplacement(
+      MaterialPageRoute(builder: (_) => const MainShell()),
+    );
+  }
+
+  void _cancelBiometricLogin() {
+    BiometricLoginService.instance.cancel();
+  }
+
+  /// Passwordless sign-in, offered only when this device actually holds what the
+  /// flow needs. Nothing here is required to sign in — the password form stays
+  /// the primary path and is never hidden or reordered.
+  Widget _buildBiometricSection() {
+    final settings = AppSettingsService.instance;
+    final fingerprintReady = settings.biometricLoginFingerprint.value &&
+        settings.hasBiometricCredential;
+    final faceReady = settings.biometricFaceLoginEnabled.value;
+    if (!fingerprintReady && !faceReady) return const SizedBox.shrink();
+
+    final busy = _biometricBusy;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const SizedBox(height: 20),
+        Row(
+          children: [
+            Expanded(child: Divider(color: AppColors.divider, height: 1)),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              child: Text(
+                'or sign in with',
+                style: GoogleFonts.poppins(
+                  fontSize: 11,
+                  color: AppColors.textHint,
+                ),
+              ),
+            ),
+            Expanded(child: Divider(color: AppColors.divider, height: 1)),
+          ],
+        ),
+        const SizedBox(height: 14),
+        if (fingerprintReady)
+          _biometricButton(
+            method: BiometricLoginMethod.fingerprint,
+            icon: Icons.fingerprint_rounded,
+            label: 'fingerprint',
+            busy: busy,
+          ),
+        if (fingerprintReady && faceReady) const SizedBox(height: 10),
+        if (faceReady)
+          _biometricButton(
+            method: BiometricLoginMethod.face,
+            icon: Icons.face_retouching_natural_rounded,
+            label: 'face',
+            busy: busy,
+          ),
+        if (busy != null)
+          Padding(
+            padding: const EdgeInsets.only(top: 6),
+            child: TextButton(
+              onPressed: _cancelBiometricLogin,
+              child: Text(
+                'Cancel',
+                style: GoogleFonts.poppins(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.primary,
+                ),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+
+  Widget _biometricButton({
+    required BiometricLoginMethod method,
+    required IconData icon,
+    required String label,
+    required BiometricLoginMethod? busy,
+  }) {
+    final isBusy = busy == method;
+    return SizedBox(
+      height: 46,
+      child: OutlinedButton.icon(
+        onPressed: busy != null ? null : () => _handleBiometricLogin(method),
+        style: OutlinedButton.styleFrom(
+          side: BorderSide(color: AppColors.primary.withValues(alpha: 0.4)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(14),
+          ),
+        ),
+        icon: isBusy
+            ? const SizedBox(
+                width: 18,
+                height: 18,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
+            : Icon(icon, size: 20, color: AppColors.primary),
+        label: Text(
+          isBusy ? 'Verifying…' : 'Sign in with $label',
+          style: GoogleFonts.poppins(
+            fontSize: 14,
+            fontWeight: FontWeight.w600,
+            color: AppColors.primary,
+          ),
+        ),
+      ),
     );
   }
 
@@ -384,6 +535,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                   ),
                           ),
                         ),
+                        _buildBiometricSection(),
                       ],
                     ),
                   ),
