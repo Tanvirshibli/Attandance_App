@@ -8,7 +8,49 @@ switched on from **Profile → Biometrics** after a normal password sign-in.
 
 ---
 
-## 1. What "fingerprint enrolment" means on Android
+## 0. Login works out of the box (2026-11-16)
+
+Three defects made biometric sign-in dead in the shipped build:
+
+1. **Face login checked memory, not the device.** `loginWithFace` gated on
+   `isFaceRegistered()`, which reads the in-memory template. That template is
+   only hydrated *after* a successful login, so on the login screen it was
+   always empty and every attempt answered "needs a face registered on this
+   server". The template is now **persisted** in secure storage
+   (`face_login_template`) on every hydrate and rehydrated by
+   `restorePersistedRegistration()` at login and on cold start. Only the derived
+   embedding is stored, never an image.
+2. **The face button keyed off the wrong flag.** It rendered from
+   `biometricFaceLoginEnabled`, which `setBiometricFaceLoginEnabled` could leave
+   out of step with `biometricLoginFace`. The two are now kept in sync, and the
+   button additionally requires a template that is actually on the device.
+3. **Fingerprint login needed a manual enrolment that never happened.** The
+   Keystore key and credential exist only after "Enrol fingerprint", so a fresh
+   install never showed the button. Enrolment is now automatic (below).
+
+### Defaults and auto-enrolment
+
+- All four biometric settings start **on**. The first successful password login
+  pushes them to the server once (`applyDefaultsOnce`, flagged locally) because
+  the backend defaults every preference to false and would otherwise overwrite
+  them on the next `load()`. A user who later turns something off keeps that
+  choice; the push never runs again.
+- After that push, `ensureEnrolled()` asks **once** ("Enable fingerprint
+  sign-in?") and remembers the answer. On acceptance it creates the Keystore key
+  and registers the public half. A phone with no usable sensor, or no fingerprint
+  set up in Android, defers with the reason — Android cannot create a biometric
+  for the user. A deliberate "Remove fingerprint" records `declined`.
+- The same preparation runs from the dashboard, because a restored session never
+  passes through the login form.
+
+### A punch can never be blocked by a missing method
+
+The server only requires a fingerprint authorization when
+`checkin.fingerprint` is on **and** `checkin.face` is off. Face is on by default,
+so either method works and a phone without a fingerprint still punches. The app
+refuses any save that would turn **both** check-in methods off, and likewise both
+login methods (`BiometricPreferencesService.invalidCombinationReason`).
+
 
 Android provides **no API that reads fingerprint templates**. A fingerprint is
 captured and matched by the system, inside the sensor's trusted component, and
