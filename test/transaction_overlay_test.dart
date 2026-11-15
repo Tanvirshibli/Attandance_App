@@ -43,6 +43,29 @@ void main() {
     expect(find.text('home'), findsOneWidget);
   });
 
+  testWidgets('the label sits under a Material so no debug underline is drawn',
+      (tester) async {
+    await tester.pumpWidget(_host());
+
+    final completer = Completer<int>();
+    TransactionUiService.instance.run(
+      () => completer.future,
+      label: 'Checking in',
+    );
+    await tester.pump();
+
+    final label = find.text('Checking in');
+    expect(label, findsOneWidget);
+    expect(
+      find.ancestor(of: label, matching: find.byType(Material)),
+      findsWidgets,
+    );
+    expect(
+      tester.widget<Text>(label).style?.decoration,
+      isNot(TextDecoration.underline),
+    );
+  });
+
   testWidgets('shows a cross on failure and rethrows', (tester) async {
     await tester.pumpWidget(_host());
 

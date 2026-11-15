@@ -55,7 +55,12 @@ class _TransactionBarrier extends StatelessWidget {
         child: ColoredBox(
           color: const Color(0xB3000000),
           child: Center(
-            child: Column(
+            // MaterialApp.builder sits above the Navigator, so nothing here has
+            // a Material ancestor. Without one, Flutter paints the debug double
+            // yellow underline under every Text in this overlay.
+            child: Material(
+              type: MaterialType.transparency,
+              child: Column(
               mainAxisSize: MainAxisSize.min,
               children: <Widget>[
                 AnimatedSwitcher(
@@ -110,6 +115,7 @@ class _TransactionBarrier extends StatelessWidget {
                   ),
                 ],
               ],
+              ),
             ),
           ),
         ),

@@ -23,6 +23,10 @@ state of **user-initiated** work; `TransactionOverlay`
   closes), manual dashboard refresh.
 - Background work stays silent on purpose: internet-time resync, geo pings, OTA
   check, silent token refresh and integrity reporting.
+- The overlay is the only widget in the tree with no `Material` above it
+  (`MaterialApp.builder` wraps the Navigator), so its contents are wrapped in
+  `Material(type: MaterialType.transparency)`. Without that, Flutter paints the
+  debug double yellow underline under every `Text` in the barrier.
 
 ## Dashboard card
 
@@ -39,6 +43,13 @@ state of **user-initiated** work; `TransactionOverlay`
 The face/fingerprint chooser is a centred dialog instead of a bottom sheet. Its
 inputs are cached (`_faceRegistered`, `_fingerprintAvailable`), so the dialog
 opens without awaiting the platform channel.
+
+The tap path also matters: `_openCheckFlow` used to `await` a punch-list reload
+before deciding what to offer, and that round-trip was the whole delay. The
+guards now run on cached state (`_punchBlockReason`) so the dialog is the first
+thing drawn, the reload runs concurrently, and the guards are re-evaluated after
+the choice — before the camera opens — so a stale cache can never start a scan
+for a punch the server will refuse.
 
 ## Fingerprint availability
 
