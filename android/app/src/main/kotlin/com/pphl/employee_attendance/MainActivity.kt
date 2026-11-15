@@ -24,6 +24,9 @@ class MainActivity : FlutterFragmentActivity() {
 
         private const val DEVICE_INTEGRITY_CHANNEL =
             "com.pphl.attendance/device_integrity"
+
+        /** A package name, which is what a real mock-location provider looks like. */
+        private val MOCK_PROVIDER_PATTERN = Regex("^[A-Za-z][A-Za-z0-9_.]*$")
     }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
@@ -70,7 +73,7 @@ class MainActivity : FlutterFragmentActivity() {
             DEVICE_INTEGRITY_CHANNEL,
         ).setMethodCallHandler { call, result ->
             when (call.method) {
-                "isMockLocationEnabled" -> result.success(isMockLocationEnabled())
+                "mockLocationStatus" -> result.success(mockLocationStatus())
                 "isEmulator" -> result.success(isEmulator())
                 // Informational: sent in the event detail so support can tell a
                 // developer-options phone from a tampered one.
@@ -81,42 +84,71 @@ class MainActivity : FlutterFragmentActivity() {
     }
 
     /**
-     * Whether mock locations can currently reach this app.
+     * Diagnostics for the mock-location probe, never a verdict.
      *
-     * Two independent signals, because they catch different attackers:
-     *
-     *  - `OPSTR_MOCK_LOCATION` checked against this app's own uid. That is the
-     *    per-app AppOps switch a developer turns on, and it is what matters when
-     *    *this* app is the one calling a mock provider.
-     *  - `Settings.Secure["mock_location"]`. That key holds the package name of
-     *    the app currently installed as the system's mock-location provider, and
-     *    it is what matters when a separate fake-GPS app is feeding positions to
-     *    every app on the phone.
-     *
-     * Anything that throws is reported as "not enabled": a settings read failing
-     * must not turn into a block on an honest employee.
+     * Both signals below are unreliable as a blocking test, which is why the app
+     * no longer uses them that way. `OPSTR_MOCK_LOCATION` defaults to allowed for
+     * an app's own uid on many ROMs, so it reads as "mock location on" on a phone
+     * where nobody ever selected a mock app. `mock_location` frequently holds the
+     * literal "0" once a provider is cleared, so "non-empty" is not "a provider is
+     * set". Only a fix that Android itself flags as mocked may block a punch.
      */
-    private fun isMockLocationEnabled(): Boolean {
-        try {
+    private fun mockLocationStatus(): Map<String, Any?> {
+        val opMode = try {
             val appOps = getSystemService(Context.APP_OPS_SERVICE) as AppOpsManager
-            val mode = appOps.checkOpNoThrow(
-                AppOpsManager.OPSTR_MOCK_LOCATION,
-                Process.myUid(),
-                packageName,
-            )
-            if (mode == AppOpsManager.MODE_ALLOWED) return true
+            val mode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                appOps.unsafeCheckOpNoThrow(
+                    AppOpsManager.OPSTR_MOCK_LOCATION,
+                    Process.myUid(),
+                    packageName,
+                )
+            } else {
+                appOps.checkOpNoThrow(
+                    AppOpsManager.OPSTR_MOCK_LOCATION,
+                    Process.myUid(),
+                    packageName,
+                )
+            }
+            when (mode) {
+                AppOpsManager.MODE_ALLOWED -> "allowed"
+                AppOpsManager.MODE_IGNORED -> "ignored"
+                AppOpsManager.MODE_ERRORED -> "errored"
+                AppOpsManager.MODE_DEFAULT -> "default"
+                else -> "unknown"
+            }
         } catch (_: Exception) {
-            // Fall through to the provider check.
+            "unknown"
         }
 
-        return try {
-            val provider = Settings.Secure.getString(contentResolver, "mock_location")
-            // Some ROMs store the literal string "null" once the provider is
-            // cleared, so a non-empty value is not enough on its own.
-            !provider.isNullOrBlank() && !provider.equals("null", ignoreCase = true)
+        val providerPackage = try {
+            normalizeMockProviderPackage(
+                Settings.Secure.getString(contentResolver, "mock_location"),
+            )
         } catch (_: Exception) {
-            false
+            null
         }
+
+        return mapOf(
+            "opMode" to opMode,
+            "providerPackage" to providerPackage,
+            "adbEnabled" to isAdbEnabled(),
+        )
+    }
+
+    /**
+     * Reduces the raw `mock_location` setting to a package name, or null.
+     *
+     * ROMs write "", "0", "false" or "null" when nothing is selected, so only a
+     * value that actually looks like a package counts.
+     */
+    private fun normalizeMockProviderPackage(raw: String?): String? {
+        val value = raw?.trim().orEmpty()
+        if (value.isEmpty()) return null
+        if (value == "0" || value.equals("false", true) || value.equals("null", true)) {
+            return null
+        }
+        if (value == packageName) return null
+        return if (MOCK_PROVIDER_PATTERN.matches(value)) value else null
     }
 
     /** Developer options / USB debugging left on. Context for the event only. */

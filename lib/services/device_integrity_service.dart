@@ -63,7 +63,7 @@ class IntegrityViolation {
   /// The one-line instruction shown under [message] on the lock screen.
   String get fixHint => switch (type) {
         IntegrityType.gpsMock =>
-          'Turn off the fake-GPS app, then sign in again.',
+          'Turn the fake-GPS app off, then sign in again.',
         IntegrityType.mockLocationApp =>
           'Developer options → turn off "Select mock location app".',
         IntegrityType.gpsUntrusted =>
@@ -183,9 +183,18 @@ class DeviceIntegrityService {
   // --- Native checks -------------------------------------------------------
 
   bool? _emulator;
-  bool? _mockLocationEnabled;
-  bool? _adbEnabled;
+  Map<String, dynamic> _mockDiagnostics = const <String, dynamic>{};
   int _nativeCheckedAtMs = -1000000;
+
+  /// What this phone says about mock locations: the AppOps mode and the package
+  /// set as the system provider, plus whether developer options are on.
+  ///
+  /// Reported with every event for support. It can never raise a violation: both
+  /// of these signals are unreliable on stock ROMs (the op defaults to allowed
+  /// for the app's own uid, and the setting commonly holds "0" rather than being
+  /// absent), and using either one as a blocking test locked honest phones.
+  Map<String, dynamic> get mockDiagnostics =>
+      Map<String, dynamic>.unmodifiable(_mockDiagnostics);
 
   // --- GPS session state ---------------------------------------------------
 
@@ -236,21 +245,10 @@ class DeviceIntegrityService {
       return null;
     }
 
-    if (await _isMockLocationEnabled()) {
-      return IntegrityViolation(
-        type: IntegrityType.mockLocationApp,
-        title: 'Mock location is switched on',
-        message: 'A mock-location app is set as this phone\'s location '
-            'provider, so the position sent with an attendance punch would not '
-            'be where you actually are. Turn off "Select mock location app" in '
-            'Developer options, then try again.',
-        detail: <String, dynamic>{
-          'mockLocationEnabled': true,
-          'adbEnabled': await _isAdbEnabled(),
-          'accuracyMetres': position.accuracy,
-        },
-      );
-    }
+    // Refreshed so any event that follows describes the same moment as the
+    // verdict. Diagnostic only: see [mockDiagnostics] for why a device-level
+    // probe must never decide whether a punch is allowed.
+    await _refreshNativeIfStale();
 
     if (position.isMocked) {
       return IntegrityViolation(
@@ -258,8 +256,7 @@ class DeviceIntegrityService {
         title: 'Fake GPS detected',
         message: 'Android flagged this position as a mock fix, which means a '
             'fake-GPS app supplied it instead of the phone\'s own receiver. '
-            'Turn off the fake-GPS app (and any developer "mock location" '
-            'setting), then take the punch again.',
+            'Remove or disable that app, then take the punch again.',
         detail: <String, dynamic>{
           'isMocked': true,
           'latitude': position.latitude,
@@ -360,8 +357,7 @@ class DeviceIntegrityService {
     _pendingClockJump = null;
     _clockAnchorDevice = null;
     _clockAnchorElapsedMs = 0;
-    _mockLocationEnabled = null;
-    _adbEnabled = null;
+    _mockDiagnostics = const <String, dynamic>{};
     _nativeCheckedAtMs = -1000000;
   }
 
@@ -483,25 +479,37 @@ class DeviceIntegrityService {
 
   void _onTick() => _sampleClock();
 
-  Future<bool> _isMockLocationEnabled() async {
-    await _refreshNativeIfStale();
-    return _mockLocationEnabled ?? false;
-  }
-
-  Future<bool> _isAdbEnabled() async {
-    await _refreshNativeIfStale();
-    return _adbEnabled ?? false;
-  }
-
   Future<void> _refreshNativeIfStale() async {
     final ageMs = _monotonic.elapsedMilliseconds - _nativeCheckedAtMs;
     if (ageMs >= 0 && ageMs < _nativeCacheTtl.inMilliseconds) return;
     _nativeCheckedAtMs = _monotonic.elapsedMilliseconds;
 
-    // Both asked on one refresh, so the detail map always describes the same
-    // moment as the verdict.
-    _mockLocationEnabled = await _invokeBool('isMockLocationEnabled');
-    _adbEnabled = await _invokeBool('isAdbEnabled');
+    final status = await _invokeMap('mockLocationStatus');
+    if (status == null) return;
+
+    _mockDiagnostics = <String, dynamic>{
+      'opMode': status['opMode']?.toString() ?? 'unknown',
+      'providerPackage': status['providerPackage']?.toString(),
+      'adbEnabled': status['adbEnabled'] == true,
+    };
+  }
+
+  /// Seeds the probe and the emulator verdict so the rules can be exercised
+  /// without a platform channel.
+  @visibleForTesting
+  void debugSetMockProbe({
+    String opMode = 'allowed',
+    String? providerPackage,
+    bool adbEnabled = false,
+    bool emulator = false,
+  }) {
+    _mockDiagnostics = <String, dynamic>{
+      'opMode': opMode,
+      'providerPackage': providerPackage,
+      'adbEnabled': adbEnabled,
+    };
+    _emulator = emulator;
+    _nativeCheckedAtMs = _monotonic.elapsedMilliseconds;
   }
 
   /// Any native failure is "no signal", never "guilty": the channel is absent
@@ -519,6 +527,23 @@ class DeviceIntegrityService {
     } catch (error) {
       debugPrint('DeviceIntegrityService: $method failed ($error)');
       return false;
+    }
+  }
+
+  Future<Map<String, dynamic>?> _invokeMap(String method) async {
+    if (!_isAndroid) return null;
+    try {
+      final raw = await _channel.invokeMethod<Map<Object?, Object?>>(method);
+      if (raw == null) return null;
+      return raw.map((key, value) => MapEntry(key.toString(), value));
+    } on MissingPluginException {
+      return null;
+    } on PlatformException catch (error) {
+      debugPrint('DeviceIntegrityService: $method failed (${error.code})');
+      return null;
+    } catch (error) {
+      debugPrint('DeviceIntegrityService: $method failed ($error)');
+      return null;
     }
   }
 
