@@ -22,8 +22,12 @@ Three defects made biometric sign-in dead in the shipped build:
    embedding is stored, never an image.
 2. **The face button keyed off the wrong flag.** It rendered from
    `biometricFaceLoginEnabled`, which `setBiometricFaceLoginEnabled` could leave
-   out of step with `biometricLoginFace`. The two are now kept in sync, and the
-   button additionally requires a template that is actually on the device.
+   out of step with `biometricLoginFace`. The two are now kept in sync.
+   Visibility is driven by the **switch alone**: an early fix also required a
+   persisted template before showing the button, which hid it from every existing
+   user whose template had not been captured yet. The template is now captured
+   when the switch is turned on in Profile (`_persistFaceTemplateForLogin`), and
+   a missing template is reported inside the flow instead of hiding the button.
 3. **Fingerprint login needed a manual enrolment that never happened.** The
    Keystore key and credential exist only after "Enrol fingerprint", so a fresh
    install never showed the button. Enrolment is now automatic (below).

@@ -926,6 +926,24 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
   }
 
+  /// Copies the current face template into the store the login screen reads.
+  ///
+  /// A no-op when the session has no face registered: the switch is already
+  /// saved, and the login flow will say what is missing.
+  Future<void> _persistFaceTemplateForLogin() async {
+    try {
+      final service = FaceRecognitionService();
+      await service.restorePersistedRegistration();
+      final profile = await _authService.getCurrentUserProfile();
+      final registration = profile?.faceRegistration;
+      if (registration != null) {
+        service.hydrateRegistration(registration);
+      }
+    } catch (error) {
+      debugPrint('ProfileScreen: could not persist the face template ($error)');
+    }
+  }
+
   /// Face login is the one switch with a local side effect: the token it
   /// refreshes from must be captured while a session exists, and dropped when
   /// the feature is switched off.
@@ -949,6 +967,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
     await AppSettingsService.instance.setBiometricFaceLoginEnabled(enabled);
     if (enabled) {
       await _authService.storeFaceLoginSecrets();
+      // Face sign-in verifies against the template persisted on this device, and
+      // the login screen has no session to fetch one from. Capture it here, while
+      // a session and the in-memory template both exist — otherwise enabling the
+      // switch would leave the face button with nothing to check against.
+      await _persistFaceTemplateForLogin();
     } else {
       await _authService.clearFaceLoginSecrets();
     }

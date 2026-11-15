@@ -35,10 +35,6 @@ class _LoginScreenState extends State<LoginScreen> {
   /// Which biometric sign-in is currently running, if any.
   BiometricLoginMethod? _biometricBusy;
 
-  /// True when this device holds a persisted face template, so the face button
-  /// is only offered when it can actually complete.
-  bool _faceLoginReady = false;
-
   @override
   void initState() {
     super.initState();
@@ -46,18 +42,15 @@ class _LoginScreenState extends State<LoginScreen> {
     _refreshFaceLoginReadiness();
   }
 
-  /// Reads the stored template so the face button reflects what the device can
-  /// really do, without a session.
+  /// Keeps the persisted face template in memory so a cold start can verify
+  /// without a session. Purely a warm-up: the face button is offered from the
+  /// switch, not from this, so a missing template never hides it.
   Future<void> _refreshFaceLoginReadiness() async {
-    bool ready;
     try {
-      ready = await _faceRecognitionService.restorePersistedRegistration();
+      await _faceRecognitionService.restorePersistedRegistration();
     } catch (error) {
       debugPrint('LoginScreen: could not read the stored face ($error)');
-      ready = false;
     }
-    if (!mounted || _faceLoginReady == ready) return;
-    setState(() => _faceLoginReady = ready);
   }
 
   Future<void> _loadSavedLoginState() async {
@@ -237,10 +230,11 @@ class _LoginScreenState extends State<LoginScreen> {
     final settings = AppSettingsService.instance;
     final fingerprintReady = settings.biometricLoginFingerprint.value &&
         settings.hasBiometricCredential;
-    // The flag alone is not enough: a face template must actually be on this
-    // device, otherwise the button leads to a dead end. The template is stored
-    // at enrolment and survives a cold start.
-    final faceReady = settings.biometricLoginFace.value && _faceLoginReady;
+    // Gated on the switch, not on a template being present: a user who turns
+    // face login on must see the button immediately. The flow itself reports the
+    // precise reason when the device has no template or no wrapped token yet,
+    // and re-enabling the switch in Profile captures the template.
+    final faceReady = settings.biometricLoginFace.value;
     if (!fingerprintReady && !faceReady) return const SizedBox.shrink();
 
     final busy = _biometricBusy;
