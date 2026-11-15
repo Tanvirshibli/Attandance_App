@@ -9,6 +9,8 @@ class AttendanceSummary {
     this.totalDays = 0,
     this.parsedFromKnownShape = false,
     this.dayTypes = const {},
+    this.holidaysUnknown = false,
+    this.rowsUnknown = false,
   });
 
   final int presentCount;
@@ -23,6 +25,16 @@ class AttendanceSummary {
   /// Calendar day → normalized lowercase attendance type, built from
   /// daily `rows` (see [fromDailyRows]). Empty for other sources.
   final Map<DateTime, String> dayTypes;
+
+  /// True when the holiday calendar could not be loaded for this window.
+  ///
+  /// The counts are then not trustworthy for holidays: the screen must show a
+  /// dash rather than present a number that silently counted those days as
+  /// absences.
+  final bool holidaysUnknown;
+
+  /// True when HRM's daily rows could not be loaded for this window.
+  final bool rowsUnknown;
 
   bool get hasAnyKpi =>
       presentCount > 0 ||
@@ -125,6 +137,8 @@ class AttendanceSummary {
     AttendanceClassification classification, {
     Map<DateTime, String> dayTypes = const {},
     bool parsedFromKnownShape = true,
+    bool holidaysUnknown = false,
+    bool rowsUnknown = false,
   }) {
     return AttendanceSummary(
       presentCount: classification.presentCount,
@@ -134,6 +148,8 @@ class AttendanceSummary {
       totalDays: classification.countedDays,
       parsedFromKnownShape: parsedFromKnownShape,
       dayTypes: dayTypes,
+      holidaysUnknown: holidaysUnknown,
+      rowsUnknown: rowsUnknown,
     );
   }
 

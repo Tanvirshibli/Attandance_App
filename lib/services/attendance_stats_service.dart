@@ -66,10 +66,12 @@ class AttendanceStatsService {
     // typed equivalent of `Future.wait`: it overlaps them and hands back a
     // record, so no cast is needed. Both futures below already swallow their
     // own failures, so this cannot raise `ParallelWaitError`.
-    final (summaryRows, calendar) = await (
+    final (summaryRows, calendarResult) = await (
       _loadSummary(employeeId: employeeId, from: from, to: to),
       _loadCalendar(employeeId: employeeId, from: from, to: to),
     ).wait;
+
+    final calendar = calendarResult.calendar;
 
     // Empty when the fetch failed: an unknown row type must not outvote a
     // punch, so classification falls through to the punch/calendar rules.
@@ -84,10 +86,31 @@ class AttendanceStatsService {
       isWeeklyOff: isDefaultWeeklyOff,
     );
 
+    // A day that is still running is not an absence. An employee who opens the
+    // dashboard before punching must not see today counted against them, which
+    // is what made the Absent tile look wrong every morning.
+    final finalised = withoutOpenTodayAbsence(classification);
+
     return AttendanceSummary.fromClassification(
-      classification,
+      finalised,
       dayTypes: rowTypes,
+      holidaysUnknown: !calendarResult.ok,
+      rowsUnknown: summaryRows == null,
     );
+  }
+
+  /// Drops today from the counts when it has no evidence yet.
+  ///
+  /// Today is included in the window on purpose — a punched, leave or holiday
+  /// day must count — but an unpunched in-progress day is not an absence.
+  static AttendanceClassification withoutOpenTodayAbsence(
+    AttendanceClassification classification, {
+    DateTime? today,
+  }) {
+    final buckets = Map<DateTime, DayBucket>.from(classification.buckets);
+    final day = calendarDay(today ?? DateTime.now());
+    if (buckets[day] == DayBucket.absent) buckets.remove(day);
+    return AttendanceClassification(buckets);
   }
 
   /// Calendar days that carry a real punch — rejected rows and empty rows are
@@ -163,23 +186,27 @@ class AttendanceStatsService {
     }
   }
 
-  /// Holidays and approved leave for the window, or an empty calendar.
-  Future<AttendanceCalendar> _loadCalendar({
+  /// Holidays and approved leave for the window.
+  ///
+  /// The `ok` flag matters: without the calendar a holiday and an approved leave
+  /// day both look like an absence, so the caller must show "unknown" instead of
+  /// a number that was inflated by a failed request.
+  Future<({AttendanceCalendar calendar, bool ok})> _loadCalendar({
     required int employeeId,
     required DateTime from,
     required DateTime to,
   }) async {
     try {
-      return await _calendarService.load(
+      final calendar = await _calendarService.load(
         employeeId: employeeId,
         from: from,
         to: to,
       );
+      return (calendar: calendar, ok: true);
     } catch (error) {
-      // Without the calendar an approved leave day can look like an absence and
-      // a holiday like an absent day, but a KPI load must never fail a screen.
+      // A KPI load must never fail a screen, but it must not lie either.
       debugPrint('AttendanceStatsService._loadCalendar failed: $error');
-      return const AttendanceCalendar();
+      return (calendar: const AttendanceCalendar(), ok: false);
     }
   }
 }
