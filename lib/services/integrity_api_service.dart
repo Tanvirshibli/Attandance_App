@@ -113,7 +113,12 @@ class IntegrityApiService {
 
     return <String, dynamic>{
       'type': violation.wireName,
-      'detail': violation.detail,
+      'detail': <String, dynamic>{
+        ...violation.detail,
+        // Reported, never judged: the phone's own mock-location settings are
+        // kept so support can see what the probe said when a punch was refused.
+        'mockDiagnostics': DeviceIntegrityService.instance.mockDiagnostics,
+      },
       'deviceIdentifier': deviceIdentifier,
       'deviceName': deviceName,
       // Null when nothing has synced: the backend must be able to tell "the app

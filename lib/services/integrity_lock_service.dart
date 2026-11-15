@@ -177,6 +177,11 @@ class IntegrityLockService {
         return;
       }
 
+      if (isRetiredFalsePositive(violation)) {
+        await _clearPersisted();
+        return;
+      }
+
       _violation.value = violation;
     } catch (error) {
       debugPrint('IntegrityLockService: could not restore the lock ($error)');
@@ -225,6 +230,12 @@ class IntegrityLockService {
       debugPrint('IntegrityLockService: could not clear the lock ($error)');
     }
   }
+
+  /// A violation type that was found to fire on honest phones and is no longer
+  /// produced by any rule. A lock persisted by an older build is dropped on
+  /// upgrade instead of re-locking the employee who is stuck behind it.
+  static bool isRetiredFalsePositive(IntegrityViolation violation) =>
+      violation.type == IntegrityType.mockLocationApp;
 
   static Object? _decode(String raw) {
     try {
