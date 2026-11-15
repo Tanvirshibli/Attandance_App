@@ -548,18 +548,25 @@ class _AttendanceClockCardState extends State<AttendanceClockCard>
           textBaseline: TextBaseline.alphabetic,
           children: [
             Flexible(
-              child: Text(
-                punchText,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: GoogleFonts.poppins(
-                  fontSize: 26,
-                  height: 1.1,
-                  fontWeight: FontWeight.w700,
-                  color: punchTime == '--'
-                      ? Colors.white.withValues(alpha: 0.45)
-                      : Colors.white,
-                  fontFeatures: const [FontFeature.tabularFigures()],
+              // The punch time is presented once, here. The sync pulse lives on
+              // this value so a submitting punch still reads as "in progress".
+              child: SyncingTime(
+                syncing: isCheckOut
+                    ? widget.syncingCheckOut
+                    : widget.syncingCheckIn,
+                child: Text(
+                  punchText,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: GoogleFonts.poppins(
+                    fontSize: 26,
+                    height: 1.1,
+                    fontWeight: FontWeight.w700,
+                    color: punchTime == '--'
+                        ? Colors.white.withValues(alpha: 0.45)
+                        : Colors.white,
+                    fontFeatures: const [FontFeature.tabularFigures()],
+                  ),
                 ),
               ),
             ),
@@ -612,15 +619,6 @@ class _AttendanceClockCardState extends State<AttendanceClockCard>
           ),
         ),
         const SizedBox(height: 6),
-        SyncingTime(
-          syncing: isCheckOut ? widget.syncingCheckOut : widget.syncingCheckIn,
-          child: Text(
-            punchText,
-            style: ui.AppType.micro.copyWith(
-              color: Colors.white.withValues(alpha: 0.75),
-            ),
-          ),
-        ),
         if (reason != null)
           Padding(
             padding: const EdgeInsets.only(top: 2),

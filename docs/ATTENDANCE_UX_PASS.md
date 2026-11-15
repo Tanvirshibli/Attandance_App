@@ -34,7 +34,9 @@ state of **user-initiated** work; `TransactionOverlay`
   `formatMeridiem` are pure and unit-tested).
 - Check-in and check-out times are the visual anchor: `CHECK-IN` / `CHECK-OUT`
   labels with 26 px bold, tabular figures, `--:--` when absent so the card does
-  not jump.
+  not jump. The time is presented **once**, above the button — the small
+  duplicate under each button was removed, and its submitting pulse moved onto
+  the large value (`SyncingTime`).
 - The assigned shift has its own block under the date ("ASSIGNED SHIFT" +
   name), and turns amber with "No shift assigned" when the profile has none.
 
