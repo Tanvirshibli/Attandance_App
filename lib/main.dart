@@ -6,8 +6,12 @@ import 'package:flutter/services.dart';
 import 'config/app_config.dart';
 import 'config/theme.dart';
 import 'services/app_settings_service.dart';
+import 'services/device_integrity_service.dart';
 import 'services/geo_tracking_service.dart';
+import 'services/integrity_lock_service.dart';
+import 'services/internet_time_service.dart';
 import 'widgets/connectivity_guard.dart';
+import 'widgets/integrity_guard.dart';
 import 'widgets/location_guard.dart';
 import 'widgets/update_gate.dart';
 
@@ -27,6 +31,11 @@ void main() async {
   // AppBootstrap calls ensureEnabledIfAllowed() once permissions are confirmed,
   // so tracking still starts; only the token registration moves later.
   unawaited(_initializeBackgroundServices());
+
+  // Also not awaited: the internet clock is allowed to answer late, and the
+  // integrity lock re-covers the app through its notifier when a persisted lock
+  // is restored a frame or two after launch.
+  unawaited(_initializeIntegrity());
 
   SystemChrome.setSystemUIOverlayStyle(
     const SystemUiOverlayStyle(
@@ -48,6 +57,25 @@ Future<void> _initializeBackgroundServices() async {
   }
 }
 
+Future<void> _initializeIntegrity() async {
+  try {
+    // Keystore read only — no network — so it lands within a frame or two of
+    // the first paint. A device that was locked when the app was closed must be
+    // locked again before the employee can reach the punch screen.
+    await IntegrityLockService.instance.restore();
+  } catch (error) {
+    debugPrint('Integrity lock restore failed: $error');
+  }
+
+  // Open the clock-watch window with the session, not with the first punch.
+  DeviceIntegrityService.instance.startMonitoring();
+
+  // The 15-minute cadence, then the first reading. `sync` coalesces with the
+  // timer's own calls and never throws, so neither can break startup.
+  InternetTimeService.instance.startAutoResync();
+  unawaited(InternetTimeService.instance.sync());
+}
+
 class AttendEaseApp extends StatelessWidget {
   const AttendEaseApp({super.key});
 
@@ -64,10 +92,19 @@ class AttendEaseApp extends StatelessWidget {
       // gone the app cannot resolve its location gate either, and an offline
       // overlay that is itself covered by a "location is off" sheet would tell
       // the user to fix the wrong thing. The outer guard wins.
+      //
+      // The integrity lock is outermost of all three. A device that failed an
+      // integrity check must not be able to hide behind a "location is off" or
+      // "you are offline" sheet — those are states the user can also create, so
+      // ordering the tampering gate last would let it be buried by turning Wi-Fi
+      // off.
       builder: (context, child) {
-        final app = LocationGuard(child: child ?? const SizedBox.shrink());
-        if (!AppConfig.connectivityGuardEnabled) return app;
-        return ConnectivityGuard(child: app);
+        final content = child ?? const SizedBox.shrink();
+        final located = LocationGuard(child: content);
+        final guarded = AppConfig.connectivityGuardEnabled
+            ? ConnectivityGuard(child: located)
+            : located;
+        return IntegrityGuard(child: guarded);
       },
       home: const UpdateGate(),
     );
