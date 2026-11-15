@@ -298,6 +298,26 @@ After publishing build **N**:
 
 ---
 
+## November 14, 2026 Update (v2.5.5+9038) — beta channel
+
+**Fingerprint login, fingerprint check-in and face login.**
+
+> Pubspec is `2.5.5+9038`, i.e. the beta band (9000+). Publish to the beta channel; production stays on `2.5.4+123` until this is promoted.
+
+- **Fingerprint enrolment is a key binding, not a template.** Android never exposes fingerprint templates to apps, so enrolling generates an auth-per-use **ECDSA P-256** key in the Android Keystore (`setUserAuthenticationRequired`, `setInvalidatedByBiometricEnrollment`, API 30+ `setUserAuthenticationParameters(0, AUTH_BIOMETRIC_STRONG)`), uploads the **public** half to `POST /api/v1/mobile/biometric-credentials`, and signs server nonces behind the system `BiometricPrompt`. Signatures are ECDSA `SHA256withECDSA`, DER, base64
+- **New native channel** `com.pphl.attendance/biometric_keystore` (`BiometricKeystoreChannel.kt`) over `androidx.biometric:biometric:1.1.0`. `MainActivity` is now a `FlutterFragmentActivity` because `BiometricPrompt` is hosted by a `FragmentActivity`; manifest gains `USE_BIOMETRIC` plus `USE_FINGERPRINT` capped at API 28. Only one prompt can be in flight — a second `sign` is refused rather than queued
+- **Fingerprint login** — challenge (`purpose: "login"`) → prompt → `POST /api/v1/mobile/biometric-login` → `AuthService.applyBiometricSession`, which stores the token and runs the same hydration a password login does. No password involved
+- **Face login** — up to 3 front-camera captures verified with `FaceRecognitionService.verifyFace` at the check-in thresholds, then `POST /api/v1/refresh` with a token held in `flutter_secure_storage` (new dependency, `^9.2.4`) and `applyBiometricSession` on the response. The password is never stored for this
+- **Both login buttons live under the password form** on the login screen, appear only when the flow is set up on that device, and have a spinner, a **Cancel** path and a plain-language failure message
+- **Check-in chooses a method** — Home opens `CheckInScreen(method: face | fingerprint)`; both enabled shows a small picker sheet, one enabled goes straight to it, and the face-not-registered hard block only applies when fingerprint check-in is not enabled. The fingerprint path authorises via `POST /api/v1/mobile/biometric-punch-authorization` and the punch now sends `biometric_method` (+ `biometric_authorization_id`)
+- **Profile → Biometrics** has the four switches and *Enroll* / *Remove fingerprint*. Switching toggles go through `BiometricPreferencesService` → `PUT /api/v1/mobile/biometric-preferences`, optimistically with rollback (422 included); a switch whose prerequisite is missing is disabled with the reason as its subtitle
+- **Key invalidation is handled** — a fingerprint set change raises `KeyPermanentlyInvalidatedException`, which revokes the server credential, deletes the key, clears the local flags and tells the user to sign in with the password and re-enrol
+- Endpoint keys `biometric.challenge`, `biometric.login`, `biometric.punchAuthorization`, `biometric.credentials` (+ `.register`, `.delete`) and `biometric.preferences` all resolve on the **HRM** base, beside `face.registration`. Full model and threat model: [`BIOMETRIC_AUTH.md`](BIOMETRIC_AUTH.md)
+
+**Pubspec stays on `2.5.5+9038`** after this release.
+
+---
+
 ## November 14, 2026 Update (v2.5.4+123) — main channel
 
 **Holidays, approved leave and weekends are no longer counted as absences.**

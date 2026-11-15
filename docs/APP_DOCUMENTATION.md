@@ -7,6 +7,8 @@
 
 > March 5, 2026 update: Face registration and attendance records are now backend-synced. Face data is persisted in backend `face_registration_android` and hydrated into app memory on login/profile fetch. Attendance check-in/check-out submits to backend `new_attendance_requests`, and attendance screens now show backend `requested` records. Any older local-only notes in this file are superseded by this update and `docs/AUTHENTICATION_INTEGRATION.md`.
 
+> November 14, 2026 biometric update (v2.5.5+9038): **fingerprint login, fingerprint check-in, and face login** join the existing face check-in. Android exposes no fingerprint templates, so enrolment registers the **public half of an auth-per-use ECDSA P-256 Keystore key** and the app signs server nonces behind the system prompt (`androidx.biometric` + `BiometricPrompt`, `MainActivity` is now a `FlutterFragmentActivity`). Face becomes a login method too: 3 front-camera attempts verified with the same strong core-template thresholds as check-in, then `POST /api/v1/refresh` with a token kept in `flutter_secure_storage`, then `AuthService.applyBiometricSession`. All of it is opt-in from **Profile → Biometrics** and mirrored locally so it works offline. Home offers a Face/Fingerprint sheet when both check-in methods are enabled, and the punch now sends `biometric_method` (+ `biometric_authorization_id` for fingerprint). Full model, threat model and invalidation behaviour: `docs/BIOMETRIC_AUTH.md`.
+
 > March 7, 2026 UI update: Home screen uses separate `Check In` and `Check Out` buttons instead of a single toggle action. Buttons are state-aware and prevent invalid sequences. As of v2.2.3+33, only **one** punch button shows at a time; pending days with both times show **Update Check Out**; approved days hide all punch buttons.
 
 > March 7, 2026 integration update: Android submissions now include a persistent device identifier, backend device approval is live, and canonical employee identity for attendance/ZKTeco flows is now `employees.id`.
@@ -347,7 +349,16 @@ Behaviour worth knowing:
 | **Background work** | Endpoint config refresh and profile hydration run unawaited, after navigation |
 | **UI** | Dark gradient background (`AppColors.darkGradient`), animated PPHL GIF logo from `peoplespoultry.com`, login card with email/password fields, remember me checkbox |
 | **Remember me** | When checked, the last email **and password** are stored (`auth_email` / `auth_password`) and prefilled on the next open. Unchecking clears both and stops prefilling. Signing out keeps them only while remember-me is on. |
+| **Biometric login** | Under the password form (build 9038): a **Fingerprint** button when this device holds a credential and `biometric_login_fingerprint` is on, and a **Face** button when `biometric_login_face` is on. Both show a spinner, offer **Cancel**, and report every failure as a snackbar — they never throw. Before a biometric sign-in is offered at all the flag must have been switched on in Profile → Biometrics. See `docs/BIOMETRIC_AUTH.md`. |
 | **Logo URL** | `https://peoplespoultry.com/assets/front/img/1730297252134723053.gif` |
+
+Biometric sign-in runs through `BiometricLoginService`: fingerprint does
+challenge → Keystore signature → `POST /api/v1/mobile/biometric-login`; face
+captures up to 3 front-camera frames, verifies them with
+`FaceRecognitionService.verifyFace` (the check-in thresholds), then posts
+`/api/v1/refresh` with the encrypted token. Both end in
+`AuthService.applyBiometricSession`, which stores the token and performs the same
+hydration a password login does.
 
 A successful login navigates as soon as the token is stored. The profile fetch
 that used to sit between the two — a 45s-timeout `get-my-info` — no longer
@@ -402,6 +413,7 @@ the employee id — so they overlap. Two things follow, and both are load-bearin
 | **Language** | All copy comes from `FaceCaptureStrings` (`AppSettingsService` picks English or Bangla). The toggle lives in Profile → Settings; registration stays English |
 | **Window** | A check-in is refused once 15 minutes have passed since the shift start (`CheckInWindow`, twin of the server guard); re-checked in `_submitPunch` so an idle screen cannot post a late punch. Check-out is not gated |
 | **Flow** | Face-placement-gated dynamic challenge flow. See [Check-In Flow](#check-in-flow) below |
+| **`method` (9038)** | `BiometricMethod method` (default `face`). With `fingerprint` the camera preview and liveness list are replaced by a fingerprint stage: challenge (`purpose: "punch"`) → `BiometricPrompt` signature → `POST /api/v1/mobile/biometric-punch-authorization` → the same optimistic punch + background submit, now with `biometric_method: "fingerprint"` and `biometric_authorization_id`. The face path is untouched and sends `biometric_method: "face"`. |
 
 #### Check-In Flow
 
@@ -470,7 +482,8 @@ the employee id — so they overlap. Two things follow, and both are load-bearin
 | Aspect | Detail |
 |---|---|
 | **State** | `StatefulWidget` |
-| **Sections** | Header (avatar, name, designation, employee ID), Personal Info card, Quick Actions (Leave Request, View Reports, **Register Face**, My QR Code), Settings (Notifications, Location, Dark Mode, **Face capture in Bangla** switch, Password, Help, About), Sign Out |
+| **Sections** | Header (avatar, name, designation, employee ID), Personal Info card, Quick Actions (Leave Request, View Reports, **Register Face**, My QR Code), Settings (Notifications, Location, Dark Mode, **Face capture in Bangla** switch, Password, Help, About), **Biometrics** card, Sign Out |
+| **Biometrics card (9038)** | Four switches — *Fingerprint login*, *Face login*, *Fingerprint check-in*, *Face check-in* — plus **Enroll fingerprint** / **Remove fingerprint**. Each switch is disabled with the reason in its subtitle when its prerequisite is missing (no credential → "Enroll your fingerprint first"; no face template → "Register your face first"). Saves go through `BiometricPreferencesService` (optimistic, rolled back and reported if the server refuses). Removing asks for confirmation, deletes the credential and the Keystore key. Face login also stores/clears the encrypted token face sign-in refreshes from. |
 | **Face capture language** | The Language row is a real toggle backed by `AppSettingsService` (`SharedPreferences` key `face_capture_bangla`); it switches the check-in/check-out capture screen's copy to Bangla on the next capture |
 | **About** | Trailing label from `PackageInfo` as `v{version}+{buildNumber}` (not hardcoded) |
 | **Face Reg** | "Register Face" quick action card navigates to `FaceRegistrationScreen` |
@@ -924,9 +937,16 @@ compileSdk = flutter.compileSdkVersion
 <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
 <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
 <uses-permission android:name="android.permission.INTERNET"/>
+<uses-permission android:name="android.permission.USE_BIOMETRIC"/>
+<uses-permission android:name="android.permission.USE_FINGERPRINT" android:maxSdkVersion="28"/>
 <uses-feature android:name="android.hardware.camera" android:required="false"/>
 <uses-feature android:name="android.hardware.location.gps" android:required="false"/>
 ```
+
+Build 9038 also adds `implementation("androidx.biometric:biometric:1.1.0")`,
+registers `BiometricKeystoreChannel` (`com.pphl.attendance/biometric_keystore`)
+and moves `MainActivity` from `FlutterActivity` to `FlutterFragmentActivity` —
+`BiometricPrompt` needs a `FragmentActivity` host.
 
 ### 12.3 App Label
 

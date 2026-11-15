@@ -31,9 +31,28 @@ The app uses a **dual-backend** integration aligned with PeoplesHRM:
 |--------|------|---------|
 | POST | `/api/v1/a/login` | Login |
 | GET | `/api/v1/get-my-info` | Profile + `face_registration` |
+| POST | `/api/v1/refresh` | JWT refresh |
 | GET | `/api/v1/logout?token=...` | Logout |
 | GET | `/api/v1/mobile/face-registration` | Optional face fetch |
 | POST | `/api/v1/mobile/face-registration` | Face upsert + `zktecoPin` |
+
+### pphl_erp biometric endpoints (build 9038)
+
+Same HRM base as face registration. Fingerprint credentials are Keystore
+public keys, never templates — see [BIOMETRIC_AUTH.md](BIOMETRIC_AUTH.md).
+
+| Method | Path | Auth | Purpose |
+|--------|------|------|---------|
+| POST | `/api/v1/mobile/biometric-challenge` | none/bearer | Nonce for `purpose: "login" \| "punch"` |
+| POST | `/api/v1/mobile/biometric-login` | none | `{credentialId, nonce, signature}` → `{token, user}` |
+| POST | `/api/v1/mobile/biometric-punch-authorization` | JWT | Fingerprint grant quoted by the punch |
+| GET | `/api/v1/mobile/biometric-credentials` | JWT | Credentials + `preferences` |
+| POST | `/api/v1/mobile/biometric-credentials` | JWT | Register `publicKey`, `keyAlias`, `algorithm: "ES256"` |
+| DELETE | `/api/v1/mobile/biometric-credentials/{credentialId}` | JWT | Revoke |
+| PUT | `/api/v1/mobile/biometric-preferences` | JWT | `{login:{face,fingerprint}, checkin:{face,fingerprint}}` |
+
+Signatures are ECDSA `SHA256withECDSA` (DER, base64) over the UTF-8 nonce;
+`publicKey` is `KeyPair.public.encoded` (X.509 SPKI, base64).
 
 ### zkteco app (no JWT)
 
@@ -42,7 +61,8 @@ The app uses a **dual-backend** integration aligned with PeoplesHRM:
 | GET | `/api/v1/mobile/attendance-requests?employee_id=` | List employee records |
 | POST | `/api/v1/mobile/attendance-requests` | Check-in/out self punch |
 
-POST body includes `employee_id` (canonical `employees.id`), `direction`, `attDate` (local `yyyy-MM-dd`), geo fields, and device metadata.
+POST body includes `employee_id` (canonical `employees.id`), `direction`, `attDate` (local `yyyy-MM-dd`), geo fields, and device metadata. Build 9038 adds `biometric_method` (`face` | `fingerprint`) and, for fingerprint, `biometric_authorization_id` from
+`POST /api/v1/mobile/biometric-punch-authorization`.
 
 Face embeddings are **not** sent to zkteco; they remain on pphl_erp only.
 
@@ -78,8 +98,12 @@ Optional overrides:
 
 ## Key services
 
-- `AuthService` — ERP JWT session
+- `AuthService` — ERP JWT session (`applyBiometricSession` adopts a biometric
+  session; `storeFaceLoginSecrets` / `clearFaceLoginSecrets` own the encrypted
+  token face login refreshes from)
 - `FaceRegistrationApiService` — ERP face upsert
+- `BiometricApiService` / `BiometricAuthService` — ERP biometric credentials,
+  challenges and punch authorisations
 - `AttendanceRequestService` — zkteco attendance (authless, requires local login + `employee_id`)
 - `DeviceIdentityService` — stable Android device identifier
 
