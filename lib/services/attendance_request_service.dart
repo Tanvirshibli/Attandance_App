@@ -9,6 +9,7 @@ import '../utils/user_facing_error.dart';
 import 'auth_service.dart';
 import 'device_identity_service.dart';
 import 'endpoint_config_service.dart';
+import 'internet_time_service.dart';
 
 class AttendanceSubmitResult {
   const AttendanceSubmitResult({
@@ -437,6 +438,11 @@ class AttendanceRequestService {
     return getAttendanceRecords(employeeId: employeeId, status: 'requested');
   }
 
+  /// Submits one self punch.
+  ///
+  /// [now] must be internet time — the caller passes the instant it captured at
+  /// verification, so the punch is stamped with the moment the officer acted and
+  /// not with the device clock or the moment the request finished.
   Future<AttendanceSubmitResult> submitSelfPunch({
     required int? employeeId,
     required bool isCheckOut,
@@ -446,6 +452,11 @@ class AttendanceRequestService {
     bool faceVerified = false,
     String? biometricMethod,
     String? biometricAuthorizationId,
+    double? gpsAccuracy,
+    bool? gpsMocked,
+    DateTime? clientInternetTime,
+    String timeSource = 'internet',
+    DateTime? now,
   }) async {
     if (!await _hasLocalSession()) {
       return const AttendanceSubmitResult(
@@ -463,21 +474,28 @@ class AttendanceRequestService {
 
     final deviceMetadata = await _deviceIdentityService.getDeviceMetadata();
     final token = await _authService.getToken();
-    final nowDt = DateTime.now();
-    final now = nowDt.toIso8601String();
+    final nowDt = now ?? InternetTimeService.instance.now();
+    // Internet time is UTC; the punch columns are wall-clock, exactly as the
+    // server wrote them before, so the corrected instant is converted back.
+    final localNow = nowDt.toLocal();
+    final nowIso = localNow.toIso8601String();
     final body = <String, dynamic>{
       'employee_id': employeeId,
       'direction': isCheckOut ? 'out' : 'in',
-      'attDate': _dateStr(nowDt),
-      if (!isCheckOut) 'requestedInTime': now,
-      if (isCheckOut) 'requestedOutTime': now,
-      // Location is optional: the punch goes out the instant the face is
-      // verified so the officer is not kept waiting on GPS, and a background
-      // backfill patches the fix in once it lands.
+      'attDate': _dateStr(localNow),
+      if (!isCheckOut) 'requestedInTime': nowIso,
+      if (isCheckOut) 'requestedOutTime': nowIso,
+      // The punch always carries the fix it was verified with: a punch without
+      // coordinates used to be submitted and patched afterwards, and the patch
+      // never ran because the ZKTeco 201 returns no record id.
       'lat': ?latitude,
       'lng': ?longitude,
       if (address.isNotEmpty) 'address': address,
       'face_verified': faceVerified,
+      'gps_accuracy': ?gpsAccuracy,
+      'gps_mocked': ?gpsMocked,
+      'client_internet_time': (clientInternetTime ?? nowDt).toIso8601String(),
+      'time_source': timeSource,
       if (biometricMethod != null && biometricMethod.isNotEmpty)
         'biometric_method': biometricMethod,
       if (biometricAuthorizationId != null &&
@@ -536,6 +554,7 @@ class AttendanceRequestService {
               data,
               postBody: body,
               isCheckOut: isCheckOut,
+              now: nowDt,
             ),
           );
         }
@@ -725,24 +744,63 @@ class AttendanceRequestService {
     Map<String, dynamic> data, {
     required Map<String, dynamic> postBody,
     required bool isCheckOut,
+    DateTime? now,
   }) {
-    final request = data['request'];
-    if (request is Map<String, dynamic>) {
-      return AttendanceRequestRecord.fromJson(request);
+    final payload = _firstPunchPayload(data);
+    if (payload != null) {
+      return AttendanceRequestRecord.fromJson(payload);
     }
+
+    // Some deployments answer with the row itself, no wrapper at all.
+    if (data['id'] != null ||
+        data['attDate'] != null ||
+        data['att_date'] != null) {
+      return AttendanceRequestRecord.fromJson(data);
+    }
+
     return synthesizePunchRecord(
       postBody: postBody,
       isCheckOut: isCheckOut,
+      now: now,
     );
   }
 
+  /// Walks the known wrappers (`request`, `attendance_request`, `data`, …) to
+  /// the object that actually holds the row.
+  Map<String, dynamic>? _firstPunchPayload(
+    Map<String, dynamic> data, [
+    int depth = 0,
+  ]) {
+    if (depth > 2) return null;
+
+    for (final key in const [
+      'request',
+      'attendance_request',
+      'attendanceRequest',
+      'record',
+      'data',
+    ]) {
+      final value = data[key];
+      if (value is Map<String, dynamic>) {
+        return _firstPunchPayload(value, depth + 1) ?? value;
+      }
+    }
+    return null;
+  }
+
   /// Builds a local today row when POST succeeds but omits the request wrapper.
+  ///
+  /// [now] must be internet time; the attDate and punch columns come from it so
+  /// the optimistic row and the server row agree.
   AttendanceRequestRecord synthesizePunchRecord({
     required Map<String, dynamic> postBody,
     required bool isCheckOut,
+    DateTime? now,
   }) {
-    final nowDt = DateTime.now();
-    final attDate = postBody['attDate']?.toString() ?? _dateStr(nowDt);
+    final localNow =
+        (now ?? InternetTimeService.instance.nowOrNull ?? DateTime.now())
+            .toLocal();
+    final attDate = postBody['attDate']?.toString() ?? _dateStr(localNow);
     final inRaw = postBody['requestedInTime']?.toString();
     final outRaw = postBody['requestedOutTime']?.toString();
 
@@ -751,8 +809,10 @@ class AttendanceRequestService {
       attDate: attDate,
       requestType: postBody['requestType']?.toString() ?? 'self_punch',
       status: 'requested',
-      requestedInTime: isCheckOut ? null : (inRaw ?? nowDt.toIso8601String()),
-      requestedOutTime: isCheckOut ? (outRaw ?? nowDt.toIso8601String()) : null,
+      requestedInTime:
+          isCheckOut ? null : (inRaw ?? localNow.toIso8601String()),
+      requestedOutTime:
+          isCheckOut ? (outRaw ?? localNow.toIso8601String()) : null,
       deviceType: 'android',
     );
   }

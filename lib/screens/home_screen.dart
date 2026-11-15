@@ -20,9 +20,9 @@ import '../services/attendance_punch_notifier.dart';
 import '../services/app_settings_service.dart';
 import '../services/auth_service.dart';
 import '../services/face_recognition_service.dart';
-import '../utils/check_in_window.dart';
+import '../services/shift_window_service.dart';
+import '../widgets/attendance_clock_card.dart';
 import '../widgets/stat_card.dart';
-import '../widgets/syncing_time.dart';
 import '../widgets/attendance_tile.dart';
 import 'check_in_screen.dart';
 import 'face_registration_screen.dart';
@@ -42,16 +42,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   bool _canPunchIn = false;
   bool _canPunchOut = false;
-  bool _isClockedIn = false;
   bool _isDayComplete = false;
   bool _checkFlowOpening = false;
   bool _awaitingCheckOutSync = false;
   DateTime? _recentLocalPunchAt;
-  bool _todayPendingApproval = false;
-  bool _todayApproved = false;
   String _checkInTime = '--';
   String _checkOutTime = '--';
-  String _todayWorkHours = '--';
   List<AttendanceRequestRecord> _requestedRecords = const [];
   AttendanceRequestRecord? _lastLocalTodayRecord;
   AttendanceSummary _summary = const AttendanceSummary();
@@ -106,6 +102,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             _syncingCheckOut = false;
           });
         }
+        // The window's deadlines move with the punch (late, closed, next side),
+        // so the card must not keep showing the pre-punch copy.
+        unawaited(ShiftWindowService.instance.ensure(force: true));
       }),
     );
   }
@@ -316,21 +315,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
     final canPunchIn = todayRecord?.canPunchCheckIn ?? true;
     final canPunchOut = todayRecord?.canPunchCheckOut ?? false;
-    final isClockedIn = canPunchOut;
     final isDayComplete = todayRecord?.isDayComplete ?? false;
-    final pendingApproval =
-        todayRecord != null &&
-        todayRecord.status.toLowerCase() == 'requested' &&
-        !todayRecord.isRejected;
-    final approved =
-        todayRecord != null &&
-        todayRecord.status.toLowerCase() == 'approved' &&
-        !todayRecord.isRejected;
 
     setState(() {
       _requestedRecords = records;
-      _todayPendingApproval = pendingApproval;
-      _todayApproved = approved;
       if (todayRecord != null && todayRecord.hasCheckIn) {
         _checkInTime = todayRecord.checkInText;
       } else {
@@ -343,11 +331,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         _checkOutTime = '--';
       }
 
-      _todayWorkHours = _computeTodayHours(todayRecord);
       _weeklyHours = _computeWeeklyHours(records);
       _canPunchIn = canPunchIn;
       _canPunchOut = canPunchOut;
-      _isClockedIn = isClockedIn;
       _isDayComplete = isDayComplete;
     });
   }
@@ -416,15 +402,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     setState(() => _summary = summary);
   }
 
-  String _computeTodayHours(AttendanceRequestRecord? todayRecord) {
-    if (todayRecord == null) return '--';
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
-    final hours = todayRecord.workedHoursOnDay(today, now: now);
-    if (hours == null) return '--';
-    return hours.toStringAsFixed(1);
-  }
-
   List<double> _computeWeeklyHours(List<AttendanceRequestRecord> records) {
     final hours = List<double>.filled(7, 0);
     final now = DateTime.now();
@@ -447,8 +424,28 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     return hours;
   }
 
-  Future<void> _openCheckFlow({required bool isCheckOut}) async {
+  void _showSnack(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  Future<void> _openCheckFlow({
+    required bool isCheckOut,
+    WindowState? windowState,
+  }) async {
     if (_checkFlowOpening) return;
+
+    // The card already knows the window it drew the button for; a tap that
+    // arrives after it closed is refused here, before the punch list reload.
+    if (windowState == WindowState.after || windowState == WindowState.noShift) {
+      _showSnack(
+        ShiftWindowService.instance.blockReason(isCheckOut: isCheckOut) ??
+            'The ${isCheckOut ? 'check-out' : 'check-in'} window is closed.',
+      );
+      return;
+    }
 
     // Re-read the punch list before deciding what to offer: the buttons on this
     // screen depend on it, and the cached copy can be minutes old.
@@ -480,16 +477,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       return;
     }
 
-    // Refuse a late check-in here rather than letting the employee sit through
-    // a face scan for a punch the server will reject anyway. Check-out is not
-    // gated: the grace period says nothing about leaving.
-    final window = CheckInWindow.evaluate(
-      shiftStartTime: _profile.shiftStartTime,
+    // The server owns the window and re-checks every punch; this only stops the
+    // officer sitting through a face scan for a punch that will be refused.
+    final windowBlock = ShiftWindowService.instance.blockReason(
+      isCheckOut: isCheckOut,
     );
-    if (!isCheckOut && window.isClosed) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(window.message!)));
+    if (windowBlock != null) {
+      _showSnack(windowBlock);
       return;
     }
 
@@ -638,57 +632,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     setState(() => _faceRegistered = registered);
   }
 
-  String _attendanceActionTitle() {
-    if (_isDayComplete) {
-      return _todayApproved
-          ? 'Today\'s Attendance Approved'
-          : 'Today\'s Attendance Logged';
-    }
-    if (_canPunchOut) {
-      if (_checkOutTime != '--') {
-        return 'Update Check Out?';
-      }
-      return 'You\'re Clocked In';
-    }
-    return 'Ready to Check In?';
-  }
-
-  String _attendanceActionSubtitle() {
-    if (_isDayComplete) {
-      if (_todayApproved) {
-        return 'Today\'s attendance is complete and approved.';
-      }
-      if (_checkInTime != '--' && _checkOutTime != '--') {
-        return 'Checked in at $_checkInTime, out at $_checkOutTime. Awaiting supervisor approval.';
-      }
-      return 'Today\'s punch is pending approval.';
-    }
-    if (_todayApproved) {
-      if (_isClockedIn) {
-        return 'Checked in at $_checkInTime. Approved — you can check out when ready.';
-      }
-      if (_checkInTime != '--' || _checkOutTime != '--') {
-        return 'Today\'s attendance is approved.';
-      }
-    }
-    if (_todayPendingApproval) {
-      if (_isClockedIn) {
-        return 'Checked in at $_checkInTime. Pending approval — you can check out when ready.';
-      }
-      if (_checkInTime != '--' || _checkOutTime != '--') {
-        return 'Today\'s punch is pending approval.';
-      }
-      return 'Your attendance request is pending approval.';
-    }
-    if (_canPunchOut) {
-      if (_checkOutTime != '--') {
-        return 'Checked in at $_checkInTime, out at $_checkOutTime. Tap below to update checkout time.';
-      }
-      return 'Checked in at $_checkInTime. You can check out now.';
-    }
-    return 'Verify with face + location for check-in/check-out.';
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -732,11 +675,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             SliverToBoxAdapter(
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(20, 8, 20, 8),
-                child: FadeInUp(
-                  delay: const Duration(milliseconds: 300),
-                  duration: const Duration(milliseconds: 500),
-                  child: _buildAttendanceActionCard(context),
-                ),
+                child: _buildAttendanceClockCard(),
               ),
             ),
 
@@ -928,82 +867,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 ),
               ],
             ),
-            const SizedBox(height: 20),
-
-            // Today's card
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(18),
-              decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.12),
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: Colors.white.withValues(alpha: 0.15)),
-              ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceAround,
-                children: [
-                  _buildTodayStat(
-                    'Check In',
-                    _checkInTime,
-                    Icons.login_rounded,
-                    syncing: _syncingCheckIn,
-                  ),
-                  Container(
-                    width: 1,
-                    height: 40,
-                    color: Colors.white.withValues(alpha: 0.2),
-                  ),
-                  _buildTodayStat(
-                    'Check Out',
-                    _checkOutTime,
-                    Icons.logout_rounded,
-                    syncing: _syncingCheckOut,
-                  ),
-                  Container(
-                    width: 1,
-                    height: 40,
-                    color: Colors.white.withValues(alpha: 0.2),
-                  ),
-                  _buildTodayStat(
-                    'Hours',
-                    _todayWorkHours,
-                    Icons.timer_outlined,
-                  ),
-                ],
-              ),
-            ),
           ],
         ),
       ),
-    );
-  }
-
-  Widget _buildTodayStat(
-    String label,
-    String value,
-    IconData icon, {
-    bool syncing = false,
-  }) {
-    return Column(
-      children: [
-        Icon(icon, color: Colors.white70, size: 20),
-        const SizedBox(height: 6),
-        SyncingTime(
-          syncing: syncing,
-          child: Text(
-            value,
-            style: GoogleFonts.poppins(
-              fontSize: 15,
-              fontWeight: FontWeight.w600,
-              color: Colors.white,
-            ),
-          ),
-        ),
-        Text(
-          label,
-          style: GoogleFonts.poppins(fontSize: 11, color: Colors.white54),
-        ),
-      ],
     );
   }
 
@@ -1094,133 +960,29 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     );
   }
 
-  Widget _buildAttendanceActionCard(BuildContext context) {
-    // A status colour is a signal, not a surface. The card used to flood a
-    // large block with saturated success green, which shouted louder than the
-    // "Check Out" button living inside it. Now the state is carried by a thin
-    // accent rail, a small status chip and the icon, and the card itself stays
-    // on the brand surface so the action reads first.
-    final isDone = _isDayComplete;
-    final isActive = !isDone && _isClockedIn;
-    final stateColor = isDone
-        ? (_todayApproved ? ui.AppColors.success : ui.AppColors.warning)
-        : (isActive ? ui.AppColors.success : ui.AppColors.primary);
-
-    return Container(
-      decoration: BoxDecoration(
-        color: ui.AppColors.surface,
-        borderRadius: BorderRadius.circular(ui.AppRadius.xl),
-        border: Border.all(color: stateColor.withValues(alpha: 0.28)),
-        boxShadow: ui.AppShadows.card,
-      ),
-      child: IntrinsicHeight(
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Container(width: 5, color: stateColor),
-            Expanded(
-              child: Padding(
-                padding: const EdgeInsets.all(ui.AppSpace.md + 2),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            _attendanceActionTitle(),
-                            style: ui.AppType.h3.copyWith(
-                              color: ui.AppColors.ink,
-                            ),
-                          ),
-                        ),
-                        _StateChip(
-                          label: _actionStateLabel(
-                            isDone: isDone,
-                            isActive: isActive,
-                          ),
-                          color: stateColor,
-                          icon: isDone
-                              ? (_todayApproved
-                                    ? ui.AppIcons.check
-                                    : ui.AppIcons.clock)
-                              : (isActive
-                                    ? ui.AppIcons.clock
-                                    : ui.AppIcons.calendar),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: ui.AppSpace.xxs),
-                    Text(
-                      _attendanceActionSubtitle(),
-                      style: ui.AppType.meta.copyWith(
-                        color: ui.AppColors.inkMuted,
-                      ),
-                    ),
-                    if (isDone) ...[
-                      const SizedBox(height: ui.AppSpace.md),
-                      Row(
-                        children: [
-                          Icon(
-                            _todayApproved
-                                ? Icons.check_circle_outline_rounded
-                                : Icons.hourglass_top_rounded,
-                            color: stateColor,
-                            size: 18,
-                          ),
-                          const SizedBox(width: ui.AppSpace.xs),
-                          Expanded(
-                            child: Text(
-                              _todayApproved
-                                  ? 'No further punches needed today.'
-                                  : 'Awaiting supervisor approval.',
-                              style: ui.AppType.meta.copyWith(
-                                color: ui.AppColors.inkMuted,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ] else ...[
-                      const SizedBox(height: ui.AppSpace.md),
-                      if (_canPunchOut)
-                        ui.AppButton(
-                          label: _checkOutTime != '--'
-                              ? 'Update check out'
-                              : 'Check out',
-                          icon: ui.AppIcons.chevron,
-                          onPressed: _checkFlowOpening
-                              ? null
-                              : () => _openCheckFlow(isCheckOut: true),
-                          accent: stateColor,
-                        )
-                      else if (_canPunchIn)
-                        ui.AppButton(
-                          label: _checkInTime != '--'
-                              ? 'Re-check in'
-                              : 'Check in',
-                          icon: ui.AppIcons.chevron,
-                          onPressed: _checkFlowOpening
-                              ? null
-                              : () => _openCheckFlow(isCheckOut: false),
-                          accent: stateColor,
-                        ),
-                    ],
-                  ],
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
+  /// One card for the clock, the shift window and both punches.
+  ///
+  /// It owns its own ticking and window chip, so neither the dashboard nor the
+  /// attendance list is rebuilt every second.
+  Widget _buildAttendanceClockCard() {
+    final settings = AppSettingsService.instance;
+    return AttendanceClockCard(
+      canCheckIn: _canPunchIn,
+      canCheckOut: _canPunchOut,
+      isDayComplete: _isDayComplete,
+      checkInTime: _checkInTime,
+      checkOutTime: _checkOutTime,
+      syncingCheckIn: _syncingCheckIn,
+      syncingCheckOut: _syncingCheckOut,
+      faceRegistered: _faceRegistered,
+      fingerprintEnrolled: settings.biometricCheckinFingerprint.value &&
+          settings.hasBiometricCredential,
+      busy: _checkFlowOpening,
+      onCheckIn: (state) =>
+          _openCheckFlow(isCheckOut: false, windowState: state),
+      onCheckOut: (state) =>
+          _openCheckFlow(isCheckOut: true, windowState: state),
     );
-  }
-
-  String _actionStateLabel({required bool isDone, required bool isActive}) {
-    if (isDone) return _todayApproved ? 'Complete' : 'Pending';
-    if (isActive) return 'Clocked in';
-    if (_canPunchIn) return 'Ready';
-    return 'Closed';
   }
 
   Widget _buildWeeklyChart() {
@@ -1364,43 +1126,3 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 }
 
-/// A small, non-interactive state label for the attendance action card.
-class _StateChip extends StatelessWidget {
-  const _StateChip({
-    required this.label,
-    required this.color,
-    required this.icon,
-  });
-
-  final String label;
-  final Color color;
-  final IconData icon;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(
-        horizontal: ui.AppSpace.xs,
-        vertical: 4,
-      ),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(ui.AppRadius.pill),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          ui.AppIcon(icon, size: 12, color: color, secondaryOpacity: 0.5),
-          const SizedBox(width: ui.AppSpace.xxs),
-          Text(
-            label,
-            style: ui.AppType.micro.copyWith(
-              color: color,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}

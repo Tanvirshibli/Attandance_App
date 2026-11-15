@@ -19,13 +19,17 @@ import '../l10n/face_capture_strings.dart';
 import '../models/attendance_request_record.dart';
 import '../services/app_settings_service.dart';
 import '../services/biometric_auth_service.dart';
+import '../services/device_integrity_service.dart';
 import '../services/face_recognition_service.dart';
 import '../services/attendance_request_service.dart';
 import '../services/attendance_punch_notifier.dart';
 import '../services/camera_prewarm.dart';
 import '../services/auth_service.dart';
+import '../services/integrity_lock_service.dart';
+import '../services/internet_time_service.dart';
+import '../services/location_gate_service.dart';
+import '../services/shift_window_service.dart';
 import '../utils/camera_input_image.dart';
-import '../utils/check_in_window.dart';
 import '../utils/face_guide_placement.dart';
 import '../widgets/face_capture_stage.dart';
 import 'face_registration_screen.dart';
@@ -35,7 +39,22 @@ import 'face_registration_screen.dart';
 // ================================================================
 
 /// Phase of the check-in flow
-enum CheckInPhase { initializing, scanning, verifying, gps, success, error }
+enum CheckInPhase {
+  initializing,
+
+  /// Verifying the clock, the shift window and the GPS fix before the punch is
+  /// offered at all.
+  preflight,
+
+  /// One of the preconditions failed; nothing can be punched until a retry
+  /// satisfies it.
+  blocked,
+  scanning,
+  verifying,
+  gps,
+  success,
+  error,
+}
 
 /// Internal blink-detection phases
 enum _BlinkPhase { waitingOpen, waitingClosed, waitingReopen, done }
@@ -68,6 +87,18 @@ class _CheckInScreenState extends State<CheckInScreen>
     with TickerProviderStateMixin {
   static const int _minChallengesBeforeEarlyVerify = 1;
   static bool _routeActive = false;
+
+  /// A fix older than this no longer describes where the officer is standing.
+  static const Duration _maxFixAge = Duration(seconds: 120);
+
+  /// A coarser fix than this cannot tell the office from the street.
+  static const double _maxAccuracyMetres = 100;
+
+  /// Emulator builds fake their location through the same channel a spoofing
+  /// app uses, so the mock flag has to be exempted there — never in production.
+  static const bool _allowEmulatorSpoof = bool.fromEnvironment(
+    'ALLOW_EMULATOR_SPOOF',
+  );
 
   // ---- Services & Controllers ----
   final _faceService = FaceRecognitionService();
@@ -132,10 +163,15 @@ class _CheckInScreenState extends State<CheckInScreen>
   bool _biometricAuthorized = false;
   String? _biometricAuthorizationId;
 
-  /// The in-flight location capture, started at screen open so the punch can
-  /// carry a fix without making the officer wait for GPS.
-  Future<void>? _locationFuture;
-  bool _locationAttempted = false;
+  /// When the fix in [_position] was taken, measured on the network clock.
+  DateTime? _fixCapturedAt;
+
+  /// True once a street address has replaced the raw "lat, lng" placeholder.
+  bool _addressResolved = false;
+
+  /// Why the punch cannot go ahead, shown verbatim on the blocking card.
+  String? _blockedReason;
+  bool _preflightRunning = false;
   bool _isClosing = false;
   bool _aborted = false;
   bool _wakelockHeld = false;
@@ -203,16 +239,20 @@ class _CheckInScreenState extends State<CheckInScreen>
   }
 
   Future<void> _init() async {
-    // Start the location fix now, in parallel with the face work. The officer
-    // spends several seconds on the challenges, so by the time the face matches
-    // the fix is usually ready and the punch can carry it with no wait.
-    _locationFuture ??= _prefetchLocation();
+    // The punch needs a verified clock, an open window and a fresh fix. Nothing
+    // else — camera, fingerprint prompt — is started until all three hold.
+    final ready = await _runPreflight(force: true);
+    if (!ready || !mounted) return;
 
     if (widget.method == BiometricMethod.fingerprint) {
       await _runFingerprintAuthorization();
       return;
     }
 
+    await _startFaceFlow();
+  }
+
+  Future<void> _startFaceFlow() async {
     // The engine is warmed at app start; this is a no-op when it is already up.
     await _faceService.initialize();
 
@@ -229,6 +269,111 @@ class _CheckInScreenState extends State<CheckInScreen>
     }
 
     await _initCamera();
+  }
+
+  /// Everything the punch needs before it may be offered.
+  ///
+  /// The old flow prefetched a fix and punched anyway when it never arrived,
+  /// which sent punches out with no coordinates at all; and it judged the grace
+  /// window on the device clock, which the employee controls.
+  Future<bool> _runPreflight({bool force = false}) async {
+    if (_preflightRunning) return false;
+    _preflightRunning = true;
+
+    if (mounted) {
+      setState(() {
+        _phase = CheckInPhase.preflight;
+        _blockedReason = null;
+      });
+    }
+
+    String? reason;
+    try {
+      final time = InternetTimeService.instance;
+      try {
+        await time.sync(force: force);
+      } catch (_) {
+        // sync() reports failure through isSynced/isHealthy below.
+      }
+
+      if (!time.isSynced) {
+        reason = 'Internet time could not be verified. Check your connection, '
+            'then retry.';
+      } else if (!time.isHealthy) {
+        reason = 'The network clock is ${time.syncAgeSeconds}s old, so a punch '
+            'would be stamped with an unverified time. Retry to refresh it.';
+      }
+
+      if (reason == null) {
+        try {
+          await ShiftWindowService.instance.ensure(force: force);
+        } catch (_) {
+          // An unreachable window endpoint must not strand the officer; the
+          // server still re-checks every punch.
+        }
+        reason = ShiftWindowService.instance.blockReason(
+          isCheckOut: widget.isCheckOut,
+        );
+      }
+
+      reason ??= await _ensureFix();
+    } finally {
+      _preflightRunning = false;
+    }
+
+    if (!mounted) return reason == null;
+
+    if (reason != null) {
+      setState(() {
+        _phase = CheckInPhase.blocked;
+        _blockedReason = reason;
+      });
+      return false;
+    }
+
+    setState(() => _phase = CheckInPhase.initializing);
+    return true;
+  }
+
+  /// One fresh, accurate, un-mocked fix, or the reason there is none.
+  Future<String?> _ensureFix() async {
+    final gate = await const LocationGateService().check();
+    if (gate.isBlocking) return '${gate.reason} ${gate.remedy}';
+
+    if (!_fixIsFresh(_position)) {
+      await _captureFix();
+    }
+
+    final position = _position;
+    if (position == null) {
+      return 'No GPS fix yet. Step into the open, then retry.';
+    }
+    return _fixIssue(position);
+  }
+
+  bool _fixIsFresh(Position? position) {
+    if (position == null) return false;
+    final capturedAt = _fixCapturedAt;
+    if (capturedAt == null) return false;
+    if (!InternetTimeService.instance.isSynced) return false;
+
+    final age = InternetTimeService.instance.now().difference(capturedAt);
+    return !age.isNegative && age <= _maxFixAge;
+  }
+
+  String? _fixIssue(Position position) {
+    if (position.isMocked && !_allowEmulatorSpoof) {
+      return 'This device is reporting a mock location, so the punch cannot be '
+          'recorded. Turn off any fake-GPS app, then retry.';
+    }
+    if (position.accuracy > _maxAccuracyMetres) {
+      return 'GPS accuracy is ±${position.accuracy.round()} m and a punch needs '
+          '${_maxAccuracyMetres.round()} m or better. Step outside and retry.';
+    }
+    if (!_fixIsFresh(position)) {
+      return 'The location fix is stale. Retry to take a new one.';
+    }
+    return null;
   }
 
   /// The fingerprint punch proof: server challenge → Keystore signature (behind
@@ -906,21 +1051,18 @@ class _CheckInScreenState extends State<CheckInScreen>
     return bestResult;
   }
 
-  /// Start the location fix early, in parallel with the face challenges.
+  /// Takes one fix and stashes it, together with the instant it arrived.
   ///
-  /// Best-effort and never fatal: whatever it finds is stashed on [_position] /
-  /// [_address] so the punch can carry it, and anything still missing is filled
-  /// in by [_backfillLocation] after the punch is away.
-  Future<void> _prefetchLocation() async {
-    if (_locationAttempted) return;
-    _locationAttempted = true;
-
+  /// Never fatal: the preflight turns "no fix" into the blocking card, and the
+  /// officer can retry from there.
+  Future<void> _captureFix() async {
     try {
       final locPerm = await Permission.location.request();
       if (!locPerm.isGranted) return;
       if (!await Geolocator.isLocationServiceEnabled()) return;
 
-      // Last-known is instant and usually close enough to carry the punch.
+      // Last-known is instant and usually close enough to stand in while the
+      // precise fix is still settling.
       final last = await Geolocator.getLastKnownPosition();
       if (last != null) {
         _storePosition(last);
@@ -935,14 +1077,23 @@ class _CheckInScreenState extends State<CheckInScreen>
       _storePosition(fresh);
       await _resolveAddress(fresh);
     } catch (_) {
-      // Ignored — the punch still goes out and the backfill retries.
+      // The preflight reports the missing fix.
     }
   }
 
   void _storePosition(Position position) {
+    _position = position;
+    // The age is measured on the network clock so a shifted device clock cannot
+    // make an old fix look fresh.
+    _fixCapturedAt = InternetTimeService.instance.isSynced
+        ? InternetTimeService.instance.now()
+        : DateTime.now();
+
+    // Every fix is screened, not just the one that reaches the punch.
+    unawaited(_checkIntegrity(position: position));
+
     if (!mounted) return;
     setState(() {
-      _position = position;
       if (_address.isEmpty) {
         _address = '${position.latitude.toStringAsFixed(4)}, '
             '${position.longitude.toStringAsFixed(4)}';
@@ -950,20 +1101,58 @@ class _CheckInScreenState extends State<CheckInScreen>
     });
   }
 
-  Future<void> _resolveAddress(Position position) async {
+  Future<String?> _geocode(Position position) async {
     try {
-      final placemarks =
-          await placemarkFromCoordinates(position.latitude, position.longitude);
-      if (placemarks.isEmpty) return;
+      final placemarks = await placemarkFromCoordinates(
+        position.latitude,
+        position.longitude,
+      );
+      if (placemarks.isEmpty) return null;
       final p = placemarks.first;
       final address = [p.street, p.subLocality, p.locality, p.country]
           .where((s) => s != null && s.isNotEmpty)
           .join(', ');
-      if (address.isEmpty || !mounted) return;
-      setState(() => _address = address);
+      return address.isEmpty ? null : address;
     } catch (_) {
-      // The "lat, lng" fallback set by _storePosition stands.
+      return null;
     }
+  }
+
+  Future<void> _resolveAddress(Position position) async {
+    final address = await _geocode(position);
+    if (address == null || !mounted) return;
+    setState(() {
+      _address = address;
+      _addressResolved = true;
+    });
+  }
+
+  /// Screens the fix and the clock; raises the lock and stops the flow on a
+  /// violation.
+  Future<bool> _checkIntegrity({Position? position}) async {
+    IntegrityViolation? found;
+    try {
+      if (position != null) {
+        found = await DeviceIntegrityService.instance.checkPosition(position);
+      }
+      found ??= await DeviceIntegrityService.instance.checkTime();
+    } catch (_) {
+      // A platform channel that is unavailable on this build must not block
+      // every punch; the server-side checks still apply.
+      return true;
+    }
+
+    final violation = found;
+    if (violation == null) return true;
+
+    await IntegrityLockService.instance.raise(violation);
+    if (mounted) {
+      setState(() {
+        _phase = CheckInPhase.blocked;
+        _blockedReason = '${violation.title} · ${violation.message}';
+      });
+    }
+    return false;
   }
 
   /// Hand back to the dashboard the instant the face verifies.
@@ -972,37 +1161,63 @@ class _CheckInScreenState extends State<CheckInScreen>
   /// the network, and [AttendancePunchNotifier] lets the dashboard re-sync once
   /// the real record lands (and warn if it did not).
   Future<void> _submitPunch() async {
-    if (!widget.isCheckOut) {
-      // The server enforces this same grace window; checking it here first is
-      // only a pre-flight, so a stale device clock cannot turn into a punch that
-      // is submitted and then rejected.
-      final profile = await _authService.getCurrentUserProfile();
-      final window = CheckInWindow.evaluate(
-        shiftStartTime: profile?.shiftStartTime,
+    if (_punchSubmitted) return;
+
+    if (IntegrityLockService.instance.current != null) return;
+
+    final time = InternetTimeService.instance;
+    if (!time.isSynced || !time.isHealthy) {
+      _blockPunch(
+        'The network clock is not verified, so the punch cannot be time-stamped. '
+        'Retry to sync it.',
       );
-      if (window.isClosed) {
-        if (!mounted) return;
-        setState(() {
-          _phase = CheckInPhase.error;
-          _errorMessage = window.message!;
-        });
-        return;
-      }
+      return;
     }
+
+    final position = _position;
+    if (position == null) {
+      _blockPunch('No GPS fix yet. Retry to capture one before punching.');
+      return;
+    }
+
+    final fixIssue = _fixIssue(position);
+    if (fixIssue != null) {
+      _blockPunch(fixIssue);
+      return;
+    }
+
+    final windowIssue = ShiftWindowService.instance.blockReason(
+      isCheckOut: widget.isCheckOut,
+    );
+    if (windowIssue != null) {
+      _blockPunch(windowIssue);
+      return;
+    }
+
+    // Re-checked at the punch itself: the fix and the clock may have moved on
+    // since the screen opened.
+    if (!await _checkIntegrity(position: position)) return;
+    if (!mounted) return;
+
+    // The punch instant, captured once: the background submission carries it so
+    // a slow network never shifts the recorded time.
+    final punchAt = time.now();
+    final punchLocal = punchAt.toLocal();
 
     // An optimistic record so the dashboard can render the punch immediately.
     // The dashboard merges by calendar day, so the server row replaces this
     // cleanly when the background submission lands.
     final optimistic = _attendanceRequestService.synthesizePunchRecord(
       postBody: {
-        'attDate': DateTime.now().toIso8601String().substring(0, 10),
+        'attDate': punchLocal.toIso8601String().substring(0, 10),
         if (!widget.isCheckOut)
-          'requestedInTime': DateTime.now().toIso8601String(),
+          'requestedInTime': punchLocal.toIso8601String(),
         if (widget.isCheckOut)
-          'requestedOutTime': DateTime.now().toIso8601String(),
+          'requestedOutTime': punchLocal.toIso8601String(),
         'requestType': 'self_punch',
       },
       isCheckOut: widget.isCheckOut,
+      now: punchAt,
     );
 
     if (mounted) {
@@ -1017,9 +1232,18 @@ class _CheckInScreenState extends State<CheckInScreen>
     }
 
     // The real submission runs on its own, so the pop below is immediate.
-    unawaited(_submitPunchInBackground());
+    unawaited(_submitPunchInBackground(punchAt: punchAt, position: position));
 
     await _finishWithSuccess();
+  }
+
+  void _blockPunch(String reason) {
+    unawaited(_stopImageStream());
+    if (!mounted) return;
+    setState(() {
+      _phase = CheckInPhase.blocked;
+      _blockedReason = reason;
+    });
   }
 
   /// The real submission, detached from the widget tree.
@@ -1027,19 +1251,21 @@ class _CheckInScreenState extends State<CheckInScreen>
   /// Never calls setState — by the time it resolves this screen is usually gone.
   /// Announces the outcome so the dashboard can re-sync and, on failure, tell
   /// the officer the punch did not go through.
-  Future<void> _submitPunchInBackground() async {
+  Future<void> _submitPunchInBackground({
+    required DateTime punchAt,
+    required Position position,
+  }) async {
     var succeeded = false;
     String? message;
 
     try {
       final profile = await _authService.getCurrentUserProfile();
-      final position = _position;
 
       final result = await _attendanceRequestService.submitSelfPunch(
         employeeId: profile?.canonicalEmployeeId,
         isCheckOut: widget.isCheckOut,
-        latitude: position?.latitude,
-        longitude: position?.longitude,
+        latitude: position.latitude,
+        longitude: position.longitude,
         address: _address,
         faceVerified: widget.method == BiometricMethod.face,
         biometricMethod: widget.method == BiometricMethod.face
@@ -1048,15 +1274,21 @@ class _CheckInScreenState extends State<CheckInScreen>
         biometricAuthorizationId: widget.method == BiometricMethod.fingerprint
             ? _biometricAuthorizationId
             : null,
+        gpsAccuracy: position.accuracy,
+        gpsMocked: position.isMocked,
+        clientInternetTime: punchAt,
+        timeSource: 'internet',
+        now: punchAt,
       );
 
       succeeded = result.success;
       message = result.success ? null : result.message;
 
-      // No fix in hand: fill it in once it lands.
+      // The punch carried this fix already; the patch below only replaces the
+      // raw "lat, lng" text with a street address when geocoding failed.
       final recordId = result.record?.id ?? 0;
-      if (succeeded && position == null && recordId > 0) {
-        unawaited(_backfillLocation(recordId));
+      if (succeeded && recordId > 0 && !_addressResolved) {
+        unawaited(_backfillAddress(recordId, position));
       }
     } catch (e) {
       message = 'Attendance request could not be submitted: $e';
@@ -1069,27 +1301,15 @@ class _CheckInScreenState extends State<CheckInScreen>
     }
   }
 
-  /// Patch the punch's location once a fix arrives, after the officer has left.
+  /// Upgrades the punch's address text, and nothing else.
   ///
-  /// Detached from the widget tree: never calls setState, swallows every
-  /// failure, because the punch itself is already safely recorded.
-  Future<void> _backfillLocation(int recordId) async {
+  /// Coordinates always come from the punch itself; this runs only when the
+  /// geocoder failed before submission, never calls setState, and swallows
+  /// every failure because the punch is already recorded.
+  Future<void> _backfillAddress(int recordId, Position position) async {
     try {
-      await _locationFuture;
-
-      var position = _position;
-      position ??= await Geolocator.getCurrentPosition(
-        locationSettings: const LocationSettings(
-          accuracy: LocationAccuracy.high,
-          timeLimit: Duration(seconds: 20),
-        ),
-      );
-
-      var address = _address;
-      if (address.isEmpty) {
-        address = '${position.latitude.toStringAsFixed(4)}, '
-            '${position.longitude.toStringAsFixed(4)}';
-      }
+      final address = await _geocode(position);
+      if (address == null) return;
 
       await _attendanceRequestService.updateSelfPunchLocation(
         recordId: recordId,
@@ -1098,8 +1318,35 @@ class _CheckInScreenState extends State<CheckInScreen>
         address: address,
       );
     } catch (_) {
-      // Best-effort; the punch stands without a location.
+      // Best-effort; the punch stands with its coordinates.
     }
+  }
+
+  /// Re-runs the preconditions and resumes where the flow stopped.
+  Future<void> _retryPreflight() async {
+    if (_preflightRunning) return;
+
+    final ready = await _runPreflight(force: true);
+    if (!ready || !mounted) return;
+
+    if (widget.method == BiometricMethod.fingerprint) {
+      if (_biometricAuthorized && _biometricAuthorizationId != null) {
+        await _submitPunch();
+      } else {
+        await _runFingerprintAuthorization();
+      }
+      return;
+    }
+
+    if (_faceVerified) {
+      await _submitPunch();
+      return;
+    }
+
+    await _releaseCamera();
+    if (!mounted) return;
+    setState(() => _errorMessage = '');
+    await _startFaceFlow();
   }
 
   // ================================================================
@@ -1218,7 +1465,11 @@ class _CheckInScreenState extends State<CheckInScreen>
                   const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
               child: Column(
                 children: [
-                  if (!isFingerprint) _buildChallengeList(),
+                  if (_phase == CheckInPhase.preflight) _buildPreflightCard(),
+                  if (_phase == CheckInPhase.blocked) _buildBlockedCard(),
+                  if (!isFingerprint && _phase != CheckInPhase.blocked &&
+                      _phase != CheckInPhase.preflight)
+                    _buildChallengeList(),
                   if (_biometricAuthorized) _buildFingerprintCard(),
                   if (_faceVerified) _buildVerificationCard(),
                   if (_phase == CheckInPhase.gps ||
@@ -1585,6 +1836,113 @@ class _CheckInScreenState extends State<CheckInScreen>
   }
 
   // ----------------------------------------------------------------
+  // Preflight + blocking cards
+  // ----------------------------------------------------------------
+  Widget _buildPreflightCard() {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.06),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.14)),
+      ),
+      child: Row(
+        children: [
+          const SizedBox(
+            width: 20,
+            height: 20,
+            child: CircularProgressIndicator(
+              strokeWidth: 2,
+              valueColor: AlwaysStoppedAnimation(ui.AppColors.primaryLight),
+            ),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Text(
+              'Verifying the network clock, your shift window and the GPS fix '
+              'before the punch is offered.',
+              style: GoogleFonts.poppins(fontSize: 13, color: Colors.white70),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// The punch is refused, and this says exactly why.
+  ///
+  /// Every reason here is a real precondition of the submission, not a warning:
+  /// a punch that cannot be time-stamped or located is exactly the punch the
+  /// old flow used to send anyway.
+  Widget _buildBlockedCard() {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppColors.error.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.error.withValues(alpha: 0.35)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.lock_clock_rounded,
+                  color: AppColors.error, size: 22),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  'Punch blocked',
+                  style: GoogleFonts.poppins(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.error,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            _blockedReason ?? 'The punch cannot go ahead yet.',
+            style: GoogleFonts.poppins(
+              fontSize: 13,
+              height: 1.35,
+              color: Colors.white70,
+            ),
+          ),
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            height: 44,
+            child: OutlinedButton.icon(
+              onPressed: _preflightRunning ? null : _retryPreflight,
+              style: OutlinedButton.styleFrom(
+                foregroundColor: Colors.white,
+                disabledForegroundColor: Colors.white38,
+                side: BorderSide(color: Colors.white.withValues(alpha: 0.3)),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(ui.AppRadius.md + 2),
+                ),
+              ),
+              icon: const Icon(Icons.refresh_rounded, size: 18),
+              label: Text(
+                'Retry',
+                style: GoogleFonts.poppins(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ----------------------------------------------------------------
   // Error card
   // ----------------------------------------------------------------
   Widget _buildErrorCard() {
@@ -1627,6 +1985,18 @@ class _CheckInScreenState extends State<CheckInScreen>
         onPressed = null;
         bgColor = Colors.white.withValues(alpha: 0.12);
         icon = PhosphorIconsDuotone.hourglass;
+        break;
+      case CheckInPhase.preflight:
+        label = 'Checking location and time…';
+        onPressed = null;
+        bgColor = Colors.white.withValues(alpha: 0.12);
+        icon = PhosphorIconsDuotone.hourglass;
+        break;
+      case CheckInPhase.blocked:
+        label = _preflightRunning ? 'Checking…' : 'Retry checks';
+        onPressed = _preflightRunning ? null : _retryPreflight;
+        bgColor = ui.AppColors.warning;
+        icon = PhosphorIconsDuotone.arrowClockwise;
         break;
       case CheckInPhase.scanning:
         label = _s.buttonScanning;

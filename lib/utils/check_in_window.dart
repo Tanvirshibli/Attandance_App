@@ -54,11 +54,13 @@ class CheckInWindow {
     r'^(\d{1,2}):(\d{2})(?::(\d{2}))?$',
   );
 
+  /// [now] is required on purpose: the verdict must be computed against
+  /// internet time, so no caller can fall back to the device clock.
   static CheckInWindowResult evaluate({
     required String? shiftStartTime,
-    DateTime? now,
+    required DateTime now,
   }) {
-    final current = now ?? DateTime.now();
+    final current = now;
     final start = _parseShiftStart(shiftStartTime, current);
     if (start == null) {
       return const CheckInWindowResult(isClosed: false);
