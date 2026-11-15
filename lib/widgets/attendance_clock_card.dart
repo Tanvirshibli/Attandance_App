@@ -11,6 +11,12 @@ import '../services/shift_window_service.dart';
 import 'syncing_time.dart';
 import 'ui/ui.dart' as ui;
 
+/// Clock figures without the meridiem, e.g. `09:05`.
+String formatClock(DateTime time) => DateFormat('hh:mm').format(time);
+
+/// `AM` / `PM`, kept separate so it can be drawn smaller.
+String formatMeridiem(DateTime time) => DateFormat('a').format(time);
+
 /// Reports which window the tapped button was drawn for, so the caller can
 /// refuse a punch the card already knew was closed without another round trip.
 typedef PunchWindowCallback = void Function(WindowState? state);
@@ -234,11 +240,35 @@ class _AttendanceClockCardState extends State<AttendanceClockCard>
             style: ui.AppType.bodyStrong.copyWith(color: Colors.white),
           ),
         ),
-        Text(
-          shiftName,
-          style: ui.AppType.meta.copyWith(color: Colors.white70),
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
+        const Spacer(),
+        Flexible(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                'ASSIGNED SHIFT',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: ui.AppType.micro.copyWith(
+                  color: Colors.white.withValues(alpha: 0.7),
+                  letterSpacing: 0.8,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                shiftName,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.end,
+                style: ui.AppType.bodyStrong.copyWith(
+                  color: shift == null ? ui.AppColors.warning : Colors.white,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ),
         ),
       ],
     );
@@ -247,7 +277,8 @@ class _AttendanceClockCardState extends State<AttendanceClockCard>
   Widget _buildClock() {
     const figures = [FontFeature.tabularFigures()];
     final now = _localNow;
-    final hours = now == null ? '--:--' : DateFormat('HH:mm').format(now);
+    final hours = now == null ? '--:--' : formatClock(now);
+    final meridiem = now == null ? '--' : formatMeridiem(now);
     final seconds = now == null ? '--' : DateFormat('ss').format(now);
 
     return Center(
@@ -270,7 +301,18 @@ class _AttendanceClockCardState extends State<AttendanceClockCard>
                 fontFeatures: figures,
               ),
             ),
-            const SizedBox(width: 3),
+            const SizedBox(width: 5),
+            Text(
+              meridiem,
+              style: GoogleFonts.poppins(
+                fontSize: 15,
+                height: 1.05,
+                fontWeight: FontWeight.w700,
+                color: Colors.white70,
+                letterSpacing: 0.6,
+              ),
+            ),
+            const SizedBox(width: 7),
             AnimatedSwitcher(
               duration: const Duration(milliseconds: 320),
               switchInCurve: Curves.easeOut,
@@ -487,13 +529,50 @@ class _AttendanceClockCardState extends State<AttendanceClockCard>
         ? (punchTime == '--' ? 'Check out' : 'Update out')
         : (punchTime == '--' ? 'Check in' : 'Re-check in');
     final icon = isCheckOut ? Icons.logout_rounded : Icons.login_rounded;
-    final punchText = punchTime == '--'
-        ? (isCheckOut ? 'No check-out yet' : 'No check-in yet')
-        : '${isCheckOut ? 'Out' : 'In'} $punchTime';
+    final punchText = punchTime == '--' ? '--:--' : punchTime;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        Text(
+          isCheckOut ? 'CHECK-OUT' : 'CHECK-IN',
+          style: ui.AppType.micro.copyWith(
+            color: Colors.white.withValues(alpha: 0.72),
+            letterSpacing: 0.9,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        const SizedBox(height: 2),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.baseline,
+          textBaseline: TextBaseline.alphabetic,
+          children: [
+            Flexible(
+              child: Text(
+                punchText,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: GoogleFonts.poppins(
+                  fontSize: 26,
+                  height: 1.1,
+                  fontWeight: FontWeight.w700,
+                  color: punchTime == '--'
+                      ? Colors.white.withValues(alpha: 0.45)
+                      : Colors.white,
+                  fontFeatures: const [FontFeature.tabularFigures()],
+                ),
+              ),
+            ),
+          ],
+        ),
+        if (punchTime == '--')
+          Text(
+            isCheckOut ? 'No check-out yet' : 'No check-in yet',
+            style: ui.AppType.micro.copyWith(
+              color: Colors.white.withValues(alpha: 0.6),
+            ),
+          ),
+        const SizedBox(height: 8),
         Material(
           color: enabled ? Colors.white : Colors.white.withValues(alpha: 0.16),
           borderRadius: BorderRadius.circular(ui.AppRadius.md + 2),

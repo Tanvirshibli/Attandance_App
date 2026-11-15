@@ -19,8 +19,10 @@ import '../services/attendance_stats_service.dart';
 import '../services/attendance_punch_notifier.dart';
 import '../services/app_settings_service.dart';
 import '../services/auth_service.dart';
+import '../services/biometric_auth_service.dart';
 import '../services/face_recognition_service.dart';
 import '../services/shift_window_service.dart';
+import '../services/transaction_ui_service.dart';
 import '../widgets/attendance_clock_card.dart';
 import '../widgets/stat_card.dart';
 import '../widgets/attendance_tile.dart';
@@ -55,6 +57,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   AuthUserProfile _profile = AuthUserProfile.fallback();
   bool _isLoadingProfile = true;
   bool _faceRegistered = true;
+
+  /// Cached so the check-in chooser can open without waiting on the platform
+  /// channel. A device with no working sensor must not be offered fingerprint.
+  bool _fingerprintAvailable = false;
 
   /// True while a punch is still being submitted in the background, so the
   /// matching time on today's card can pulse until it settles.
@@ -149,6 +155,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   /// cards waited on a full attendance fetch (four requests across two backends)
   /// that they never read.
   Future<void> _refreshHomeData() async {
+    unawaited(_refreshFingerprintCapability());
     final employeeId = await _loadProfile();
 
     if (!mounted) return;
@@ -159,6 +166,21 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       recordsDone,
       _loadSummary(employeeId, recordsDone),
     ]);
+  }
+
+  /// Kept warm so neither the card nor the method chooser waits on the platform
+  /// channel, and so a device without a working sensor never offers fingerprint.
+  Future<void> _refreshFingerprintCapability() async {
+    bool available = false;
+    try {
+      final availability = await BiometricAuthService.instance.availability();
+      available = availability.available;
+    } catch (error) {
+      debugPrint('Fingerprint capability check failed: $error');
+      available = false;
+    }
+    if (!mounted || _fingerprintAvailable == available) return;
+    setState(() => _fingerprintAvailable = available);
   }
 
   /// Returns the employee id, or null when the profile could not be resolved.
@@ -488,11 +510,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }
 
     final settings = AppSettingsService.instance;
-    final faceRegistered = await _faceService.isFaceRegistered();
-    if (!mounted) return;
+    // Cached on the last refresh: awaiting the face service here is what made
+    // the method chooser appear late.
+    final faceRegistered = _faceRegistered;
 
     final fingerprintReady =
-        settings.biometricCheckinFingerprint.value &&
+        _fingerprintAvailable &&
+            settings.biometricCheckinFingerprint.value &&
             settings.hasBiometricCredential;
     final faceReady = settings.biometricCheckinFace.value && faceRegistered;
 
@@ -547,14 +571,17 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   /// Both check-in methods are enabled, so let the officer pick. Dismissing the
   /// sheet cancels the punch rather than guessing.
   Future<BiometricMethod?> _chooseBiometricMethod() {
-    return showModalBottomSheet<BiometricMethod>(
+    // A dialog, not a bottom sheet: the choice belongs in the middle of the
+    // screen for a punch. Nothing else in the app uses this helper.
+    return showDialog<BiometricMethod>(
       context: context,
-      backgroundColor: legacy.AppColors.surface,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (sheetContext) => SafeArea(
-        child: Column(
+      builder: (sheetContext) => Dialog(
+        backgroundColor: legacy.AppColors.surface,
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.all(Radius.circular(20)),
+        ),
+        child: SafeArea(
+          child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             const SizedBox(height: 8),
@@ -598,24 +625,26 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               onTap: () =>
                   Navigator.of(sheetContext).pop(BiometricMethod.face),
             ),
-            ListTile(
-              leading: const Icon(
-                Icons.fingerprint_rounded,
-                color: ui.AppColors.mGeo,
-              ),
-              title: Text(
-                'Fingerprint',
-                style: GoogleFonts.poppins(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w500,
-                  color: legacy.AppColors.textPrimary,
+            if (_fingerprintAvailable)
+              ListTile(
+                leading: const Icon(
+                  Icons.fingerprint_rounded,
+                  color: ui.AppColors.mGeo,
                 ),
+                title: Text(
+                  'Fingerprint',
+                  style: GoogleFonts.poppins(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
+                    color: legacy.AppColors.textPrimary,
+                  ),
+                ),
+                onTap: () => Navigator.of(sheetContext)
+                    .pop(BiometricMethod.fingerprint),
               ),
-              onTap: () => Navigator.of(sheetContext)
-                  .pop(BiometricMethod.fingerprint),
-            ),
             const SizedBox(height: 8),
           ],
+        ),
         ),
       ),
     );
@@ -637,7 +666,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     return Scaffold(
       backgroundColor: legacy.AppColors.background,
       body: RefreshIndicator(
-        onRefresh: _refreshHomeData,
+        onRefresh: () => TransactionUiService.instance.run(
+          _refreshHomeData,
+          label: 'Refreshing',
+        ),
         color: legacy.AppColors.primary,
         child: CustomScrollView(
           physics: const AlwaysScrollableScrollPhysics(
@@ -888,7 +920,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         Expanded(
           child: StatCard(
             label: 'Absent',
-            value: '${_summary.absentCount}',
+            value: _summary.rowsUnknown ? '—' : '${_summary.absentCount}',
             icon: Icons.cancel_outlined,
             color: legacy.AppColors.error,
           ),
@@ -897,7 +929,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         Expanded(
           child: StatCard(
             label: 'Holiday',
-            value: '${_summary.holidayCount}',
+            value: _summary.holidaysUnknown ? '—' : '${_summary.holidayCount}',
             icon: Icons.celebration_outlined,
             color: legacy.AppColors.warning,
           ),
