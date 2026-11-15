@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:animate_do/animate_do.dart';
@@ -15,6 +16,7 @@ import '../services/endpoint_config_service.dart';
 import '../services/transaction_ui_service.dart';
 import '../services/face_recognition_service.dart';
 import '../widgets/voice_input_field.dart';
+import 'face_login_capture_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -184,6 +186,38 @@ class _LoginScreenState extends State<LoginScreen> {
 
     setState(() => _biometricBusy = method);
 
+    // Face sign-in captures in-app, before the overlay opens: the transaction
+    // barrier covers every route, so a camera pushed while it is showing would
+    // be hidden behind it. Failing here is also cheaper than after a capture.
+    File? matchedPhoto;
+    if (method == BiometricLoginMethod.face) {
+      final blocker =
+          await BiometricLoginService.instance.faceLoginBlocker(
+        _faceRecognitionService,
+      );
+      if (!mounted) return;
+      if (blocker != null) {
+        setState(() => _biometricBusy = null);
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(blocker)));
+        return;
+      }
+
+      matchedPhoto = await Navigator.of(context).push<File>(
+        MaterialPageRoute(
+          builder: (_) => FaceLoginCaptureScreen(
+            faceService: _faceRecognitionService,
+          ),
+        ),
+      );
+      if (!mounted) return;
+      if (matchedPhoto == null) {
+        // Backed out of the camera: not an error, just no attempt.
+        setState(() => _biometricBusy = null);
+        return;
+      }
+    }
+
     final outcome = await TransactionUiService.instance.run(
       () => switch (method) {
         BiometricLoginMethod.fingerprint =>
@@ -191,6 +225,7 @@ class _LoginScreenState extends State<LoginScreen> {
         BiometricLoginMethod.face =>
           BiometricLoginService.instance.loginWithFace(
             _faceRecognitionService,
+            matchedPhoto: matchedPhoto,
           ),
       },
       label: switch (method) {

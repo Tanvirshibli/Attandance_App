@@ -31,6 +31,21 @@ Three defects made biometric sign-in dead in the shipped build:
 3. **Fingerprint login needed a manual enrolment that never happened.** The
    Keystore key and credential exist only after "Enrol fingerprint", so a fresh
    install never showed the button. Enrolment is now automatic (below).
+4. **Face sign-in captured with an external camera intent.** The flow used
+   `ImagePicker(source: ImageSource.camera)`, which launches another package's
+   camera activity. Android 11+ refuses to resolve that intent unless `<queries>`
+   declares it, and the thrown exception was swallowed into "no photo was
+   captured" — instant, unexplained, on every attempt. Check-in was unaffected
+   because it uses the in-process `camera` plugin.
+
+   Face sign-in now captures in `FaceLoginCaptureScreen`, on the same `camera`
+   package check-in uses, and verifies locally there. **The capture runs before
+   the transaction overlay opens**, because that overlay covers every route and a
+   camera pushed underneath it would be invisible. `loginWithFace` therefore
+   takes the already-matched photo (`matchedPhoto`) and only performs the session
+   exchange; its external-intent fallback was removed so the broken path cannot
+   be reached again. The manifest also declares `IMAGE_CAPTURE` and `GET_CONTENT`
+   for the remaining `image_picker` uses elsewhere in the app.
 
 ### Defaults and auto-enrolment
 

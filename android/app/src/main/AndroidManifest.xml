@@ -89,5 +89,15 @@
         <intent>
             <action android:name="android.speech.RecognitionService" />
         </intent>
+        <!-- Android 11+ hides other packages unless they are declared here.
+             Any remaining external camera intent (image_picker gallery/camera
+             flows outside the in-app face capture) needs this to resolve. -->
+        <intent>
+            <action android:name="android.media.action.IMAGE_CAPTURE" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.GET_CONTENT" />
+            <data android:mimeType="image/*" />
+        </intent>
     </queries>
 </manifest>

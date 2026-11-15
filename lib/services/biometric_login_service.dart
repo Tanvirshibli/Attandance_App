@@ -2,7 +2,6 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:http/http.dart' as http;
-import 'package:image_picker/image_picker.dart';
 
 import '../config/app_config.dart';
 import 'auth_service.dart';
@@ -33,8 +32,6 @@ class BiometricLoginService {
   BiometricLoginService._();
 
   static final BiometricLoginService instance = BiometricLoginService._();
-
-  static const int _faceAttempts = 3;
 
   final BiometricApiService _api = BiometricApiService();
   final AuthService _authService = AuthService();
@@ -119,9 +116,28 @@ class BiometricLoginService {
     }
   }
 
+  /// Why face sign-in cannot run on this device, or null when it can.
+  ///
+  /// The login screen asks before opening the camera, so a user who is missing a
+  /// template or a stored token is told immediately instead of after a capture.
+  Future<String?> faceLoginBlocker(FaceRecognitionService faceService) async {
+    await faceService.restorePersistedRegistration();
+    if (!await faceService.hasStoredFace()) {
+      return 'Face sign-in needs a face registered on this server. Sign in with '
+          'your password and register your face first.';
+    }
+    final storedToken = await _authService.readFaceLoginToken();
+    if (storedToken == null || storedToken.isEmpty) {
+      return 'Face sign-in is not set up on this device. Sign in with your '
+          'password once with Face login enabled in Profile → Biometrics.';
+    }
+    return null;
+  }
+
   Future<BiometricLoginOutcome> loginWithFace(
-    FaceRecognitionService faceService,
-  ) async {
+    FaceRecognitionService faceService, {
+    File? matchedPhoto,
+  }) async {
     if (_running) {
       return const BiometricLoginOutcome.failure(
         'A biometric sign-in is already in progress.',
@@ -159,78 +175,44 @@ class BiometricLoginService {
         );
       }
 
-      String failureMessage =
-          'Your face did not match closely enough. Try again in better light, '
-          'or sign in with your password.';
-
-      for (var attempt = 0; attempt < _faceAttempts; attempt++) {
-        if (_cancelled) {
-          return const BiometricLoginOutcome.failure('Face sign-in cancelled.');
-        }
-
-        final photo = await _captureFacePhoto();
-        if (photo == null) {
-          if (_cancelled) {
-            return const BiometricLoginOutcome.failure(
-              'Face sign-in cancelled.',
-            );
-          }
-          return const BiometricLoginOutcome.failure(
-            'No photo was captured. Face sign-in cancelled.',
-          );
-        }
-
-        final verification = await faceService.verifyFace(photo);
-        try {
-          await photo.delete();
-        } catch (_) {}
-
-        if (!verification.isMatch) {
-          failureMessage = verification.message;
-          continue;
-        }
-
-        final session = await _refreshSession(storedToken);
-        if (session == null) {
-          return const BiometricLoginOutcome.failure(
-            'Face verified, but the session could not be renewed. Sign in with '
-            'your password.',
-          );
-        }
-
-        final applied = await _authService.applyBiometricSession(session);
-        if (!applied.success) {
-          return BiometricLoginOutcome.failure(
-            applied.message ?? 'Face sign-in failed.',
-          );
-        }
-        return const BiometricLoginOutcome.success('Signed in with face.');
+      // [matchedPhoto] is set when the caller already captured and verified the
+      // face in-app (see FaceLoginCaptureScreen). The capture has to live outside
+      // this method because the transaction overlay covers every route, so a
+      // camera screen opened from inside it would be hidden behind the barrier.
+      //
+      // There is deliberately no fallback capture here: the only other way to
+      // reach a camera from this point was the platform intent, which is what
+      // silently failed on Android 11+ and made face sign-in look broken.
+      final File? photo = matchedPhoto;
+      if (photo == null) {
+        return const BiometricLoginOutcome.failure('Face sign-in cancelled.');
       }
 
-      return BiometricLoginOutcome.failure(failureMessage);
+      final session = await _refreshSession(storedToken);
+      if (session == null) {
+        return const BiometricLoginOutcome.failure(
+          'Face verified, but the session could not be renewed. Sign in with '
+          'your password.',
+        );
+      }
+
+      final applied = await _authService.applyBiometricSession(session);
+      if (!applied.success) {
+        return BiometricLoginOutcome.failure(
+          applied.message ?? 'Face sign-in failed.',
+        );
+      }
+      // The session now owns the token, so the consumed photo is not kept.
+      try {
+        await photo.delete();
+      } catch (_) {}
+      return const BiometricLoginOutcome.success('Signed in with face.');
     } catch (_) {
       return const BiometricLoginOutcome.failure(
         'Face sign-in failed. Please sign in with your password.',
       );
     } finally {
       _running = false;
-    }
-  }
-
-  /// One front-camera frame. The template comparison, quality gates and
-  /// liveness checks all live in [FaceRecognitionService.verifyFace], so this is
-  /// the same strong threshold the check-in flow uses.
-  Future<File?> _captureFacePhoto() async {
-    try {
-      final picked = await ImagePicker().pickImage(
-        source: ImageSource.camera,
-        preferredCameraDevice: CameraDevice.front,
-        imageQuality: 100,
-      );
-      if (picked == null) return null;
-      return File(picked.path);
-    } catch (_) {
-      return null;
     }
   }
 
