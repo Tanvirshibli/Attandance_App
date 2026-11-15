@@ -20,6 +20,7 @@ import '../services/attendance_punch_notifier.dart';
 import '../services/app_settings_service.dart';
 import '../services/auth_service.dart';
 import '../services/biometric_auth_service.dart';
+import '../services/biometric_preferences_service.dart';
 import '../services/face_recognition_service.dart';
 import '../services/shift_window_service.dart';
 import '../services/transaction_ui_service.dart';
@@ -156,6 +157,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   /// that they never read.
   Future<void> _refreshHomeData() async {
     unawaited(_refreshFingerprintCapability());
+    unawaited(_ensureBiometricsReady());
     final employeeId = await _loadProfile();
 
     if (!mounted) return;
@@ -166,6 +168,50 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       recordsDone,
       _loadSummary(employeeId, recordsDone),
     ]);
+  }
+
+  /// Applies the one-time biometric defaults and enrols this phone's
+  /// fingerprint, asking once.
+  ///
+  /// Runs here as well as on the login screen because a session can be restored
+  /// without passing through the login form (a saved token, an update install),
+  /// and biometrics must end up on either way. Every step is idempotent.
+  Future<void> _ensureBiometricsReady() async {
+    try {
+      await BiometricPreferencesService.instance.applyDefaultsOnce();
+      if (!mounted) return;
+      if (AppSettingsService.instance.hasBiometricCredential) return;
+
+      final result = await BiometricAuthService.instance.ensureEnrolled(
+        confirm: (title, message) async {
+          if (!mounted) return false;
+          final answer = await showDialog<bool>(
+            context: context,
+            builder: (dialogContext) => AlertDialog(
+              title: Text(title),
+              content: Text(message),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(dialogContext).pop(false),
+                  child: const Text('Not now'),
+                ),
+                FilledButton(
+                  onPressed: () => Navigator.of(dialogContext).pop(true),
+                  child: const Text('Enable'),
+                ),
+              ],
+            ),
+          );
+          return answer ?? false;
+        },
+      );
+      if (!mounted) return;
+      if (result.success) {
+        await _refreshFingerprintCapability();
+      }
+    } catch (error) {
+      debugPrint('HomeScreen: biometric preparation failed ($error)');
+    }
   }
 
   /// Kept warm so neither the card nor the method chooser waits on the platform

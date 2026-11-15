@@ -90,6 +90,63 @@ class BiometricAuthService {
 
   Future<BiometricAvailability> availability() => _platform.canAuthenticate();
 
+  /// Enrols this device's fingerprint when it is safe and the user agreed.
+  ///
+  /// Called after a password sign-in, which is the only moment the app may act
+  /// on the user's behalf. Three outcomes:
+  /// * a credential already exists → nothing to do;
+  /// * the phone has no usable sensor or no fingerprint set up in Android →
+  ///   defer with the reason (Android cannot create a biometric for the user);
+  /// * otherwise ask once. The answer is remembered, so a user who declines is
+  ///   never asked again, and a later key invalidation asks afresh because that
+  ///   is a genuinely new device state.
+  ///
+  /// [confirm] is supplied by the caller so this service stays UI-free.
+  Future<BiometricResult> ensureEnrolled({
+    required Future<bool> Function(String title, String message) confirm,
+  }) async {
+    if (hasCredential) {
+      return const BiometricResult(
+        success: true,
+        message: 'Fingerprint already enrolled.',
+      );
+    }
+
+    final availability = await _platform.canAuthenticate();
+    if (!availability.available) {
+      return BiometricResult.failure(availability.reason);
+    }
+
+    // The login screen is the only caller that asks; a background caller can
+    // pass a confirm that returns false to stay silent.
+    final consent = _settings.biometricEnrollConsent.value;
+    if (consent == 'granted') {
+      return enrollFingerprint();
+    }
+    if (consent == 'declined') {
+      return const BiometricResult(
+        success: false,
+        message: 'Fingerprint sign-in was declined on this device.',
+      );
+    }
+
+    final accepted = await confirm(
+      'Enable fingerprint sign-in?',
+      'Use your fingerprint to sign in and to confirm check-in and check-out on '
+          'this phone. You can turn it off any time in Profile → Biometrics.',
+    );
+    await _settings.setBiometricEnrollConsent(accepted ? 'granted' : 'declined');
+
+    if (!accepted) {
+      return const BiometricResult(
+        success: false,
+        message: 'Fingerprint sign-in was declined on this device.',
+      );
+    }
+
+    return enrollFingerprint();
+  }
+
   /// Creates (or re-creates) the Keystore key and registers its public half.
   Future<BiometricResult> enrollFingerprint() async {
     final availability = await _platform.canAuthenticate();
@@ -266,6 +323,9 @@ class BiometricAuthService {
     await _settings.clearBiometricCredential();
     await _settings.setBiometricLoginFingerprint(false);
     await _settings.setBiometricCheckinFingerprint(false);
+    // A deliberate removal is a new answer: the auto-enrolment prompt may be
+    // offered again if the user later changes their mind.
+    await _settings.setBiometricEnrollConsent('declined');
     // Clearing only the local flags leaves the server believing fingerprint is
     // on: its preferences gate requires a credential, so every later punch is
     // rejected with a 422 the device has no way to satisfy. The push is the

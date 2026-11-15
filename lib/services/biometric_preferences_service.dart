@@ -18,6 +18,9 @@ class BiometricPreferencesService {
   final AppSettingsService _settings = AppSettingsService.instance;
   final BiometricApiService _api = BiometricApiService();
 
+  /// Why the last [save] was refused, for the caller to show verbatim.
+  String? lastError;
+
   ValueNotifier<bool> get loginFace => _settings.biometricLoginFace;
   ValueNotifier<bool> get loginFingerprint =>
       _settings.biometricLoginFingerprint;
@@ -56,6 +59,14 @@ class BiometricPreferencesService {
       checkinFingerprint: checkinFingerprint,
     );
 
+    // At least one method must stay available in each section, or the account
+    // locks itself out of the very thing the switches control.
+    final refusal = invalidCombinationReason(next);
+    if (refusal != null) {
+      lastError = refusal;
+      return false;
+    }
+
     await _applyLocally(next);
     final saved = await _api.savePreferences(next);
     if (saved == null) {
@@ -66,6 +77,48 @@ class BiometricPreferencesService {
     // rather than what was sent: the backend may have clamped a combination.
     await adoptSnapshot(saved);
     return true;
+  }
+
+  /// One-shot: turns every biometric method on, once per install.
+  ///
+  /// Biometrics are meant to work out of the box; the server defaults them off
+  /// and every `load()` would otherwise overwrite the local defaults. The push
+  /// is marked done only once the server accepted it, so an offline first login
+  /// simply retries next time. A user who later turns something off keeps that
+  /// choice — this never runs again.
+  Future<bool> applyDefaultsOnce() async {
+    if (_settings.biometricDefaultsApplied.value) return true;
+
+    const allOn = BiometricPreferencesData(
+      loginFace: true,
+      loginFingerprint: true,
+      checkinFace: true,
+      checkinFingerprint: true,
+    );
+    await _applyLocally(allOn);
+
+    final saved = await _api.savePreferences(allOn);
+    if (saved == null) return false;
+
+    await adoptSnapshot(saved);
+    await _settings.setBiometricDefaultsApplied(true);
+    return true;
+  }
+
+  /// Why a combination must be refused, or null when it is acceptable.
+  ///
+  /// Pure so the rule can be tested without a network or a server, and so the
+  /// "never leave the user with no way to punch" promise lives in one place.
+  static String? invalidCombinationReason(BiometricPreferencesData next) {
+    if (!next.loginFace && !next.loginFingerprint) {
+      return 'Keep at least one sign-in method: password always works, but '
+          'leave face or fingerprint on to use them.';
+    }
+    if (!next.checkinFace && !next.checkinFingerprint) {
+      return 'Keep at least one check-in method on, otherwise you cannot punch '
+          'at all.';
+    }
+    return null;
   }
 
   /// Sends the current mirror as-is, without [save]'s optimistic apply.
