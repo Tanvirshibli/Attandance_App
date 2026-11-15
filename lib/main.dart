@@ -13,6 +13,7 @@ import 'services/internet_time_service.dart';
 import 'widgets/connectivity_guard.dart';
 import 'widgets/integrity_guard.dart';
 import 'widgets/location_guard.dart';
+import 'widgets/transaction_overlay.dart';
 import 'widgets/update_gate.dart';
 
 void main() async {
@@ -100,7 +101,10 @@ class AttendEaseApp extends StatelessWidget {
       // off.
       builder: (context, child) {
         final content = child ?? const SizedBox.shrink();
-        final located = LocationGuard(child: content);
+        // A transaction barrier covers every route and survives a pop, but it
+        // must never cover a tampering or location lock, so it sits inside both.
+        final withTransactions = TransactionOverlay(child: content);
+        final located = LocationGuard(child: withTransactions);
         final guarded = AppConfig.connectivityGuardEnabled
             ? ConnectivityGuard(child: located)
             : located;
