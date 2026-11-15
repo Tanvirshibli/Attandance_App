@@ -18,6 +18,7 @@ import '../config/theme.dart';
 import '../l10n/face_capture_strings.dart';
 import '../models/attendance_request_record.dart';
 import '../services/app_settings_service.dart';
+import '../services/biometric_auth_service.dart';
 import '../services/face_recognition_service.dart';
 import '../services/attendance_request_service.dart';
 import '../services/attendance_punch_notifier.dart';
@@ -39,6 +40,9 @@ enum CheckInPhase { initializing, scanning, verifying, gps, success, error }
 /// Internal blink-detection phases
 enum _BlinkPhase { waitingOpen, waitingClosed, waitingReopen, done }
 
+/// Which on-device check proves it is the employee punching in.
+enum BiometricMethod { face, fingerprint }
+
 // ================================================================
 // CheckInScreen
 // ================================================================
@@ -46,9 +50,14 @@ enum _BlinkPhase { waitingOpen, waitingClosed, waitingReopen, done }
 class CheckInScreen extends StatefulWidget {
   final bool isCheckOut;
 
+  /// `face` keeps the original liveness + template flow; `fingerprint` replaces
+  /// it with a Keystore signature that the server turns into a punch grant.
+  final BiometricMethod method;
+
   const CheckInScreen({
     super.key,
     this.isCheckOut = false,
+    this.method = BiometricMethod.face,
   });
 
   @override
@@ -118,6 +127,10 @@ class _CheckInScreenState extends State<CheckInScreen>
   static const int _nullInputFrameThreshold = 10;
   bool _punchSubmitted = false;
   AttendanceRequestRecord? _punchedRecord;
+
+  // ---- Fingerprint path ----
+  bool _biometricAuthorized = false;
+  String? _biometricAuthorizationId;
 
   /// The in-flight location capture, started at screen open so the punch can
   /// carry a fix without making the officer wait for GPS.
@@ -195,6 +208,11 @@ class _CheckInScreenState extends State<CheckInScreen>
     // the fix is usually ready and the punch can carry it with no wait.
     _locationFuture ??= _prefetchLocation();
 
+    if (widget.method == BiometricMethod.fingerprint) {
+      await _runFingerprintAuthorization();
+      return;
+    }
+
     // The engine is warmed at app start; this is a no-op when it is already up.
     await _faceService.initialize();
 
@@ -211,6 +229,52 @@ class _CheckInScreenState extends State<CheckInScreen>
     }
 
     await _initCamera();
+  }
+
+  /// The fingerprint punch proof: server challenge → Keystore signature (behind
+  /// the system prompt) → a punch authorisation the attendance submit quotes.
+  Future<void> _runFingerprintAuthorization() async {
+    final auth = BiometricAuthService.instance;
+    if (!auth.hasCredential) {
+      if (!mounted) return;
+      setState(() {
+        _phase = CheckInPhase.error;
+        _errorMessage =
+            'No fingerprint is enrolled on this device. Enroll it in '
+            'Profile → Biometrics, or switch to face check-in.';
+      });
+      return;
+    }
+
+    if (mounted) {
+      setState(() {
+        _phase = CheckInPhase.verifying;
+        _statusMessage = 'Confirm your fingerprint to continue.';
+      });
+    }
+
+    final result = await auth.authorizePunch(
+      direction: widget.isCheckOut ? 'out' : 'in',
+    );
+
+    if (!mounted) return;
+
+    if (!result.success) {
+      setState(() {
+        _phase = CheckInPhase.error;
+        _errorMessage = result.message;
+      });
+      return;
+    }
+
+    _biometricAuthorizationId = result.authorizationId;
+    setState(() {
+      _biometricAuthorized = true;
+      _verificationConfidence = 0;
+      _statusMessage = result.message;
+    });
+
+    await _submitPunch();
   }
 
   Future<void> _initCamera() async {
@@ -977,7 +1041,13 @@ class _CheckInScreenState extends State<CheckInScreen>
         latitude: position?.latitude,
         longitude: position?.longitude,
         address: _address,
-        faceVerified: true,
+        faceVerified: widget.method == BiometricMethod.face,
+        biometricMethod: widget.method == BiometricMethod.face
+            ? 'face'
+            : 'fingerprint',
+        biometricAuthorizationId: widget.method == BiometricMethod.fingerprint
+            ? _biometricAuthorizationId
+            : null,
       );
 
       succeeded = result.success;
@@ -1050,6 +1120,16 @@ class _CheckInScreenState extends State<CheckInScreen>
   }
 
   void _retry() {
+    if (widget.method == BiometricMethod.fingerprint) {
+      _biometricAuthorized = false;
+      setState(() {
+        _errorMessage = '';
+        _phase = CheckInPhase.initializing;
+        _statusMessage = _s.initializing;
+      });
+      unawaited(_runFingerprintAuthorization());
+      return;
+    }
     if (_needsFaceReregister) {
       unawaited(_openFaceRegistration());
       return;
@@ -1093,6 +1173,7 @@ class _CheckInScreenState extends State<CheckInScreen>
   Widget build(BuildContext context) {
     if (_aborted) return const SizedBox.shrink();
 
+    final isFingerprint = widget.method == BiometricMethod.fingerprint;
     final sw = MediaQuery.of(context).size.width;
     final previewHeight = sw * 1.05;
     _previewStageWidth = sw - 32;
@@ -1125,7 +1206,9 @@ class _CheckInScreenState extends State<CheckInScreen>
       body: Column(
         children: [
           // ---- FIXED TOP: Camera + Circular Progress ----
-          _buildCameraSection(previewHeight),
+          isFingerprint
+              ? _buildFingerprintStage(previewHeight)
+              : _buildCameraSection(previewHeight),
 
           // ---- SCROLLABLE MIDDLE ----
           Expanded(
@@ -1135,7 +1218,8 @@ class _CheckInScreenState extends State<CheckInScreen>
                   const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
               child: Column(
                 children: [
-                  _buildChallengeList(),
+                  if (!isFingerprint) _buildChallengeList(),
+                  if (_biometricAuthorized) _buildFingerprintCard(),
                   if (_faceVerified) _buildVerificationCard(),
                   if (_phase == CheckInPhase.gps ||
                       _phase == CheckInPhase.success)
@@ -1152,6 +1236,101 @@ class _CheckInScreenState extends State<CheckInScreen>
         ],
       ),
     ),
+    );
+  }
+
+  // ----------------------------------------------------------------
+  // Fingerprint stage (replaces the camera preview)
+  // ----------------------------------------------------------------
+  Widget _buildFingerprintStage(double height) {
+    final authorized = _biometricAuthorized;
+    final tint = authorized ? ui.AppColors.success : ui.AppColors.primaryLight;
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+      child: Container(
+        height: height,
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.06),
+          borderRadius: BorderRadius.circular(ui.AppRadius.lg),
+          border: Border.all(color: tint.withValues(alpha: 0.4)),
+        ),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              width: 140,
+              height: 140,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: tint.withValues(alpha: 0.12),
+                border: Border.all(color: tint, width: 2),
+              ),
+              child: Icon(
+                authorized
+                    ? Icons.check_circle_outline_rounded
+                    : Icons.fingerprint_rounded,
+                size: 68,
+                color: tint,
+              ),
+            ),
+            const SizedBox(height: ui.AppSpace.md),
+            Padding(
+              padding: const EdgeInsets.symmetric(
+                horizontal: ui.AppSpace.gutter,
+              ),
+              child: Text(
+                _statusMessage,
+                textAlign: TextAlign.center,
+                style: ui.AppType.bodySm.copyWith(color: Colors.white70),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildFingerprintCard() {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppColors.success.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(16),
+        border:
+            Border.all(color: AppColors.success.withValues(alpha: 0.3)),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+              color: AppColors.success.withValues(alpha: 0.15),
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(Icons.fingerprint_rounded,
+                color: AppColors.success, size: 22),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Fingerprint verified',
+                    style: GoogleFonts.poppins(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.success)),
+                Text('Authorized by this device\'s enrolled fingerprint',
+                    style: GoogleFonts.poppins(
+                        fontSize: 12, color: Colors.white60)),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 

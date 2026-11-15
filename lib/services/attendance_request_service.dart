@@ -161,7 +161,7 @@ class AttendanceRequestService {
     final merged = <AttendanceRequestRecord>[];
     var anyReachable = false;
 
-    for (final url in await _jwtAttendanceUrls()) {
+    for (final url in await _hrmAttendanceUrls()) {
       try {
         final queryParameters = <String, String>{
           'limit': '$limit',
@@ -444,6 +444,8 @@ class AttendanceRequestService {
     double? longitude,
     String address = '',
     bool faceVerified = false,
+    String? biometricMethod,
+    String? biometricAuthorizationId,
   }) async {
     if (!await _hasLocalSession()) {
       return const AttendanceSubmitResult(
@@ -476,13 +478,32 @@ class AttendanceRequestService {
       'lng': ?longitude,
       if (address.isNotEmpty) 'address': address,
       'face_verified': faceVerified,
+      if (biometricMethod != null && biometricMethod.isNotEmpty)
+        'biometric_method': biometricMethod,
+      if (biometricAuthorizationId != null &&
+          biometricAuthorizationId.isNotEmpty)
+        'biometric_authorization_id': biometricAuthorizationId,
       'requestType': 'self_punch',
       ...deviceMetadata,
     };
 
+    // A biometric punch is not just a punch: the authorization id (or the face
+    // method) is validated and consumed by the HRM backend, which owns the
+    // credential, the nonce and the preference flags. The ZKTeco BFF accepts a
+    // bare punch, so it would answer 201 and the proof would never be checked —
+    // the punch would look successful while the biometric claim went unconsumed.
+    // Biometric punches therefore try HRM first, with ZKTeco kept as a fallback.
+    final carriesBiometricProof =
+        (biometricMethod != null && biometricMethod.isNotEmpty) ||
+            (biometricAuthorizationId != null &&
+                biometricAuthorizationId.isNotEmpty);
+    final punchUrls = carriesBiometricProof
+        ? await _biometricPunchUrls()
+        : await _attendancePunchUrls();
+
     String? networkError;
 
-    for (final url in await _attendancePunchUrls()) {
+    for (final url in punchUrls) {
       try {
         final headers = <String, String>{
           'Accept': 'application/json',
@@ -559,8 +580,18 @@ class AttendanceRequestService {
       if (address.isNotEmpty) 'address': address,
     };
 
-    for (final base in await _attendancePunchUrls()) {
-      final url = '${base.replaceAll(RegExp(r'/+$'), '')}/$recordId/location';
+    final candidates = <String>[];
+    for (final url in [
+      ...await _hrmAttendanceUrls(),
+      ...await _attendancePunchUrls(),
+    ]) {
+      final normalized = url.replaceAll(RegExp(r'/+$'), '');
+      if (normalized.isEmpty || candidates.contains(normalized)) continue;
+      candidates.add(normalized);
+    }
+
+    for (final base in candidates) {
+      final url = '$base/$recordId/location';
       try {
         final headers = <String, String>{
           'Accept': 'application/json',
@@ -604,17 +635,38 @@ class AttendanceRequestService {
   }
 
   /// HRM JWT attendance URLs only — never ZKTeco `attendance.list`.
-  Future<List<String>> _jwtAttendanceUrls() async {
-    final urls = <String>[];
+  ///
+  /// The remotely published `auth.profile` base goes first, because a device
+  /// whose config points at a tunnel still has to reach the same ERP host.
+  Future<List<String>> _hrmAttendanceUrls() async {
+    final urls = <String>{};
     final hrmUrl = await _configService.resolveUrl('auth.profile');
     if (hrmUrl != null && hrmUrl.isNotEmpty) {
       final hrmBase = hrmUrl.replaceAll('/api/v1/get-my-info', '');
       urls.add('$hrmBase/api/v1/mobile/attendance-requests');
     }
-    for (final fallback in AppConfig.mobileAttendanceJwtUrls) {
-      if (!urls.contains(fallback)) {
-        urls.add(fallback);
-      }
+    urls.addAll(AppConfig.mobileAttendanceJwtUrls);
+    return urls.where((url) => url.isNotEmpty).toList();
+  }
+
+  /// Candidate order for a punch that carries biometric proof:
+  ///
+  /// 1. the HRM JWT endpoint (validates and consumes the authorization),
+  /// 2. the ZKTeco candidates, unchanged, so a device that cannot reach HRM
+  ///    still records the punch.
+  ///
+  /// The first success wins, as before; anything other than a 404 on the first
+  /// reachable candidate is surfaced rather than silently retried, so an HRM
+  /// rejection of the proof is never masked by a lenient ZKTeco 201.
+  Future<List<String>> _biometricPunchUrls() async {
+    final urls = <String>[];
+    final candidates = [
+      ...await _hrmAttendanceUrls(),
+      ...await _attendancePunchUrls(),
+    ];
+    for (final url in candidates) {
+      if (url.isEmpty || urls.contains(url)) continue;
+      urls.add(url);
     }
     return urls;
   }

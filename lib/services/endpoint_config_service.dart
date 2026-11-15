@@ -214,6 +214,41 @@ class EndpointConfigService {
           '/api/v1/mobile/face-registration',
           'hrm',
         ),
+        'biometric.challenge': ep(
+          'POST',
+          '/api/v1/mobile/biometric-challenge',
+          'hrm',
+        ),
+        'biometric.login': ep(
+          'POST',
+          '/api/v1/mobile/biometric-login',
+          'hrm',
+        ),
+        'biometric.punchAuthorization': ep(
+          'POST',
+          '/api/v1/mobile/biometric-punch-authorization',
+          'hrm',
+        ),
+        'biometric.credentials': ep(
+          'GET',
+          '/api/v1/mobile/biometric-credentials',
+          'hrm',
+        ),
+        'biometric.credentials.register': ep(
+          'POST',
+          '/api/v1/mobile/biometric-credentials',
+          'hrm',
+        ),
+        'biometric.credentials.delete': ep(
+          'DELETE',
+          '/api/v1/mobile/biometric-credentials',
+          'hrm',
+        ),
+        'biometric.preferences': ep(
+          'PUT',
+          '/api/v1/mobile/biometric-preferences',
+          'hrm',
+        ),
         'attendance.list': ep(
           'GET',
           '/api/v1/mobile/attendance-requests',

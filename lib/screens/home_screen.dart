@@ -17,6 +17,7 @@ import '../models/auth_user_profile.dart';
 import '../services/attendance_request_service.dart';
 import '../services/attendance_stats_service.dart';
 import '../services/attendance_punch_notifier.dart';
+import '../services/app_settings_service.dart';
 import '../services/auth_service.dart';
 import '../services/face_recognition_service.dart';
 import '../utils/check_in_window.dart';
@@ -492,13 +493,27 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       return;
     }
 
-    final registered = await _faceService.isFaceRegistered();
+    final settings = AppSettingsService.instance;
+    final faceRegistered = await _faceService.isFaceRegistered();
     if (!mounted) return;
-    if (!registered) {
+
+    final fingerprintReady =
+        settings.biometricCheckinFingerprint.value &&
+            settings.hasBiometricCredential;
+    final faceReady = settings.biometricCheckinFace.value && faceRegistered;
+
+    var method = BiometricMethod.face;
+    if (!faceRegistered && !fingerprintReady) {
       await _openFaceRegistration();
       if (!mounted) return;
       final nowRegistered = await _faceService.isFaceRegistered();
       if (!nowRegistered) return;
+    } else if (faceReady && fingerprintReady) {
+      final chosen = await _chooseBiometricMethod();
+      if (!mounted || chosen == null) return;
+      method = chosen;
+    } else if (fingerprintReady) {
+      method = BiometricMethod.fingerprint;
     }
 
     setState(() {
@@ -512,7 +527,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       final punched = await Navigator.of(context)
           .push<AttendanceRequestRecord?>(
             MaterialPageRoute(
-              builder: (_) => CheckInScreen(isCheckOut: isCheckOut),
+              builder: (_) =>
+                  CheckInScreen(isCheckOut: isCheckOut, method: method),
             ),
           );
       if (punched != null) {
@@ -532,6 +548,83 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         requireCheckOut: isCheckOut || _awaitingCheckOutSync,
       );
     }
+  }
+
+  /// Both check-in methods are enabled, so let the officer pick. Dismissing the
+  /// sheet cancels the punch rather than guessing.
+  Future<BiometricMethod?> _chooseBiometricMethod() {
+    return showModalBottomSheet<BiometricMethod>(
+      context: context,
+      backgroundColor: legacy.AppColors.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (sheetContext) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(height: 8),
+            Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: legacy.AppColors.divider,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            const SizedBox(height: 12),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  'Verify with',
+                  style: GoogleFonts.poppins(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                    color: legacy.AppColors.textPrimary,
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 4),
+            ListTile(
+              leading: const Icon(
+                Icons.face_retouching_natural_rounded,
+                color: ui.AppColors.mHr,
+              ),
+              title: Text(
+                'Face recognition',
+                style: GoogleFonts.poppins(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w500,
+                  color: legacy.AppColors.textPrimary,
+                ),
+              ),
+              onTap: () =>
+                  Navigator.of(sheetContext).pop(BiometricMethod.face),
+            ),
+            ListTile(
+              leading: const Icon(
+                Icons.fingerprint_rounded,
+                color: ui.AppColors.mGeo,
+              ),
+              title: Text(
+                'Fingerprint',
+                style: GoogleFonts.poppins(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w500,
+                  color: legacy.AppColors.textPrimary,
+                ),
+              ),
+              onTap: () => Navigator.of(sheetContext)
+                  .pop(BiometricMethod.fingerprint),
+            ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
   }
 
   Future<void> _openFaceRegistration() async {
