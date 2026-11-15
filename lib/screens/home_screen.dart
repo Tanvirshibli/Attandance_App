@@ -453,6 +453,24 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     ).showSnackBar(SnackBar(content: Text(message)));
   }
 
+  /// Why a punch cannot start, or null when it can.
+  ///
+  /// Evaluated twice per tap: once on cached state so the method chooser opens
+  /// without waiting, and once after the background reload so the officer is
+  /// never sent into a face scan for a punch that will be refused.
+  String? _punchBlockReason(bool isCheckOut) {
+    if (_isDayComplete) return 'Today\'s attendance is already logged.';
+    if (isCheckOut && !_canPunchOut) {
+      return 'You need to check in first before checking out.';
+    }
+    if (!isCheckOut && !_canPunchIn) {
+      return 'You are already checked in. Use Check Out.';
+    }
+    // The server owns the window and re-checks every punch; this only stops the
+    // officer sitting through a face scan for a punch that will be refused.
+    return ShiftWindowService.instance.blockReason(isCheckOut: isCheckOut);
+  }
+
   Future<void> _openCheckFlow({
     required bool isCheckOut,
     WindowState? windowState,
@@ -469,45 +487,16 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       return;
     }
 
-    // Re-read the punch list before deciding what to offer: the buttons on this
-    // screen depend on it, and the cached copy can be minutes old.
-    await _loadAttendanceRecords(_profile.canonicalEmployeeId);
-    if (!mounted) return;
-
-    if (_isDayComplete) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Today\'s attendance is already logged.')),
-      );
+    // Cached state decides what to offer. The freshness reload used to be
+    // awaited here, and that round-trip was the entire delay before the method
+    // chooser appeared; it now runs alongside the dialog instead.
+    final cachedBlock = _punchBlockReason(isCheckOut);
+    if (cachedBlock != null) {
+      _showSnack(cachedBlock);
       return;
     }
 
-    if (isCheckOut && !_canPunchOut) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('You need to check in first before checking out.'),
-        ),
-      );
-      return;
-    }
-
-    if (!isCheckOut && !_canPunchIn) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('You are already checked in. Use Check Out.'),
-        ),
-      );
-      return;
-    }
-
-    // The server owns the window and re-checks every punch; this only stops the
-    // officer sitting through a face scan for a punch that will be refused.
-    final windowBlock = ShiftWindowService.instance.blockReason(
-      isCheckOut: isCheckOut,
-    );
-    if (windowBlock != null) {
-      _showSnack(windowBlock);
-      return;
-    }
+    final refresh = _loadAttendanceRecords(_profile.canonicalEmployeeId);
 
     final settings = AppSettingsService.instance;
     // Cached on the last refresh: awaiting the face service here is what made
@@ -532,6 +521,16 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       method = chosen;
     } else if (fingerprintReady) {
       method = BiometricMethod.fingerprint;
+    }
+
+    // The dialog is answered; only now is the reload worth waiting for, so a
+    // stale cache cannot start a face scan for a punch the server will refuse.
+    await refresh;
+    if (!mounted) return;
+    final freshBlock = _punchBlockReason(isCheckOut);
+    if (freshBlock != null) {
+      _showSnack(freshBlock);
+      return;
     }
 
     setState(() {
