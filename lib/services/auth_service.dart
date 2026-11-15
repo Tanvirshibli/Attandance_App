@@ -3,13 +3,17 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../config/app_config.dart';
 import '../models/auth_user_profile.dart';
 import '../utils/user_facing_error.dart';
+import 'app_settings_service.dart';
+import 'biometric_preferences_service.dart';
 import 'endpoint_config_service.dart';
+import 'face_recognition_service.dart';
 import 'fcm_wake_handler.dart';
 import 'geo_tracking_service.dart';
 import 'permission_service.dart';
@@ -42,7 +46,16 @@ class AuthService {
   static const String _passwordKey = 'auth_password';
   static const String _rememberKey = 'remember_me';
   static const String _employeeIdKey = 'canonical_employee_id';
+  static const String _faceLoginTokenKey = 'face_login_token';
   static const Duration _profileCacheTtl = Duration(minutes: 20);
+
+  /// The token face sign-in refreshes from. It lives in the platform keystore
+  /// via `flutter_secure_storage` rather than `SharedPreferences`, because a
+  /// face match is a weaker factor than a password and must not be enough to
+  /// read a plaintext session token.
+  final FlutterSecureStorage _secureStorage = FlutterSecureStorage(
+    aOptions: AndroidOptions(encryptedSharedPreferences: true),
+  );
 
   /// Login must tolerate a slow handshake. The production host has been
   /// measured taking ~20s to complete a TCP connect while still healthy, so
@@ -80,6 +93,12 @@ class AuthService {
   static Completer<bool>? _refreshCompleter;
   static AuthUserProfile? _cachedProfile;
   static DateTime? _cachedProfileAt;
+
+  /// One biometric-preferences pull per session. Password, fingerprint and face
+  /// sign-in all end in [_saveSession], which is the single point a new session
+  /// is adopted, so the mirror is refreshed there; a token refresh lands in the
+  /// same method but is the same user, so it must not re-trigger the pull.
+  static bool _biometricPreferencesHydrated = false;
 
   static void clearProfileCache() {
     _cachedProfile = null;
@@ -130,6 +149,102 @@ class AuthService {
     }
 
     return outcome;
+  }
+
+  /// Adopts a session minted by a biometric flow — a fingerprint login, or the
+  /// token refresh a face sign-in performs — and performs the same hydration
+  /// [login] does, minus the password.
+  ///
+  /// [body] is either a `biometric-login` or a `refresh` response. The profile
+  /// fetch that fills the permission set, the canonical employee id and the face
+  /// template is kicked off in the background: the token is already stored, and
+  /// the dashboard loads the profile itself, so nothing needs to wait on it.
+  Future<AuthResult> applyBiometricSession(Map<String, dynamic> body) async {
+    final token = body['token']?.toString();
+    if (body['success'] == false || token == null || token.isEmpty) {
+      return AuthResult(
+        success: false,
+        message: body['message']?.toString() ??
+            'The sign-in response did not include a session.',
+      );
+    }
+
+    final user = body['user'];
+    final email = user is Map && user['email'] != null
+        ? user['email'].toString()
+        : await getSavedEmail() ?? '';
+
+    await _saveSession(
+      token: token,
+      email: email,
+      rememberMe: await getRememberMe(),
+    );
+
+    clearProfileCache();
+    await PermissionService.instance.clear();
+    try {
+      await ZoneScopeService.instance.clear();
+    } catch (_) {}
+    try {
+      await GeoTrackingService().clearHrmPause();
+      await GeoTrackingService().ensureEnabledIfAllowed();
+    } catch (_) {}
+
+    unawaited(_hydrateBiometricProfile());
+    if (AppSettingsService.instance.biometricFaceLoginEnabled.value) {
+      unawaited(storeFaceLoginSecrets());
+    }
+
+    try {
+      await FcmWakeHandler.syncTokenWithBackend();
+    } catch (_) {}
+
+    return AuthResult(
+      success: true,
+      message: body['message']?.toString() ?? 'Sign-in successful',
+      token: token,
+    );
+  }
+
+  Future<void> _hydrateBiometricProfile() async {
+    try {
+      final profile = await getCurrentUserProfile(forceRefresh: true);
+      FaceRecognitionService().hydrateRegistration(profile?.faceRegistration);
+    } catch (_) {
+      // The dashboard retries on its own.
+    }
+  }
+
+  /// Keeps the encrypted token a face sign-in refreshes from in step with the
+  /// current session. Called after a password login (when face login is on) and
+  /// after every biometric session, so the stored token never outlives the
+  /// session it came from.
+  Future<void> storeFaceLoginSecrets() async {
+    final token = await getToken();
+    if (token == null || token.isEmpty) return;
+    try {
+      await _secureStorage.write(key: _faceLoginTokenKey, value: token);
+    } catch (error) {
+      debugPrint('AuthService.storeFaceLoginSecrets failed: $error');
+    }
+  }
+
+  Future<void> clearFaceLoginSecrets() async {
+    try {
+      await _secureStorage.delete(key: _faceLoginTokenKey);
+    } catch (error) {
+      debugPrint('AuthService.clearFaceLoginSecrets failed: $error');
+    }
+  }
+
+  Future<String?> readFaceLoginToken() async {
+    try {
+      final token = await _secureStorage.read(key: _faceLoginTokenKey);
+      if (token == null || token.isEmpty) return null;
+      return token;
+    } catch (_) {
+      return null;
+    }
   }
 
   /// One pass over every candidate login URL.
@@ -552,6 +667,21 @@ class AuthService {
       await prefs.remove(_emailKey);
       await prefs.remove(_passwordKey);
     }
+    _hydrateBiometricPreferences();
+  }
+
+  /// Pulls the server's biometric switches into the local mirror, once per
+  /// session, so the login screen's fingerprint/face gates and the check-in
+  /// flow read server truth instead of an absent or stale copy.
+  ///
+  /// Fire-and-forget on purpose: the token is already stored and the gates fail
+  /// closed, so a slow or offline pull must not delay a sign-in. It is also not
+  /// awaited from [_saveSession] because a refresh triggered by a 401 inside
+  /// the pull would otherwise wait on itself.
+  void _hydrateBiometricPreferences() {
+    if (_biometricPreferencesHydrated) return;
+    _biometricPreferencesHydrated = true;
+    unawaited(BiometricPreferencesService.instance.load());
   }
 
   Future<bool> isLoggedIn() async {
@@ -625,6 +755,9 @@ class AuthService {
     }
 
     clearProfileCache();
+    // The next sign-in — this user or another — pulls its own biometric
+    // switches rather than inheriting the mirror this session left behind.
+    _biometricPreferencesHydrated = false;
     // Drop the previous user's grants before the next login can render a frame,
     // so a shared device never shows them the previous account's modules.
     await PermissionService.instance.clear();
