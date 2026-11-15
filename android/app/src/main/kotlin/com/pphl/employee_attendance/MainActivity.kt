@@ -4,13 +4,16 @@ import android.content.Context
 import android.content.Intent
 import android.os.PowerManager
 import android.provider.Settings
-import io.flutter.embedding.android.FlutterActivity
+import io.flutter.embedding.android.FlutterFragmentActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 
-class MainActivity : FlutterActivity() {
+// FlutterFragmentActivity, not FlutterActivity: BiometricPrompt is hosted by a
+// FragmentActivity, and the fingerprint channel shows it directly.
+class MainActivity : FlutterFragmentActivity() {
     private var apkInstaller: ApkInstallerChannel? = null
     private var voiceTyping: VoiceTypingChannel? = null
+    private var biometricKeystore: BiometricKeystoreChannel? = null
 
     companion object {
         private const val BATTERY_OPTIMIZATION_CHANNEL =
@@ -21,6 +24,8 @@ class MainActivity : FlutterActivity() {
         super.configureFlutterEngine(flutterEngine)
         apkInstaller = ApkInstallerChannel(this).also { it.register(flutterEngine) }
         voiceTyping = VoiceTypingChannel(this).also { it.register(flutterEngine) }
+        biometricKeystore =
+            BiometricKeystoreChannel(this).also { it.register(flutterEngine) }
 
         // Battery-optimisation status for the geo-tracking screen. The two
         // calls are stateless, so they are registered inline rather than in a
@@ -64,6 +69,8 @@ class MainActivity : FlutterActivity() {
     override fun onDestroy() {
         voiceTyping?.dispose()
         voiceTyping = null
+        biometricKeystore?.dispose()
+        biometricKeystore = null
         super.onDestroy()
     }
 }

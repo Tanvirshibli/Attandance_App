@@ -70,4 +70,7 @@ flutter {
 
 dependencies {
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
+    // BiometricPrompt over the Keystore key that stands in for a fingerprint
+    // enrolment (Android never exposes templates).
+    implementation("androidx.biometric:biometric:1.1.0")
 }
