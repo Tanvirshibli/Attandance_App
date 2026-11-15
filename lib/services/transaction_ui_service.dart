@@ -50,15 +50,25 @@ class TransactionUiService {
   /// Errors are rethrown unchanged so the caller's existing handling still runs;
   /// the overlay only reflects the outcome. Concurrent callers are queued, so
   /// two quick taps can never stack barriers or dismiss each other's result.
+  ///
+  /// [isSuccess] exists because several flows here report failure by *returning*
+  /// a result object rather than throwing — biometric sign-in among them. Without
+  /// a verdict the overlay painted a green tick over a message saying the login
+  /// had failed.
   Future<T> run<T>(
     Future<T> Function() action, {
     String label = 'Working',
     String? successMessage,
+    bool Function(T value)? isSuccess,
   }) async {
     if (isShowing) await _idleFuture;
     _begin(label);
     try {
       final value = await action();
+      if (isSuccess != null && !isSuccess(value)) {
+        _finish(TransactionStatus.failure, label, null);
+        return value;
+      }
       _finish(TransactionStatus.success, label, successMessage);
       return value;
     } catch (_) {

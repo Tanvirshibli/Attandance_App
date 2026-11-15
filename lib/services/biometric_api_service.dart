@@ -170,6 +170,10 @@ class BiometricApiService {
       endpointKey: 'biometric.challenge',
       fallbackPath: _challengePath,
       body: {'credentialId': credentialId, 'purpose': purpose},
+      // Public on the server, and the whole point is that it runs before any
+      // session exists. Left authenticated, this returned null instantly on the
+      // login screen (no token) and reported it as a network failure.
+      authenticated: false,
     );
     if (response == null || !response.isSuccess) return null;
 

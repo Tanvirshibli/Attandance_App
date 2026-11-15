@@ -197,6 +197,9 @@ class _LoginScreenState extends State<LoginScreen> {
         BiometricLoginMethod.fingerprint => 'Verifying fingerprint',
         BiometricLoginMethod.face => 'Verifying face',
       },
+      // Biometric login reports failure by returning a result, not by throwing:
+      // without this the overlay showed a tick over "could not reach the server".
+      isSuccess: (outcome) => outcome.success,
     );
 
     if (!mounted) return;
