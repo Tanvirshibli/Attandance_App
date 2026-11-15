@@ -298,11 +298,11 @@ After publishing build **N**:
 
 ---
 
-## November 14, 2026 Update (v2.5.5+9038) — beta channel
+## November 15, 2026 Update (v2.5.5-beta.1+9039) — beta channel
 
 **Fingerprint login, fingerprint check-in and face login.**
 
-> Pubspec is `2.5.5+9038`, i.e. the beta band (9000+). Publish to the beta channel; production stays on `2.5.4+123` until this is promoted.
+> Pubspec is `2.5.5-beta.1+9039`, i.e. the beta band (9000+). Published 2026-11-15 with `version_code` 9039 for both ABIs; production stays on `2.5.4+123` until this is promoted.
 
 - **Fingerprint enrolment is a key binding, not a template.** Android never exposes fingerprint templates to apps, so enrolling generates an auth-per-use **ECDSA P-256** key in the Android Keystore (`setUserAuthenticationRequired`, `setInvalidatedByBiometricEnrollment`, API 30+ `setUserAuthenticationParameters(0, AUTH_BIOMETRIC_STRONG)`), uploads the **public** half to `POST /api/v1/mobile/biometric-credentials`, and signs server nonces behind the system `BiometricPrompt`. Signatures are ECDSA `SHA256withECDSA`, DER, base64
 - **New native channel** `com.pphl.attendance/biometric_keystore` (`BiometricKeystoreChannel.kt`) over `androidx.biometric:biometric:1.1.0`. `MainActivity` is now a `FlutterFragmentActivity` because `BiometricPrompt` is hosted by a `FragmentActivity`; manifest gains `USE_BIOMETRIC` plus `USE_FINGERPRINT` capped at API 28. Only one prompt can be in flight — a second `sign` is refused rather than queued
@@ -314,7 +314,7 @@ After publishing build **N**:
 - **Key invalidation is handled** — a fingerprint set change raises `KeyPermanentlyInvalidatedException`, which revokes the server credential, deletes the key, clears the local flags and tells the user to sign in with the password and re-enrol
 - Endpoint keys `biometric.challenge`, `biometric.login`, `biometric.punchAuthorization`, `biometric.credentials` (+ `.register`, `.delete`) and `biometric.preferences` all resolve on the **HRM** base, beside `face.registration`. Full model and threat model: [`BIOMETRIC_AUTH.md`](BIOMETRIC_AUTH.md)
 
-**Pubspec stays on `2.5.5+9038`** after this release.
+**Pubspec stays on `2.5.5-beta.1+9039`** after this release.
 
 ---
 
