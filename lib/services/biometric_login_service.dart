@@ -131,7 +131,12 @@ class BiometricLoginService {
     _cancelled = false;
 
     try {
-      if (!await faceService.isFaceRegistered()) {
+      // The login screen has no session, so memory is empty on a cold start:
+      // the template must come from the persisted copy before deciding that
+      // this device has no face. Checking memory alone is what made face
+      // sign-in fail every time.
+      await faceService.restorePersistedRegistration();
+      if (!await faceService.hasStoredFace()) {
         return const BiometricLoginOutcome.failure(
           'Face sign-in needs a face registered on this server. Sign in with '
           'your password and register your face first.',

@@ -8,7 +8,9 @@ import '../config/theme.dart';
 import '../screens/main_shell.dart';
 import '../services/app_settings_service.dart';
 import '../services/auth_service.dart';
+import '../services/biometric_auth_service.dart';
 import '../services/biometric_login_service.dart';
+import '../services/biometric_preferences_service.dart';
 import '../services/endpoint_config_service.dart';
 import '../services/transaction_ui_service.dart';
 import '../services/face_recognition_service.dart';
@@ -33,10 +35,29 @@ class _LoginScreenState extends State<LoginScreen> {
   /// Which biometric sign-in is currently running, if any.
   BiometricLoginMethod? _biometricBusy;
 
+  /// True when this device holds a persisted face template, so the face button
+  /// is only offered when it can actually complete.
+  bool _faceLoginReady = false;
+
   @override
   void initState() {
     super.initState();
     _loadSavedLoginState();
+    _refreshFaceLoginReadiness();
+  }
+
+  /// Reads the stored template so the face button reflects what the device can
+  /// really do, without a session.
+  Future<void> _refreshFaceLoginReadiness() async {
+    bool ready;
+    try {
+      ready = await _faceRecognitionService.restorePersistedRegistration();
+    } catch (error) {
+      debugPrint('LoginScreen: could not read the stored face ($error)');
+      ready = false;
+    }
+    if (!mounted || _faceLoginReady == ready) return;
+    setState(() => _faceLoginReady = ready);
   }
 
   Future<void> _loadSavedLoginState() async {
@@ -95,16 +116,73 @@ class _LoginScreenState extends State<LoginScreen> {
     // app feel slow between tapping Sign In and seeing anything.
     unawaited(EndpointConfigService.instance.refreshConfig());
     unawaited(_hydrateProfileInBackground());
-    // Face sign-in needs a token to refresh from, and a password login is the
-    // only moment the app is allowed to write one.
-    if (AppSettingsService.instance.biometricFaceLoginEnabled.value) {
-      unawaited(_authService.storeFaceLoginSecrets());
-    }
+    // Biometrics are meant to work out of the box: turn the four settings on
+    // once per install (the server defaults them off), then enrol this phone's
+    // fingerprint if it has one and the user agrees. Both are fire-and-forget
+    // so the dashboard still renders immediately.
+    unawaited(_prepareBiometricsAfterLogin());
 
     if (!mounted) return;
 
     Navigator.of(context).pushReplacement(
       MaterialPageRoute(builder: (_) => const MainShell()),
+    );
+  }
+
+  /// Turns biometrics on for a fresh install and enrols the device fingerprint.
+  ///
+  /// Order matters: the one-shot defaults push first, because the face-login
+  /// token is only written when face login is enabled, and the enrolment prompt
+  /// should not appear before the settings it belongs to are actually on.
+  Future<void> _prepareBiometricsAfterLogin() async {
+    try {
+      final preferences = await BiometricPreferencesService.instance
+          .applyDefaultsOnce();
+      if (!mounted) return;
+
+      // A password login is the only moment the app may write the token face
+      // sign-in refreshes from, so it is written whenever face login is on.
+      if (AppSettingsService.instance.biometricLoginFace.value) {
+        await _authService.storeFaceLoginSecrets();
+      }
+
+      if (!preferences) {
+        // Offline: the local defaults already apply, and the push retries on
+        // the next login. Enrolment is still worth attempting below.
+        debugPrint('LoginScreen: biometric defaults push deferred');
+      }
+
+      await _promptFingerprintEnrolment();
+    } catch (error) {
+      // Nothing here may break a signed-in session.
+      debugPrint('LoginScreen: biometric preparation failed ($error)');
+    }
+  }
+
+  Future<void> _promptFingerprintEnrolment() async {
+    if (!mounted) return;
+    await BiometricAuthService.instance.ensureEnrolled(
+      confirm: (title, message) async {
+        if (!mounted) return false;
+        final answer = await showDialog<bool>(
+          context: context,
+          builder: (dialogContext) => AlertDialog(
+            title: Text(title),
+            content: Text(message),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(dialogContext).pop(false),
+                child: const Text('Not now'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.of(dialogContext).pop(true),
+                child: const Text('Enable'),
+              ),
+            ],
+          ),
+        );
+        return answer ?? false;
+      },
     );
   }
 
@@ -159,7 +237,10 @@ class _LoginScreenState extends State<LoginScreen> {
     final settings = AppSettingsService.instance;
     final fingerprintReady = settings.biometricLoginFingerprint.value &&
         settings.hasBiometricCredential;
-    final faceReady = settings.biometricFaceLoginEnabled.value;
+    // The flag alone is not enough: a face template must actually be on this
+    // device, otherwise the button leads to a dead end. The template is stored
+    // at enrolment and survives a cold start.
+    final faceReady = settings.biometricLoginFace.value && _faceLoginReady;
     if (!fingerprintReady && !faceReady) return const SizedBox.shrink();
 
     final busy = _biometricBusy;

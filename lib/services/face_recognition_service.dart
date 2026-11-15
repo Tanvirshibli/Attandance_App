@@ -1,8 +1,12 @@
+import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
 import 'dart:ui';
 
+import 'package:flutter/foundation.dart';
 import 'package:google_mlkit_face_detection/google_mlkit_face_detection.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:image/image.dart' as img;
 import 'package:tflite_flutter/tflite_flutter.dart';
 
@@ -148,6 +152,7 @@ class FaceRecognitionService {
         .toList();
     _registrationCaptureCount = registration.captureCount;
     _registrationTime = registration.registeredAt;
+    unawaited(_persistRegistration());
   }
 
   FaceRegistrationData? exportRegistrationData() {
@@ -177,7 +182,58 @@ class FaceRecognitionService {
     _adaptiveEmbeddings = <List<double>>[];
     _registrationTime = null;
     _registrationCaptureCount = 0;
+    unawaited(_clearPersistedRegistration());
   }
+
+  /// Keystore entry for the template face sign-in verifies against.
+  ///
+  /// It has to be persisted: the login screen runs with no session, so there is
+  /// no API to fetch the registration from. Only the derived embedding is stored
+  /// — never an image — and it is only ever used to unlock a wrapped refresh
+  /// token behind the same 3-attempt limit the check-in flow uses.
+  static const String _persistedTemplateKey = 'face_login_template';
+
+  Future<void> _persistRegistration() async {
+    final data = exportRegistrationData();
+    if (data == null) return;
+    try {
+      await _secureStorage.write(
+        key: _persistedTemplateKey,
+        value: jsonEncode(data.toJson()),
+      );
+    } catch (error) {
+      debugPrint('FaceRecognitionService: could not persist the template ($error)');
+    }
+  }
+
+  Future<void> _clearPersistedRegistration() async {
+    try {
+      await _secureStorage.delete(key: _persistedTemplateKey);
+    } catch (error) {
+      debugPrint('FaceRecognitionService: could not clear the template ($error)');
+    }
+  }
+
+  Future<FaceRegistrationData?> _readPersistedRegistration() async {
+    try {
+      final raw = await _secureStorage.read(key: _persistedTemplateKey);
+      if (raw == null || raw.isEmpty) return null;
+      final data = FaceRegistrationData.fromJson(
+        jsonDecode(raw) as Object?,
+        expectedSize: null,
+      );
+      if (data == null || !data.hasValidTemplates) return null;
+      if (data.templateVersion > 0 && data.templateVersion != templateVersion) {
+        return null;
+      }
+      return data;
+    } catch (error) {
+      debugPrint('FaceRecognitionService: could not read the template ($error)');
+      return null;
+    }
+  }
+
+  final FlutterSecureStorage _secureStorage = const FlutterSecureStorage();
 
   /// The in-flight warm-up, so a start-up warm-up and the check-in screen share
   /// one load instead of racing to build two interpreters.
@@ -1203,6 +1259,25 @@ class FaceRecognitionService {
   /// Check if a valid face template is loaded in memory.
   Future<bool> isFaceRegistered() async {
     return FaceRegistrationData.isValidEmbedding(_registeredAvgEmbedding, expectedSize: null);
+  }
+
+  /// Whether this device holds a usable template, in memory or on disk.
+  ///
+  /// The login screen has no session, so it can never hydrate from the API; the
+  /// template it verifies against is the one persisted by the last session.
+  Future<bool> hasStoredFace() async {
+    if (await isFaceRegistered()) return true;
+    return (await _readPersistedRegistration()) != null;
+  }
+
+  /// Rehydrates memory from the persisted template so a cold start (or the
+  /// login screen) can verify a face without a session.
+  Future<bool> restorePersistedRegistration() async {
+    if (await isFaceRegistered()) return true;
+    final stored = await _readPersistedRegistration();
+    if (stored == null) return false;
+    hydrateRegistration(stored);
+    return isFaceRegistered();
   }
 
   /// Get the registration timestamp
