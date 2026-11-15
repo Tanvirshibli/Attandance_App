@@ -74,6 +74,49 @@ If those succeed, Sign In again (production URL — no tunnel `dart-define` need
 
 Face registration / check-in use the emulator camera (webcam or Android Emulator virtual scene). Behavior can differ from a real phone; prefer a physical device for final face-flow QA.
 
+## Biometric, GPS and clock checks on emulator
+
+The emulator can exercise most of the attendance-integrity flow, with a few
+explicit exemptions.
+
+**Fingerprint enrolment / login.** The AVD has a virtual fingerprint sensor, but
+no fingerprint is enrolled by default:
+
+1. Settings → Security → Fingerprint → add a fingerprint; anywhere the dialog
+   waits for a touch, run `adb emu finger touch 1` (ids 1–10 are accepted).
+2. Or simulate touches directly while the app's prompt is open:
+   `adb emu finger touch 1`.
+
+`BiometricPrompt` requires a real device-bound key, so the Keystore key is
+created against the emulator's synthetic biometric — enrollment, login and
+fingerprint check-in all work, they just prove the emulator's sensor.
+
+**GPS.** Set a position before opening check-in:
+
+```powershell
+%LOCALAPPDATA%\Android\sdk\platform-tools\adb.exe emu geo fix 90.4125 23.8103
+```
+
+The emulator reports that fix as a mock location, so a release build would
+(correctly) raise `gps_mock`. For emulator QA only, build with the exemption:
+
+```powershell
+C:\flutter\bin\flutter.bat build apk --debug --dart-define=ALLOW_EMULATOR_SPOOF=true
+```
+
+The exemption needs **both** the compile-time flag and the native emulator
+detection; time checks are never exempted.
+
+**Clock lock.** Change the emulator's clock (Settings → Date & time, disable
+automatic) to drift it more than 60 seconds from internet time, reopen the app
+or resume it: the integrity overlay must appear and only a password login on a
+corrected clock clears it. Restore automatic time afterwards.
+
+**What cannot be verified here:** real GPS accuracy in the 5–20 m range, a
+genuinely mocked-location app from another package, real fingerprint hardware
+behaviour, and any device-specific Keystore invalidation when a new fingerprint
+is enrolled. Use a physical device for those.
+
 ## Useful commands
 
 ```powershell

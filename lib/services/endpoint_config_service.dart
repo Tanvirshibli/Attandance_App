@@ -264,6 +264,8 @@ class EndpointConfigService {
           '/api/v1/single-employee-attendance-details',
           'hrm',
         ),
+        'shift.window': ep('GET', '/api/v1/mobile/shift-window', 'hrm'),
+        'time.public': ep('GET', '/api/v1/mobile/time', 'hrm'),
         'leave.balance': ep('GET', '/api/v1/new-leave-stocks', 'hrm'),
         'leave.history': ep('GET', '/api/v1/leaves', 'hrm'),
         'leave.types': ep('GET', '/api/v1/leavetypes', 'hrm'),
