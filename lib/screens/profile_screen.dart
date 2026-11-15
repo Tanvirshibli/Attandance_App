@@ -753,7 +753,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 ? 'Sign in without typing your password'
                 : 'Enroll your fingerprint first',
             value: preferences.loginFingerprint.value,
-            enabled: hasCredential,
+            enabled: hasCredential || _fingerprintAvailable,
             color: ui.AppColors.mGeo,
             onChanged: () => _saveBiometricPreferences(
               loginFingerprint: !preferences.loginFingerprint.value,
@@ -780,7 +780,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 ? 'Confirm the punch with your fingerprint'
                 : 'Enroll your fingerprint first',
             value: preferences.checkinFingerprint.value,
-            enabled: hasCredential,
+            enabled: hasCredential || _fingerprintAvailable,
             color: ui.AppColors.mGeo,
             onChanged: () => _saveBiometricPreferences(
               checkinFingerprint: !preferences.checkinFingerprint.value,
@@ -801,7 +801,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
             ),
           ),
           _settingsDivider(),
-          if (_fingerprintAvailable)
+          if (_fingerprintAvailable && !hasCredential)
+            _settingsTile(
+              Icons.fingerprint_rounded,
+              'Enable fingerprint',
+              null,
+              color: ui.AppColors.mGeo,
+              onTap: _biometricBusy ? null : _enrollFingerprint,
+            ),
+          if (_fingerprintAvailable && hasCredential)
             _settingsTile(
             Icons.fingerprint_rounded,
             hasCredential ? 'Remove fingerprint' : 'Enroll fingerprint',
