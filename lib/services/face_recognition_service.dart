@@ -1261,6 +1261,14 @@ class FaceRecognitionService {
     return FaceRegistrationData.isValidEmbedding(_registeredAvgEmbedding, expectedSize: null);
   }
 
+  /// Writes the template currently built in memory to the login-time store.
+  ///
+  /// Registration builds the template here before (and independently of) any
+  /// server save, and face sign-in only ever needs this device copy. Calling
+  /// this at the end of registration is what makes the face button usable on the
+  /// very next visit to the login screen.
+  Future<void> persistCurrentRegistration() => _persistRegistration();
+
   /// Whether this device holds a usable template, in memory or on disk.
   ///
   /// The login screen has no session, so it can never hydrate from the API; the

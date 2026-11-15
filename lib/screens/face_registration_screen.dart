@@ -523,6 +523,11 @@ class _FaceRegistrationScreenState extends State<FaceRegistrationScreen>
           // All captures done
           var savedToBackend = false;
           final registrationData = _faceService.exportRegistrationData();
+          // Persist the device copy first: face sign-in verifies against it and
+          // must not depend on the backend save succeeding.
+          if (registrationData != null) {
+            await _faceService.persistCurrentRegistration();
+          }
           if (registrationData != null) {
             final profile = await _authService.getCurrentUserProfile();
             savedToBackend = await _faceRegistrationApiService
