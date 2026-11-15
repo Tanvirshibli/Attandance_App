@@ -165,11 +165,27 @@ internet clock to read and the caller is expected to say so.
 
 | Rule | Threshold | Type |
 | --- | --- | --- |
-| System mock-location provider set | `OPSTR_MOCK_LOCATION` allowed, or a non-empty `Settings.Secure["mock_location"]` | `mock_location_app` |
 | Fix flagged by the OS | `Position.isMocked` | `gps_mock` |
 | Fix too coarse to place a site | `accuracy > 100 m` | `gps_untrusted` |
 | No real fix | `lat == 0 && lng == 0` | `gps_untrusted` |
 | Impossible travel | `> 200 km/h` and `> 0.5 km` since the baseline fix | `implausible_jump` |
+
+**Never blocking — diagnostics only.** The phone's own mock-location settings
+are read and reported with every event under `detail.mockDiagnostics`
+(`opMode`, `providerPackage`, `adbEnabled`), but they cannot raise a violation:
+
+* `AppOpsManager.OPSTR_MOCK_LOCATION` defaults to *allowed* for an app's own uid
+  on many ROMs, so `checkOpNoThrow` reports "allowed" on a phone where nobody
+  ever selected a mock app.
+* `Settings.Secure["mock_location"]` commonly holds the literal `"0"` once a
+  provider is cleared, so "non-empty" is not "a provider is set".
+
+Both were used as a blocking test in the first release and locked honest phones
+whose developer options had never been enabled. Only a fix that Android itself
+flags (`Position.isMocked`) may block a punch. `IntegrityType.mockLocationApp`
+stays in the enum for wire compatibility but no rule returns it, and a lock
+persisted by an older build is dropped on upgrade
+(`IntegrityLockService.isRetiredFalsePositive`).
 
 `checkTime()` runs:
 
