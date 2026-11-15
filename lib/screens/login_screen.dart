@@ -10,6 +10,7 @@ import '../services/app_settings_service.dart';
 import '../services/auth_service.dart';
 import '../services/biometric_login_service.dart';
 import '../services/endpoint_config_service.dart';
+import '../services/transaction_ui_service.dart';
 import '../services/face_recognition_service.dart';
 import '../widgets/voice_input_field.dart';
 
@@ -69,10 +70,13 @@ class _LoginScreenState extends State<LoginScreen> {
     }
 
     setState(() => _isLoading = true);
-    final result = await _authService.login(
-      email: email,
-      password: password,
-      rememberMe: _rememberMe,
+    final result = await TransactionUiService.instance.run(
+      () => _authService.login(
+        email: email,
+        password: password,
+        rememberMe: _rememberMe,
+      ),
+      label: 'Signing in',
     );
 
     if (!mounted) return;
@@ -109,14 +113,20 @@ class _LoginScreenState extends State<LoginScreen> {
 
     setState(() => _biometricBusy = method);
 
-    final outcome = switch (method) {
-      BiometricLoginMethod.fingerprint =>
-        await BiometricLoginService.instance.loginWithFingerprint(),
-      BiometricLoginMethod.face =>
-        await BiometricLoginService.instance.loginWithFace(
-          _faceRecognitionService,
-        ),
-    };
+    final outcome = await TransactionUiService.instance.run(
+      () => switch (method) {
+        BiometricLoginMethod.fingerprint =>
+          BiometricLoginService.instance.loginWithFingerprint(),
+        BiometricLoginMethod.face =>
+          BiometricLoginService.instance.loginWithFace(
+            _faceRecognitionService,
+          ),
+      },
+      label: switch (method) {
+        BiometricLoginMethod.fingerprint => 'Verifying fingerprint',
+        BiometricLoginMethod.face => 'Verifying face',
+      },
+    );
 
     if (!mounted) return;
     setState(() => _biometricBusy = null);

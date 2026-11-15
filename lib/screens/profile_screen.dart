@@ -15,6 +15,7 @@ import '../services/auth_service.dart';
 import '../services/app_update_service.dart';
 import '../services/biometric_auth_service.dart';
 import '../services/biometric_preferences_service.dart';
+import '../services/transaction_ui_service.dart';
 import '../services/face_recognition_service.dart';
 import 'login_screen.dart';
 import 'app_update_screen.dart';
@@ -41,12 +42,32 @@ class _ProfileScreenState extends State<ProfileScreen> {
   bool _checkingUpdates = false;
   bool _biometricBusy = false;
 
+  /// False only when the platform says this device cannot do fingerprint at
+  /// all. A check that fails stays `true`, so a platform hiccup never hides a
+  /// working setting from the user.
+  bool _fingerprintAvailable = true;
+
   @override
   void initState() {
     super.initState();
     _loadProfile();
     _loadAppVersion();
     _loadBiometricPreferences();
+    _loadFingerprintAvailability();
+  }
+
+  /// Hides the fingerprint rows entirely when the device has no usable sensor,
+  /// instead of offering a switch that can never work.
+  Future<void> _loadFingerprintAvailability() async {
+    bool available = true;
+    try {
+      final availability = await BiometricAuthService.instance.availability();
+      available = availability.available;
+    } catch (error) {
+      debugPrint('Fingerprint capability check failed: $error');
+    }
+    if (!mounted || _fingerprintAvailable == available) return;
+    setState(() => _fingerprintAvailable = available);
   }
 
   /// The server is the source of truth for the switches, but the local mirror is
@@ -724,7 +745,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
       child: Column(
         children: [
           _biometricSectionHeader('Biometrics'),
-          _biometricSwitchTile(
+          if (_fingerprintAvailable)
+            _biometricSwitchTile(
             icon: Icons.fingerprint_rounded,
             title: 'Fingerprint login',
             subtitle: hasCredential
@@ -750,7 +772,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
             onChanged: () => _toggleFaceLogin(),
           ),
           _settingsDivider(),
-          _biometricSwitchTile(
+          if (_fingerprintAvailable)
+            _biometricSwitchTile(
             icon: Icons.fingerprint_rounded,
             title: 'Fingerprint check-in',
             subtitle: hasCredential
@@ -778,7 +801,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
             ),
           ),
           _settingsDivider(),
-          _settingsTile(
+          if (_fingerprintAvailable)
+            _settingsTile(
             Icons.fingerprint_rounded,
             hasCredential ? 'Remove fingerprint' : 'Enroll fingerprint',
             null,
@@ -925,7 +949,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   Future<void> _enrollFingerprint() async {
     setState(() => _biometricBusy = true);
-    final result = await BiometricAuthService.instance.enrollFingerprint();
+    final result = await TransactionUiService.instance.run(
+      () => BiometricAuthService.instance.enrollFingerprint(),
+      label: 'Registering fingerprint',
+    );
     if (!mounted) return;
     setState(() => _biometricBusy = false);
     ScaffoldMessenger.of(context)
@@ -957,7 +984,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
     if (confirmed != true || !mounted) return;
 
     setState(() => _biometricBusy = true);
-    final result = await BiometricAuthService.instance.revoke();
+    final result = await TransactionUiService.instance.run(
+      () => BiometricAuthService.instance.revoke(),
+      label: 'Removing fingerprint',
+    );
     if (!mounted) return;
     setState(() => _biometricBusy = false);
     ScaffoldMessenger.of(context)

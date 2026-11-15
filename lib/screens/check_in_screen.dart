@@ -29,6 +29,7 @@ import '../services/integrity_lock_service.dart';
 import '../services/internet_time_service.dart';
 import '../services/location_gate_service.dart';
 import '../services/shift_window_service.dart';
+import '../services/transaction_ui_service.dart';
 import '../utils/camera_input_image.dart';
 import '../utils/face_guide_placement.dart';
 import '../widgets/face_capture_stage.dart';
@@ -1255,6 +1256,18 @@ class _CheckInScreenState extends State<CheckInScreen>
     required DateTime punchAt,
     required Position position,
   }) async {
+    // Detached on purpose: the camera screen has already popped, so the
+    // overlay is the only thing left to report the outcome on the dashboard.
+    await TransactionUiService.instance.runDetached(
+      () => _sendPunch(punchAt: punchAt, position: position),
+      label: widget.isCheckOut ? 'Checking out' : 'Checking in',
+    );
+  }
+
+  Future<bool> _sendPunch({
+    required DateTime punchAt,
+    required Position position,
+  }) async {
     var succeeded = false;
     String? message;
 
@@ -1299,6 +1312,8 @@ class _CheckInScreenState extends State<CheckInScreen>
         message: message,
       );
     }
+
+    return succeeded;
   }
 
   /// Upgrades the punch's address text, and nothing else.
