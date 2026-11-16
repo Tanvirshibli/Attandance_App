@@ -46,6 +46,24 @@ Three defects made biometric sign-in dead in the shipped build:
    exchange; its external-intent fallback was removed so the broken path cannot
    be reached again. The manifest also declares `IMAGE_CAPTURE` and `GET_CONTENT`
    for the remaining `image_picker` uses elsewhere in the app.
+5. **Clearing memory deleted the device template.** `clearRegistrationMemory()`
+   also called `_clearPersistedRegistration()`, and it runs from
+   `hydrateRegistration(null)` — which `AuthService` calls on every session
+   hydration with `profile?.faceRegistration`. Any profile response without that
+   field (omitted, partial, after a logout) therefore erased the device copy, and
+   the next visit to the login screen reported "needs a face registered on this
+   server" on every phone. Face check-in was unaffected because it hydrates from
+   the live profile inside a session.
+
+   `clearRegistrationMemory()` is now memory-only; `deleteRegisteredFace()` is the
+   single place that erases the device copy, for a real unregister.
+
+   Sign-in also **self-heals**: when the device copy is missing but a stored
+   sign-in token exists, `_ensureFaceTemplate()` reads the registration back with
+   `GET /api/v1/mobile/face-registration` (`Authorization: Bearer <stored token>`)
+   and adopts it. The "register a face first" message is now only produced when
+   both the device copy and the server — queried with that token — have nothing.
+   Pinned by `test/face_template_persistence_test.dart`.
 
 ### Defaults and auto-enrolment
 
