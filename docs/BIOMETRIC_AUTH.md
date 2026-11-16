@@ -64,6 +64,38 @@ Three defects made biometric sign-in dead in the shipped build:
    and adopts it. The "register a face first" message is now only produced when
    both the device copy and the server — queried with that token — have nothing.
    Pinned by `test/face_template_persistence_test.dart`.
+6. **"Face verified, but the session could not be renewed."** Face sign-in was
+   authenticating with the *access token* and renewing through
+   `POST /api/v1/refresh`. That could never be durable:
+
+   - `config/jwt.php` sets `ttl = 1440` minutes, so a phone left alone for a day
+     presented an **expired** token and `JWTAuth::refresh()` threw;
+   - `JWTAuth::refresh()` **blacklists** the token it consumes, so even a fresh
+     token worked only **once** — the app never re-stored the new one.
+
+   Face sign-in now uses a **device-bound credential**, the same shape as the
+   fingerprint one: at enrolment the app generates a 32-byte secret
+   (`Random.secure`), keeps it in secure storage and uploads only
+   `Hash::make(secret)`. Sign-in posts to `POST /api/v1/mobile/face-login` and the
+   server mints a JWT from the credential — no expiry, revocable from the SPA
+   biometric console, one active face credential per device. Enrolment happens
+   while a session exists (after a password login, from the dashboard hydrate, or
+   when Face login is switched on).
+
+### Face sign-in uses the check-in capture mechanism
+
+`FaceLoginCaptureScreen` runs the same in-process camera pipeline as
+check-in/check-out (front camera, oval guide, retry budget, local template match)
+and now also tracks location: camera and location permission, a high-accuracy fix
+with a 15 s budget requested alongside the camera, and the result shown in the
+footer (`Location captured (±N m)` / `Location unavailable`).
+
+The fix travels with the credential use and is stored on the credential row
+(`lastUsedLatitude`, `lastUsedLongitude`, `lastUsedAccuracyMeters`) for HR.
+
+**Location never gates sign-in.** A slow or disabled GPS must not lock an officer
+out of their own account, so a missing fix simply means "unavailable" and the
+sign-in proceeds.
 
 ### Defaults and auto-enrolment
 

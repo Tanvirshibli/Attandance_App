@@ -3,11 +3,24 @@ import 'dart:io';
 
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:permission_handler/permission_handler.dart';
 
 import '../config/theme.dart';
 import '../services/camera_prewarm.dart';
 import '../services/face_recognition_service.dart';
+
+/// What the sign-in capture produced: the matched photo, and the location the
+/// device reported at the time (null when it had none).
+///
+/// The location is recorded for HR, never used to refuse a sign-in — an officer
+/// must not be locked out of their own account because GPS was slow or off.
+class FaceLoginCaptureResult {
+  const FaceLoginCaptureResult({required this.photo, this.position});
+
+  final File photo;
+  final Position? position;
+}
 
 /// Front-camera capture and local template match for face sign-in.
 ///
@@ -46,11 +59,49 @@ class _FaceLoginCaptureScreenState extends State<FaceLoginCaptureScreen> {
   int _attempts = 0;
   String? _error;
   String _status = 'Position your face in the oval';
+  Position? _position;
+  bool _locating = true;
 
   @override
   void initState() {
     super.initState();
     _start();
+    unawaited(_prefetchLocation());
+  }
+
+  /// Same fix the check-in flow asks for (high accuracy, short budget). It runs
+  /// alongside the camera and never blocks the sign-in.
+  Future<void> _prefetchLocation() async {
+    try {
+      final services = await Geolocator.isLocationServiceEnabled();
+      if (!services) {
+        if (mounted) setState(() => _locating = false);
+        return;
+      }
+      var permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+      }
+      if (permission == LocationPermission.denied ||
+          permission == LocationPermission.deniedForever) {
+        if (mounted) setState(() => _locating = false);
+        return;
+      }
+      final position = await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.high,
+          timeLimit: Duration(seconds: 15),
+        ),
+      );
+      if (!mounted) return;
+      setState(() {
+        _position = position;
+        _locating = false;
+      });
+    } catch (error) {
+      debugPrint('FaceLoginCaptureScreen: no location fix ($error)');
+      if (mounted) setState(() => _locating = false);
+    }
   }
 
   Future<void> _start() async {
@@ -122,7 +173,9 @@ class _FaceLoginCaptureScreenState extends State<FaceLoginCaptureScreen> {
 
       if (verification.isMatch) {
         setState(() => _status = 'Face matched');
-        Navigator.of(context).pop(File(shot.path));
+        Navigator.of(context).pop(
+          FaceLoginCaptureResult(photo: File(shot.path), position: _position),
+        );
         return;
       }
 
@@ -181,6 +234,31 @@ class _FaceLoginCaptureScreenState extends State<FaceLoginCaptureScreen> {
                     _status,
                     textAlign: TextAlign.center,
                     style: const TextStyle(color: Colors.white70, fontSize: 14),
+                  ),
+                  const SizedBox(height: 6),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        _position != null
+                            ? Icons.location_on_rounded
+                            : Icons.location_off_rounded,
+                        size: 14,
+                        color: Colors.white54,
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        _locating
+                            ? 'Getting location…'
+                            : _position == null
+                                ? 'Location unavailable'
+                                : 'Location captured (±${_position!.accuracy.round()} m)',
+                        style: const TextStyle(
+                          color: Colors.white54,
+                          fontSize: 11,
+                        ),
+                      ),
+                    ],
                   ),
                   if (_error != null && _controller != null) ...[
                     const SizedBox(height: 10),

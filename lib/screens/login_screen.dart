@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:animate_do/animate_do.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -190,6 +191,7 @@ class _LoginScreenState extends State<LoginScreen> {
     // barrier covers every route, so a camera pushed while it is showing would
     // be hidden behind it. Failing here is also cheaper than after a capture.
     File? matchedPhoto;
+    Position? punchPosition;
     if (method == BiometricLoginMethod.face) {
       final blocker =
           await BiometricLoginService.instance.faceLoginBlocker(
@@ -203,7 +205,7 @@ class _LoginScreenState extends State<LoginScreen> {
         return;
       }
 
-      matchedPhoto = await Navigator.of(context).push<File>(
+      final capture = await Navigator.of(context).push<FaceLoginCaptureResult>(
         MaterialPageRoute(
           builder: (_) => FaceLoginCaptureScreen(
             faceService: _faceRecognitionService,
@@ -211,11 +213,13 @@ class _LoginScreenState extends State<LoginScreen> {
         ),
       );
       if (!mounted) return;
-      if (matchedPhoto == null) {
+      if (capture == null) {
         // Backed out of the camera: not an error, just no attempt.
         setState(() => _biometricBusy = null);
         return;
       }
+      matchedPhoto = capture.photo;
+      punchPosition = capture.position;
     }
 
     final outcome = await TransactionUiService.instance.run(
@@ -226,6 +230,7 @@ class _LoginScreenState extends State<LoginScreen> {
           BiometricLoginService.instance.loginWithFace(
             _faceRecognitionService,
             matchedPhoto: matchedPhoto,
+            position: punchPosition,
           ),
       },
       label: switch (method) {
