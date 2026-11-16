@@ -525,10 +525,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
     // The card already knows the window it drew the button for; a tap that
     // arrives after it closed is refused here, before the punch list reload.
-    if (windowState == WindowState.after || windowState == WindowState.noShift) {
+    // Check-out is exempt: it is never refused on the window.
+    if (!isCheckOut &&
+        (windowState == WindowState.after ||
+            windowState == WindowState.noShift)) {
       _showSnack(
         ShiftWindowService.instance.blockReason(isCheckOut: isCheckOut) ??
-            'The ${isCheckOut ? 'check-out' : 'check-in'} window is closed.',
+            'The check-in window is closed.',
       );
       return;
     }

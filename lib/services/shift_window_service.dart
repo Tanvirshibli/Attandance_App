@@ -300,9 +300,18 @@ class ShiftWindowService {
 
   /// A human reason the punch cannot go ahead, or null when it can.
   ///
+  /// Check-out always returns null: the officer already punched in, and a closed
+  /// window must not trap them on site. Check-in keeps the shift-start tolerance
+  /// rule, which is the policy HR relies on.
+  ///
   /// Fails open when the window was never fetched: the server still re-checks
   /// every punch, and an unreachable endpoint must not strand the officer.
   String? blockReason({required bool isCheckOut}) {
+    // Check-out is never refused on the window: the officer already punched in,
+    // and a closed window must not trap them on site. Check-in keeps the
+    // shift-start + tolerance rule, which is the actual policy.
+    if (isCheckOut) return null;
+
     final cached = window.value;
     if (cached == null) return null;
 
