@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:http/http.dart' as http;
 
 import '../config/app_config.dart';
+import '../models/face_registration_data.dart';
 import 'auth_service.dart';
 import 'biometric_api_service.dart';
 import 'biometric_auth_service.dart';
@@ -121,12 +122,13 @@ class BiometricLoginService {
   /// The login screen asks before opening the camera, so a user who is missing a
   /// template or a stored token is told immediately instead of after a capture.
   Future<String?> faceLoginBlocker(FaceRecognitionService faceService) async {
-    await faceService.restorePersistedRegistration();
-    if (!await faceService.hasStoredFace()) {
+    final storedToken = await _authService.readFaceLoginToken();
+    final hasTemplate = await _ensureFaceTemplate(faceService, storedToken);
+
+    if (!hasTemplate) {
       return 'Face sign-in needs a face registered on this server. Sign in with '
           'your password and register your face first.';
     }
-    final storedToken = await _authService.readFaceLoginToken();
     if (storedToken == null || storedToken.isEmpty) {
       return 'Face sign-in is not set up on this device. Sign in with your '
           'password once with Face login enabled in Profile → Biometrics.';
@@ -147,19 +149,18 @@ class BiometricLoginService {
     _cancelled = false;
 
     try {
-      // The login screen has no session, so memory is empty on a cold start:
-      // the template must come from the persisted copy before deciding that
-      // this device has no face. Checking memory alone is what made face
-      // sign-in fail every time.
-      await faceService.restorePersistedRegistration();
-      if (!await faceService.hasStoredFace()) {
+      // The login screen has no session, so memory is empty on a cold start.
+      // The template is recovered from the device copy, and from the server via
+      // the stored token when that copy is missing — checking only memory is
+      // what made face sign-in fail every time.
+      final storedToken = await _authService.readFaceLoginToken();
+      if (!await _ensureFaceTemplate(faceService, storedToken)) {
         return const BiometricLoginOutcome.failure(
           'Face sign-in needs a face registered on this server. Sign in with '
           'your password and register your face first.',
         );
       }
 
-      final storedToken = await _authService.readFaceLoginToken();
       if (storedToken == null || storedToken.isEmpty) {
         return const BiometricLoginOutcome.failure(
           'Face sign-in is not set up on this device. Sign in with your '
@@ -213,6 +214,59 @@ class BiometricLoginService {
       );
     } finally {
       _running = false;
+    }
+  }
+
+  /// A usable face template, taking one from the server when the device has none.
+  ///
+  /// The device copy is the normal source, but it is only an optimisation: the
+  /// server is authoritative and the stored sign-in token is enough to read it.
+  /// Without this, a wiped device copy left every phone unable to sign in with a
+  /// face it had clearly registered.
+  Future<bool> _ensureFaceTemplate(
+    FaceRecognitionService faceService,
+    String? storedToken,
+  ) async {
+    if (await faceService.restorePersistedRegistration()) return true;
+    if (storedToken == null || storedToken.isEmpty) return false;
+
+    final registration = await _fetchFaceRegistration(storedToken);
+    if (registration == null) return false;
+
+    faceService.hydrateRegistration(registration);
+    return faceService.isFaceRegistered();
+  }
+
+  /// `GET /api/v1/mobile/face-registration` with the stored sign-in token.
+  Future<FaceRegistrationData?> _fetchFaceRegistration(String token) async {
+    final base = await EndpointConfigService.instance.resolveUrl('auth.refresh');
+    final origin = base != null && base.isNotEmpty
+        ? base.substring(0, base.indexOf('/api/') < 0 ? base.length : base.indexOf('/api/'))
+        : AppConfig.backendApiBaseUrl;
+    final url = '$origin/api/v1/mobile/face-registration';
+
+    try {
+      final response = await http.get(
+        Uri.parse(url),
+        headers: {
+          'Accept': 'application/json',
+          'Authorization': 'Bearer $token',
+          'User-Agent': 'PPHLAttendance/2.5 (Android; Flutter)',
+        },
+      ).timeout(const Duration(seconds: 30));
+
+      if (response.statusCode < 200 || response.statusCode >= 300) return null;
+
+      final decoded = jsonDecode(response.body);
+      if (decoded is! Map<String, dynamic>) return null;
+      if (decoded['success'] == false) return null;
+
+      final raw = decoded['face_registration'] ??
+          decoded['faceRegistration'] ??
+          (decoded['data'] is Map ? (decoded['data'] as Map)['face_registration'] : null);
+      return FaceRegistrationData.fromJson(raw, expectedSize: null);
+    } catch (_) {
+      return null;
     }
   }
 

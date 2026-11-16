@@ -176,13 +176,19 @@ class FaceRecognitionService {
     );
   }
 
+  /// Drops the in-memory template only.
+  ///
+  /// It must NOT touch the persisted copy: this runs whenever the profile turns
+  /// up without a registration (an omitted field, a partial load, a logout), and
+  /// deleting the device copy there is what made face sign-in report "no face
+  /// registered" on every phone even though a face was enrolled. Use
+  /// [deleteRegisteredFace] for a real unregister.
   void clearRegistrationMemory() {
     _registeredAvgEmbedding = null;
     _registeredEmbeddings = <List<double>>[];
     _adaptiveEmbeddings = <List<double>>[];
     _registrationTime = null;
     _registrationCaptureCount = 0;
-    unawaited(_clearPersistedRegistration());
   }
 
   /// Keystore entry for the template face sign-in verifies against.
@@ -1301,6 +1307,7 @@ class FaceRecognitionService {
   /// Delete the registered face
   Future<void> deleteRegisteredFace() async {
     clearRegistrationMemory();
+    await _clearPersistedRegistration();
   }
 
   /// Verify a face against registration templates with strict core consistency.
