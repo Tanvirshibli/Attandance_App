@@ -269,6 +269,8 @@ class BiometricApiService {
     required String deviceVendor,
     required String appVersion,
     required String sdkVersion,
+    String method = 'fingerprint',
+    String? secret,
   }) async {
     final response = await _send(
       method: 'POST',
@@ -277,9 +279,11 @@ class BiometricApiService {
       fallbackPath: _credentialsPath,
       body: {
         'credentialId': credentialId,
-        'publicKey': publicKey,
-        'keyAlias': keyAlias,
-        'algorithm': 'ES256',
+        'method': method,
+        if (method == 'face') 'secret': secret,
+        if (method != 'face') 'publicKey': publicKey,
+        if (method != 'face') 'keyAlias': keyAlias,
+        if (method != 'face') 'algorithm': 'ES256',
         'deviceIdentifier': deviceIdentifier,
         'deviceName': deviceName,
         'deviceModel': deviceModel,
@@ -289,6 +293,41 @@ class BiometricApiService {
       },
     );
     return response != null && response.isSuccess;
+  }
+
+  /// Mints a session from a device-bound face credential.
+  ///
+  /// The credential has no expiry, unlike the access token it replaced: a JWT
+  /// expires after `ttl` minutes and `refresh` blacklists the token it consumes,
+  /// so using one as the face sign-in secret could only ever work once.
+  Future<Map<String, dynamic>?> loginWithFaceCredential({
+    required String credentialId,
+    required String secret,
+    String? deviceIdentifier,
+    double? latitude,
+    double? longitude,
+    double? accuracyMeters,
+  }) async {
+    final response = await _send(
+      method: 'POST',
+      endpointKey: 'biometric.faceLogin',
+      alternateKey: null,
+      fallbackPath: '/api/v1/mobile/face-login',
+      authenticated: false,
+      body: {
+        'credentialId': credentialId,
+        'secret': secret,
+        if (deviceIdentifier != null && deviceIdentifier.isNotEmpty)
+          'deviceIdentifier': deviceIdentifier,
+        if (latitude != null) 'lat': latitude,
+        if (longitude != null) 'lng': longitude,
+        if (accuracyMeters != null) 'accuracy': accuracyMeters,
+      },
+    );
+    if (response == null || !response.isSuccess) return null;
+    final token = response.body['token']?.toString();
+    if (token == null || token.isEmpty) return null;
+    return response.body;
   }
 
   Future<bool> deleteCredential({required String credentialId}) async {

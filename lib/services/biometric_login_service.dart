@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
 
 import '../config/app_config.dart';
@@ -8,6 +9,7 @@ import '../models/face_registration_data.dart';
 import 'auth_service.dart';
 import 'biometric_api_service.dart';
 import 'biometric_auth_service.dart';
+import 'device_identity_service.dart';
 import 'endpoint_config_service.dart';
 import 'face_recognition_service.dart';
 
@@ -139,6 +141,7 @@ class BiometricLoginService {
   Future<BiometricLoginOutcome> loginWithFace(
     FaceRecognitionService faceService, {
     File? matchedPhoto,
+    Position? position,
   }) async {
     if (_running) {
       return const BiometricLoginOutcome.failure(
@@ -161,10 +164,14 @@ class BiometricLoginService {
         );
       }
 
-      if (storedToken == null || storedToken.isEmpty) {
+      // The device-bound credential is what mints the session; the legacy token
+      // is only kept for enroling this one.
+      final credential = await _authService.readFaceLoginCredential() ??
+          await _authService.ensureFaceLoginCredential();
+      if (credential == null) {
         return const BiometricLoginOutcome.failure(
-          'Face sign-in is not set up on this device. Sign in with your '
-          'password once with Face login enabled in Profile → Biometrics.',
+          'Face sign-in is not linked on this device yet. Sign in with your '
+          'password once to link it, then try again.',
         );
       }
 
@@ -189,11 +196,19 @@ class BiometricLoginService {
         return const BiometricLoginOutcome.failure('Face sign-in cancelled.');
       }
 
-      final session = await _refreshSession(storedToken);
+      final session = await _api.loginWithFaceCredential(
+        credentialId: credential.credentialId,
+        secret: credential.secret,
+        deviceIdentifier: (await DeviceIdentityService().getDeviceMetadata())[
+            'deviceIdentifier'],
+        latitude: position?.latitude,
+        longitude: position?.longitude,
+        accuracyMeters: position?.accuracy,
+      );
       if (session == null) {
         return const BiometricLoginOutcome.failure(
-          'Face verified, but the session could not be renewed. Sign in with '
-          'your password.',
+          'Face verified, but this device is not authorised for face sign-in. '
+          'Sign in with your password to re-link it.',
         );
       }
 

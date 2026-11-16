@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:async';
 import 'dart:io';
+import 'dart:math';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -11,13 +12,27 @@ import '../config/app_config.dart';
 import '../models/auth_user_profile.dart';
 import '../utils/user_facing_error.dart';
 import 'app_settings_service.dart';
+import 'biometric_api_service.dart';
 import 'biometric_preferences_service.dart';
+import 'device_identity_service.dart';
 import 'endpoint_config_service.dart';
 import 'face_recognition_service.dart';
 import 'fcm_wake_handler.dart';
 import 'geo_tracking_service.dart';
 import 'permission_service.dart';
 import 'zone_scope_service.dart';
+
+/// The device-bound credential face sign-in mints a session from.
+///
+/// The secret lives only here; the server keeps its hash. That makes sign-in
+/// independent of the access token's 24-hour TTL and of `refresh` blacklisting
+/// the token it consumes.
+class FaceLoginCredential {
+  const FaceLoginCredential({required this.credentialId, required this.secret});
+
+  final String credentialId;
+  final String secret;
+}
 
 class AuthResult {
   const AuthResult({
@@ -47,6 +62,9 @@ class AuthService {
   static const String _rememberKey = 'remember_me';
   static const String _employeeIdKey = 'canonical_employee_id';
   static const String _faceLoginTokenKey = 'face_login_token';
+
+  /// Device-bound face credential: `{credentialId, secret}` as JSON.
+  static const String _faceCredentialKey = 'face_login_credential';
   static const Duration _profileCacheTtl = Duration(minutes: 20);
 
   /// The token face sign-in refreshes from. It lives in the platform keystore
@@ -213,12 +231,17 @@ class AuthService {
     } catch (_) {
       // The dashboard retries on its own.
     }
+    // Face sign-in needs a device-bound credential; a restored session never
+    // passes through the login form, so it is created here while one exists.
+    if (AppSettingsService.instance.biometricLoginFace.value) {
+      unawaited(ensureFaceLoginCredential());
+    }
   }
 
-  /// Keeps the encrypted token a face sign-in refreshes from in step with the
-  /// current session. Called after a password login (when face login is on) and
-  /// after every biometric session, so the stored token never outlives the
-  /// session it came from.
+  /// Keeps the device-bound face credential in step with the current session,
+  /// and keeps the legacy token for the one upgrade path that still needs it.
+  /// Called after a password login (when face login is on) and after every
+  /// biometric session.
   Future<void> storeFaceLoginSecrets() async {
     final token = await getToken();
     if (token == null || token.isEmpty) return;
@@ -226,6 +249,85 @@ class AuthService {
       await _secureStorage.write(key: _faceLoginTokenKey, value: token);
     } catch (error) {
       debugPrint('AuthService.storeFaceLoginSecrets failed: $error');
+    }
+    await ensureFaceLoginCredential();
+  }
+
+  Future<FaceLoginCredential?> readFaceLoginCredential() async {
+    try {
+      final raw = await _secureStorage.read(key: _faceCredentialKey);
+      if (raw == null || raw.isEmpty) return null;
+      final decoded = jsonDecode(raw);
+      if (decoded is! Map) return null;
+      final id = decoded['credentialId']?.toString();
+      final secret = decoded['secret']?.toString();
+      if (id == null || id.isEmpty || secret == null || secret.isEmpty) {
+        return null;
+      }
+      return FaceLoginCredential(credentialId: id, secret: secret);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> clearFaceLoginCredential() async {
+    try {
+      await _secureStorage.delete(key: _faceCredentialKey);
+    } catch (error) {
+      debugPrint('AuthService.clearFaceLoginCredential failed: $error');
+    }
+  }
+
+  /// Enrols a face credential once, while a session exists.
+  ///
+  /// Returns the stored credential, or null when it could not be created (no
+  /// session, or the server refused). Sign-in later reports that honestly.
+  Future<FaceLoginCredential?> ensureFaceLoginCredential() async {
+    final existing = await readFaceLoginCredential();
+    if (existing != null) return existing;
+
+    final token = await getToken();
+    if (token == null || token.isEmpty) return null;
+
+    try {
+      final random = Random.secure();
+      final secret = base64Url
+          .encode(List<int>.generate(32, (_) => random.nextInt(256)))
+          .replaceAll('=', '');
+      final credentialId =
+          'face-${DateTime.now().microsecondsSinceEpoch.toRadixString(36)}';
+
+      final metadata = await DeviceIdentityService().getDeviceMetadata();
+      final saved = await BiometricApiService().registerCredential(
+        credentialId: credentialId,
+        publicKey: '',
+        keyAlias: '',
+        method: 'face',
+        secret: secret,
+        deviceIdentifier: metadata['deviceIdentifier'] ?? '',
+        deviceName: metadata['deviceName'] ?? '',
+        deviceModel: metadata['deviceModel'] ?? '',
+        deviceVendor: metadata['deviceVendor'] ?? '',
+        appVersion: '2.5.5',
+        sdkVersion: Platform.operatingSystemVersion,
+      );
+      if (!saved) return null;
+
+      final credential = FaceLoginCredential(
+        credentialId: credentialId,
+        secret: secret,
+      );
+      await _secureStorage.write(
+        key: _faceCredentialKey,
+        value: jsonEncode({
+          'credentialId': credential.credentialId,
+          'secret': credential.secret,
+        }),
+      );
+      return credential;
+    } catch (error) {
+      debugPrint('AuthService.ensureFaceLoginCredential failed: $error');
+      return null;
     }
   }
 
