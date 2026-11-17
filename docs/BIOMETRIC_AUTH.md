@@ -242,14 +242,17 @@ locally first (optimistic) then **rolls back** if the PUT fails — including a
 
 **Face** — `BiometricLoginService.loginWithFace()`
 
-1. A valid face template must be in memory (else: "register your face first").
-2. An encrypted token must be in `flutter_secure_storage` (else: "sign in with
-   your password once with Face login enabled").
-3. Up to **3** front-camera captures are verified with
+1. `faceLoginBlocker()` first restores a usable template from the device copy.
+   If that copy is missing, the template is fetched from
+   `GET /api/v1/mobile/face-registration`; an expired stored token is refreshed
+   once from the device-bound credential. No registration, no device link and a
+   server outage are reported as three distinct cases.
+2. Up to **3** front-camera captures are verified in-app with
    `FaceRecognitionService.verifyFace` — the same strong core-template
    thresholds the check-in flow uses.
-4. On a match, `POST /api/v1/refresh` with the stored token, then
-   `AuthService.applyBiometricSession(refreshBody)`.
+3. On a match, `POST /api/v1/mobile/face-login` with the device-bound credential
+   mints the session, which `AuthService.applyBiometricSession(body)` stores and
+   hydrates.
 
 Both flows are cancellable (the login screen shows a Cancel link while one is
 running) and never throw to the UI: every failure is a message.
