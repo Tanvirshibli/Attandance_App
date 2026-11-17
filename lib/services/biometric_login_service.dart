@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 
 import '../config/app_config.dart';
 import '../models/face_registration_data.dart';
+import '../utils/user_facing_error.dart';
 import 'auth_service.dart';
 import 'biometric_api_service.dart';
 import 'biometric_auth_service.dart';
@@ -14,6 +15,17 @@ import 'endpoint_config_service.dart';
 import 'face_recognition_service.dart';
 
 enum BiometricLoginMethod { fingerprint, face }
+
+enum FaceLoginBlocker { ready, noTemplate, notLinked, serverUnavailable }
+
+enum _FaceRegistrationStatus { found, missing, unauthorized, unavailable }
+
+class _FaceRegistrationFetch {
+  const _FaceRegistrationFetch(this.status, [this.registration]);
+
+  final _FaceRegistrationStatus status;
+  final FaceRegistrationData? registration;
+}
 
 class BiometricLoginOutcome {
   const BiometricLoginOutcome.success(this.message) : success = true;
@@ -33,6 +45,15 @@ class BiometricLoginOutcome {
 /// screen can show.
 class BiometricLoginService {
   BiometricLoginService._();
+
+  static const String noFaceTemplateMessage =
+      'Face sign-in needs a face registered on this server. Sign in with your '
+      'password and register your face first.';
+  static const String faceNotLinkedMessage =
+      'Face sign-in is not linked on this device yet. Sign in with your '
+      'password once to link it, then try again.';
+  static const String faceRegistrationUnavailableMessage =
+      'Could not check your face registration right now. Please try again.';
 
   static final BiometricLoginService instance = BiometricLoginService._();
 
@@ -119,23 +140,15 @@ class BiometricLoginService {
     }
   }
 
-  /// Why face sign-in cannot run on this device, or null when it can.
+  /// Why face sign-in cannot run on this device, or [FaceLoginBlocker.ready].
   ///
   /// The login screen asks before opening the camera, so a user who is missing a
   /// template or a stored token is told immediately instead of after a capture.
-  Future<String?> faceLoginBlocker(FaceRecognitionService faceService) async {
+  Future<FaceLoginBlocker> faceLoginBlocker(
+    FaceRecognitionService faceService,
+  ) async {
     final storedToken = await _authService.readFaceLoginToken();
-    final hasTemplate = await _ensureFaceTemplate(faceService, storedToken);
-
-    if (!hasTemplate) {
-      return 'Face sign-in needs a face registered on this server. Sign in with '
-          'your password and register your face first.';
-    }
-    if (storedToken == null || storedToken.isEmpty) {
-      return 'Face sign-in is not set up on this device. Sign in with your '
-          'password once with Face login enabled in Profile → Biometrics.';
-    }
-    return null;
+    return _ensureFaceTemplate(faceService, storedToken);
   }
 
   Future<BiometricLoginOutcome> loginWithFace(
@@ -157,10 +170,16 @@ class BiometricLoginService {
       // the stored token when that copy is missing — checking only memory is
       // what made face sign-in fail every time.
       final storedToken = await _authService.readFaceLoginToken();
-      if (!await _ensureFaceTemplate(faceService, storedToken)) {
+      final template = await _ensureFaceTemplate(faceService, storedToken);
+      if (template == FaceLoginBlocker.noTemplate) {
+        return const BiometricLoginOutcome.failure(noFaceTemplateMessage);
+      }
+      if (template == FaceLoginBlocker.notLinked) {
+        return const BiometricLoginOutcome.failure(faceNotLinkedMessage);
+      }
+      if (template == FaceLoginBlocker.serverUnavailable) {
         return const BiometricLoginOutcome.failure(
-          'Face sign-in needs a face registered on this server. Sign in with '
-          'your password and register your face first.',
+          faceRegistrationUnavailableMessage,
         );
       }
 
@@ -169,10 +188,7 @@ class BiometricLoginService {
       final credential = await _authService.readFaceLoginCredential() ??
           await _authService.ensureFaceLoginCredential();
       if (credential == null) {
-        return const BiometricLoginOutcome.failure(
-          'Face sign-in is not linked on this device yet. Sign in with your '
-          'password once to link it, then try again.',
-        );
+        return const BiometricLoginOutcome.failure(faceNotLinkedMessage);
       }
 
       try {
@@ -238,27 +254,69 @@ class BiometricLoginService {
   /// server is authoritative and the stored sign-in token is enough to read it.
   /// Without this, a wiped device copy left every phone unable to sign in with a
   /// face it had clearly registered.
-  Future<bool> _ensureFaceTemplate(
+  Future<FaceLoginBlocker> _ensureFaceTemplate(
     FaceRecognitionService faceService,
     String? storedToken,
   ) async {
-    if (await faceService.restorePersistedRegistration()) return true;
-    if (storedToken == null || storedToken.isEmpty) return false;
+    final hasTemplate = await faceService.restorePersistedRegistration();
+    if (hasTemplate) return FaceLoginBlocker.ready;
 
-    final registration = await _fetchFaceRegistration(storedToken);
-    if (registration == null) return false;
+    var token = storedToken;
+    var refreshed = false;
+    if (token == null || token.isEmpty) {
+      token = await _refreshFaceLoginToken();
+      refreshed = true;
+      if (token == null) return FaceLoginBlocker.notLinked;
+    }
+    final activeToken = token;
 
-    faceService.hydrateRegistration(registration);
-    return faceService.isFaceRegistered();
+    var fetch = await _fetchFaceRegistration(activeToken);
+    if (fetch.status == _FaceRegistrationStatus.unauthorized && !refreshed) {
+      final freshToken = await _refreshFaceLoginToken();
+      if (freshToken == null) return FaceLoginBlocker.notLinked;
+      fetch = await _fetchFaceRegistration(freshToken);
+    }
+
+    switch (fetch.status) {
+      case _FaceRegistrationStatus.found:
+        faceService.hydrateRegistration(fetch.registration);
+        return await faceService.isFaceRegistered()
+            ? FaceLoginBlocker.ready
+            : FaceLoginBlocker.noTemplate;
+      case _FaceRegistrationStatus.missing:
+        return FaceLoginBlocker.noTemplate;
+      case _FaceRegistrationStatus.unauthorized:
+        return FaceLoginBlocker.notLinked;
+      case _FaceRegistrationStatus.unavailable:
+        return FaceLoginBlocker.serverUnavailable;
+    }
   }
 
-  /// `GET /api/v1/mobile/face-registration` with the stored sign-in token.
-  Future<FaceRegistrationData?> _fetchFaceRegistration(String token) async {
-    final base = await EndpointConfigService.instance.resolveUrl('auth.refresh');
-    final origin = base != null && base.isNotEmpty
-        ? base.substring(0, base.indexOf('/api/') < 0 ? base.length : base.indexOf('/api/'))
-        : AppConfig.backendApiBaseUrl;
-    final url = '$origin/api/v1/mobile/face-registration';
+  Future<String?> _refreshFaceLoginToken() async {
+    try {
+      final credential = await _authService.readFaceLoginCredential();
+      if (credential == null) return null;
+      final session = await _api.loginWithFaceCredential(
+        credentialId: credential.credentialId,
+        secret: credential.secret,
+        deviceIdentifier: (await DeviceIdentityService().getDeviceMetadata())[
+            'deviceIdentifier'],
+      );
+      final token = session?['token']?.toString();
+      if (token == null || token.isEmpty) return null;
+      await _authService.storeFaceLoginToken(token);
+      return token;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// `GET face.registration.get` with the stored sign-in token.
+  Future<_FaceRegistrationFetch> _fetchFaceRegistration(String token) async {
+    final url = await EndpointConfigService.instance.resolveUrl(
+          'face.registration.get',
+        ) ??
+        '${AppConfig.backendApiBaseUrl}/api/v1/mobile/face-registration';
 
     try {
       final response = await http.get(
@@ -270,50 +328,48 @@ class BiometricLoginService {
         },
       ).timeout(const Duration(seconds: 30));
 
-      if (response.statusCode < 200 || response.statusCode >= 300) return null;
-
-      final decoded = jsonDecode(response.body);
-      if (decoded is! Map<String, dynamic>) return null;
-      if (decoded['success'] == false) return null;
-
-      final raw = decoded['face_registration'] ??
-          decoded['faceRegistration'] ??
-          (decoded['data'] is Map ? (decoded['data'] as Map)['face_registration'] : null);
-      return FaceRegistrationData.fromJson(raw, expectedSize: null);
-    } catch (_) {
-      return null;
-    }
-  }
-
-  Future<Map<String, dynamic>?> _refreshSession(String storedToken) async {
-    final url = await EndpointConfigService.instance.resolveUrl('auth.refresh') ??
-        '${AppConfig.backendApiBaseUrl}/api/v1/refresh';
-
-    try {
-      final response = await http
-          .post(
-            Uri.parse(url),
-            headers: {
-              'Accept': 'application/json',
-              'Content-Type': 'application/json',
-              'Authorization': 'Bearer $storedToken',
-              'User-Agent': 'PPHLAttendance/2.5 (Android; Flutter)',
-            },
-          )
-          .timeout(const Duration(seconds: 30));
-
+      if (response.statusCode == 401 || response.statusCode == 403) {
+        return const _FaceRegistrationFetch(
+          _FaceRegistrationStatus.unauthorized,
+        );
+      }
       if (response.statusCode < 200 || response.statusCode >= 300) {
-        return null;
+        return const _FaceRegistrationFetch(_FaceRegistrationStatus.unavailable);
       }
 
       final decoded = jsonDecode(response.body);
-      if (decoded is! Map<String, dynamic>) return null;
-      if (decoded['success'] == false) return null;
-      final token = decoded['token']?.toString();
-      if (token == null || token.isEmpty) return null;
-      return decoded;
+      if (decoded is! Map<String, dynamic>) {
+        return const _FaceRegistrationFetch(_FaceRegistrationStatus.unavailable);
+      }
+      if (decoded['success'] == false) {
+        final message = decoded['message']?.toString();
+        final lower = message?.toLowerCase() ?? '';
+        final authFailure = UserFacingError.looksLikeCredentialError(message) ||
+            lower.contains('token') ||
+            lower.contains('expired');
+        return _FaceRegistrationFetch(
+          authFailure
+              ? _FaceRegistrationStatus.unauthorized
+              : _FaceRegistrationStatus.missing,
+        );
+      }
+
+      final data = decoded['data'] is Map ? decoded['data'] as Map : null;
+      final raw = decoded['face_registration'] ??
+          decoded['faceRegistration'] ??
+          data?['face_registration'] ??
+          data?['faceRegistration'];
+      final registration = FaceRegistrationData.fromJson(raw, expectedSize: null) ??
+          FaceRegistrationData.fromJson(data, expectedSize: null);
+      if (registration == null) {
+        return const _FaceRegistrationFetch(_FaceRegistrationStatus.missing);
+      }
+      return _FaceRegistrationFetch(
+        _FaceRegistrationStatus.found,
+        registration,
+      );
     } catch (_) {
-      return null;
+      return const _FaceRegistrationFetch(_FaceRegistrationStatus.unavailable);
     }
   }
 }

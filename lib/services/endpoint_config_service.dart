@@ -224,6 +224,11 @@ class EndpointConfigService {
           '/api/v1/mobile/biometric-login',
           'hrm',
         ),
+        'biometric.faceLogin': ep(
+          'POST',
+          '/api/v1/mobile/face-login',
+          'hrm',
+        ),
         'biometric.punchAuthorization': ep(
           'POST',
           '/api/v1/mobile/biometric-punch-authorization',

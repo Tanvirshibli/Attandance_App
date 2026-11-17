@@ -238,6 +238,14 @@ class AuthService {
     }
   }
 
+  Future<void> storeFaceLoginToken(String token) async {
+    try {
+      await _secureStorage.write(key: _faceLoginTokenKey, value: token);
+    } catch (error) {
+      debugPrint('AuthService.storeFaceLoginToken failed: $error');
+    }
+  }
+
   /// Keeps the device-bound face credential in step with the current session,
   /// and keeps the legacy token for the one upgrade path that still needs it.
   /// Called after a password login (when face login is on) and after every
@@ -245,11 +253,7 @@ class AuthService {
   Future<void> storeFaceLoginSecrets() async {
     final token = await getToken();
     if (token == null || token.isEmpty) return;
-    try {
-      await _secureStorage.write(key: _faceLoginTokenKey, value: token);
-    } catch (error) {
-      debugPrint('AuthService.storeFaceLoginSecrets failed: $error');
-    }
+    await storeFaceLoginToken(token);
     await ensureFaceLoginCredential();
   }
 
@@ -834,6 +838,7 @@ class AuthService {
     // invalidation call.
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_tokenKey);
+    await clearFaceLoginSecrets();
 
     if (invalidateServerSession && token != null && token.isNotEmpty) {
       for (final url in await _logoutUrls()) {

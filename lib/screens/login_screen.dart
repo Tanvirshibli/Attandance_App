@@ -186,80 +186,92 @@ class _LoginScreenState extends State<LoginScreen> {
     if (_biometricBusy != null) return;
 
     setState(() => _biometricBusy = method);
+    try {
+      // Face sign-in captures in-app, before the overlay opens: the transaction
+      // barrier covers every route, so a camera pushed while it is showing would
+      // be hidden behind it. Failing here is also cheaper than after a capture.
+      File? matchedPhoto;
+      Position? punchPosition;
+      if (method == BiometricLoginMethod.face) {
+        final blocker = await BiometricLoginService.instance.faceLoginBlocker(
+          _faceRecognitionService,
+        );
+        if (!mounted) return;
+        final blockerMessage = switch (blocker) {
+          FaceLoginBlocker.ready => null,
+          FaceLoginBlocker.noTemplate =>
+            BiometricLoginService.noFaceTemplateMessage,
+          FaceLoginBlocker.notLinked =>
+            BiometricLoginService.faceNotLinkedMessage,
+          FaceLoginBlocker.serverUnavailable =>
+            BiometricLoginService.faceRegistrationUnavailableMessage,
+        };
+        if (blockerMessage != null) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(blockerMessage)),
+          );
+          return;
+        }
 
-    // Face sign-in captures in-app, before the overlay opens: the transaction
-    // barrier covers every route, so a camera pushed while it is showing would
-    // be hidden behind it. Failing here is also cheaper than after a capture.
-    File? matchedPhoto;
-    Position? punchPosition;
-    if (method == BiometricLoginMethod.face) {
-      final blocker =
-          await BiometricLoginService.instance.faceLoginBlocker(
-        _faceRecognitionService,
+        final capture = await Navigator.of(context).push<FaceLoginCaptureResult>(
+          MaterialPageRoute(
+            builder: (_) => FaceLoginCaptureScreen(
+              faceService: _faceRecognitionService,
+            ),
+          ),
+        );
+        if (!mounted) return;
+        if (capture == null) {
+          // Backed out of the camera: not an error, just no attempt.
+          return;
+        }
+        matchedPhoto = capture.photo;
+        punchPosition = capture.position;
+      }
+
+      final outcome = await TransactionUiService.instance.run(
+        () => switch (method) {
+          BiometricLoginMethod.fingerprint =>
+            BiometricLoginService.instance.loginWithFingerprint(),
+          BiometricLoginMethod.face =>
+            BiometricLoginService.instance.loginWithFace(
+              _faceRecognitionService,
+              matchedPhoto: matchedPhoto,
+              position: punchPosition,
+            ),
+        },
+        label: switch (method) {
+          BiometricLoginMethod.fingerprint => 'Verifying fingerprint',
+          BiometricLoginMethod.face => 'Verifying face',
+        },
+        // Biometric login reports failure by returning a result, not by throwing:
+        // without this the overlay showed a tick over "could not reach the server".
+        isSuccess: (outcome) => outcome.success,
       );
+
       if (!mounted) return;
-      if (blocker != null) {
-        setState(() => _biometricBusy = null);
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text(blocker)));
+      if (!outcome.success) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(outcome.message)),
+        );
         return;
       }
 
-      final capture = await Navigator.of(context).push<FaceLoginCaptureResult>(
-        MaterialPageRoute(
-          builder: (_) => FaceLoginCaptureScreen(
-            faceService: _faceRecognitionService,
-          ),
-        ),
-      );
+      unawaited(EndpointConfigService.instance.refreshConfig());
+      unawaited(_hydrateProfileInBackground());
+
       if (!mounted) return;
-      if (capture == null) {
-        // Backed out of the camera: not an error, just no attempt.
-        setState(() => _biometricBusy = null);
-        return;
-      }
-      matchedPhoto = capture.photo;
-      punchPosition = capture.position;
-    }
 
-    final outcome = await TransactionUiService.instance.run(
-      () => switch (method) {
-        BiometricLoginMethod.fingerprint =>
-          BiometricLoginService.instance.loginWithFingerprint(),
-        BiometricLoginMethod.face =>
-          BiometricLoginService.instance.loginWithFace(
-            _faceRecognitionService,
-            matchedPhoto: matchedPhoto,
-            position: punchPosition,
-          ),
-      },
-      label: switch (method) {
-        BiometricLoginMethod.fingerprint => 'Verifying fingerprint',
-        BiometricLoginMethod.face => 'Verifying face',
-      },
-      // Biometric login reports failure by returning a result, not by throwing:
-      // without this the overlay showed a tick over "could not reach the server".
-      isSuccess: (outcome) => outcome.success,
-    );
-
-    if (!mounted) return;
-    setState(() => _biometricBusy = null);
-
-    if (!outcome.success) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(outcome.message)),
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(builder: (_) => const MainShell()),
       );
-      return;
+    } finally {
+      if (mounted) {
+        setState(() => _biometricBusy = null);
+      } else {
+        _biometricBusy = null;
+      }
     }
-
-    unawaited(EndpointConfigService.instance.refreshConfig());
-    unawaited(_hydrateProfileInBackground());
-
-    if (!mounted) return;
-
-    Navigator.of(context).pushReplacement(
-      MaterialPageRoute(builder: (_) => const MainShell()),
-    );
   }
 
   void _cancelBiometricLogin() {
