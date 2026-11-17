@@ -47,6 +47,11 @@ class _FaceRegistrationScreenState extends State<FaceRegistrationScreen>
   bool _cameraReady = false;
   bool _isCompleted = false;
   bool _isCapturing = false;
+  bool _isFinalizing = false;
+  bool _storageError = false;
+  static const String _persistFailureMessage =
+      'Secure storage could not save the face template on this device. '
+      'Check your device security settings and try again.';
   late String _statusMessage;
   double _previewStageWidth = 0;
   double _previewStageHeight = 0;
@@ -239,6 +244,8 @@ class _FaceRegistrationScreenState extends State<FaceRegistrationScreen>
     if (_processingFrame ||
         _isCapturing ||
         _isCompleted ||
+        _isFinalizing ||
+        _storageError ||
         _cameraController == null ||
         !_cameraController!.value.isInitialized) {
       return;
@@ -411,7 +418,7 @@ class _FaceRegistrationScreenState extends State<FaceRegistrationScreen>
       });
     } finally {
       _isCapturing = false;
-      if (!_isCompleted) {
+      if (!_isCompleted && !_isFinalizing) {
         await _startImageStream();
       }
       try {
@@ -503,11 +510,11 @@ class _FaceRegistrationScreenState extends State<FaceRegistrationScreen>
 
       if (result.success) {
         _rejectMessageUntil = null;
-        setState(() => _captureResults[_currentCapture] = true);
 
         if (result.isPartial) {
           // More captures needed
           setState(() {
+            _captureResults[_currentCapture] = true;
             _currentCapture++;
             _progress =
                 _currentCapture / FaceRecognitionService.registrationCaptures;
@@ -521,47 +528,21 @@ class _FaceRegistrationScreenState extends State<FaceRegistrationScreen>
           _progressAnim.forward(from: 0);
         } else {
           // All captures done
-          var savedToBackend = false;
-          final registrationData = _faceService.exportRegistrationData();
+          setState(() => _isFinalizing = true);
           // Persist the device copy first: face sign-in verifies against it and
           // must not depend on the backend save succeeding.
-          if (registrationData != null) {
-            await _faceService.persistCurrentRegistration();
+          final savedLocally = await _faceService.persistCurrentRegistration();
+          if (!mounted) return;
+          if (!savedLocally) {
+            setState(() {
+              _isFinalizing = false;
+              _angleHoldFrames = 0;
+              _storageError = true;
+              _statusMessage = _persistFailureMessage;
+            });
+            return;
           }
-          if (registrationData != null) {
-            final profile = await _authService.getCurrentUserProfile();
-            savedToBackend = await _faceRegistrationApiService
-                .saveFaceRegistration(
-              registrationData,
-              canonicalEmployeeId: profile?.canonicalEmployeeId,
-            );
-            // Do NOT clear the in-memory template first — it is the one just
-            // built. Refresh the profile so we hydrate exactly what the server
-            // stored, but only when a registration actually comes back, so a
-            // cached or empty profile can never wipe a good template.
-            if (savedToBackend) {
-              final updatedProfile = await _authService.getCurrentUserProfile(
-                forceRefresh: true,
-              );
-              if (updatedProfile?.faceRegistration != null && mounted) {
-                _faceService.hydrateRegistration(
-                  updatedProfile!.faceRegistration,
-                );
-              }
-            }
-          }
-
-          await _stopImageStream();
-          setState(() {
-            _isCompleted = true;
-            _progress = 1.0;
-            _statusMessage = savedToBackend
-                ? _s.registrationComplete
-                : _s.registrationLocalOnly;
-          });
-          _progressAnimationStart = _animatedProgress;
-          _progressAnim.forward(from: 0);
-          _tickAnim.forward(from: 0);
+          await _finishRegistration();
         }
       } else {
         setState(() {
@@ -580,6 +561,58 @@ class _FaceRegistrationScreenState extends State<FaceRegistrationScreen>
         _statusMessage = _s.captureFailed;
       });
     }
+  }
+
+  Future<void> _finishRegistration() async {
+    var savedToBackend = false;
+    final registrationData = _faceService.exportRegistrationData();
+    if (registrationData != null) {
+      final profile = await _authService.getCurrentUserProfile();
+      savedToBackend = await _faceRegistrationApiService.saveFaceRegistration(
+        registrationData,
+        canonicalEmployeeId: profile?.canonicalEmployeeId,
+      );
+      // Do NOT clear the in-memory template first — it is the one just
+      // built. Refresh the profile so we hydrate exactly what the server
+      // stored, but only when a registration actually comes back, so a
+      // cached or empty profile can never wipe a good template.
+      if (savedToBackend) {
+        final updatedProfile = await _authService.getCurrentUserProfile(
+          forceRefresh: true,
+        );
+        if (updatedProfile?.faceRegistration != null && mounted) {
+          _faceService.hydrateRegistration(updatedProfile!.faceRegistration);
+        }
+      }
+    }
+
+    if (!mounted) return;
+    await _stopImageStream();
+    setState(() {
+      _captureResults[_currentCapture] = true;
+      _isCompleted = true;
+      _progress = 1.0;
+      _storageError = false;
+      _statusMessage = savedToBackend
+          ? _s.registrationComplete
+          : _s.registrationLocalOnly;
+    });
+    _progressAnimationStart = _animatedProgress;
+    _progressAnim.forward(from: 0);
+    _tickAnim.forward(from: 0);
+  }
+
+  Future<void> _retryRegistrationSave() async {
+    final savedLocally = await _faceService.persistCurrentRegistration();
+    if (!mounted) return;
+    if (!savedLocally) {
+      setState(() {
+        _isFinalizing = false;
+        _statusMessage = _persistFailureMessage;
+      });
+      return;
+    }
+    await _finishRegistration();
   }
 
   void _showDifferentPersonDialog() {
@@ -673,6 +706,7 @@ class _FaceRegistrationScreenState extends State<FaceRegistrationScreen>
 
           // Done button
           if (_isCompleted) _buildDoneButton(),
+          if (_storageError) _buildStorageRetryBar(),
         ],
       ),
     );
@@ -1022,6 +1056,42 @@ class _FaceRegistrationScreenState extends State<FaceRegistrationScreen>
                 style: GoogleFonts.poppins(
                     fontSize: 16, fontWeight: FontWeight.w600)),
           ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildStorageRetryBar() {
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              _persistFailureMessage,
+              textAlign: TextAlign.center,
+              style: GoogleFonts.poppins(fontSize: 12, color: AppColors.error),
+            ),
+            const SizedBox(height: 8),
+            SizedBox(
+              height: 52,
+              child: ElevatedButton(
+                onPressed: _retryRegistrationSave,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.warning,
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16)),
+                  elevation: 0,
+                ),
+                child: Text(_s.buttonRetry,
+                    style: GoogleFonts.poppins(
+                        fontSize: 16, fontWeight: FontWeight.w600)),
+              ),
+            ),
+          ],
         ),
       ),
     );

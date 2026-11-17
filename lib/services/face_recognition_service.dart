@@ -199,16 +199,18 @@ class FaceRecognitionService {
   /// token behind the same 3-attempt limit the check-in flow uses.
   static const String _persistedTemplateKey = 'face_login_template';
 
-  Future<void> _persistRegistration() async {
+  Future<bool> _persistRegistration() async {
     final data = exportRegistrationData();
-    if (data == null) return;
+    if (data == null) return false;
     try {
       await _secureStorage.write(
         key: _persistedTemplateKey,
         value: jsonEncode(data.toJson()),
       );
+      return true;
     } catch (error) {
       debugPrint('FaceRecognitionService: could not persist the template ($error)');
+      return false;
     }
   }
 
@@ -239,7 +241,9 @@ class FaceRecognitionService {
     }
   }
 
-  final FlutterSecureStorage _secureStorage = const FlutterSecureStorage();
+  final FlutterSecureStorage _secureStorage = FlutterSecureStorage(
+    aOptions: AndroidOptions(encryptedSharedPreferences: true),
+  );
 
   /// The in-flight warm-up, so a start-up warm-up and the check-in screen share
   /// one load instead of racing to build two interpreters.
@@ -1273,7 +1277,7 @@ class FaceRecognitionService {
   /// server save, and face sign-in only ever needs this device copy. Calling
   /// this at the end of registration is what makes the face button usable on the
   /// very next visit to the login screen.
-  Future<void> persistCurrentRegistration() => _persistRegistration();
+  Future<bool> persistCurrentRegistration() => _persistRegistration();
 
   /// Whether this device holds a usable template, in memory or on disk.
   ///
