@@ -298,6 +298,21 @@ After publishing build **N**:
 
 ---
 
+## November 23, 2026 Update (v2.5.6-beta.1+9040) — beta channel
+
+**POS Invoice / POS Challan printing for approved feed orders.**
+
+> Pubspec moved `2.5.5+126` → `2.5.5-beta.1+9039` → published as `2.5.6-beta.1+9040` (the +1 bump stays above the last beta, 9039). Both ABIs uploaded; production stays on `2.5.5+126`.
+
+- **Sales Info gains POS Invoice / Challan** — lists approved feed orders with a sales-point dropdown, the feed category tree, a date range defaulting to the last 30 days, and the approved-order / unique-dealer counters from the new public sales API (`/api/public/feed-orders/pos*`), called without the HRM token
+- **Receipt parity** — `PosReceiptDocument` reproduces the sales webapp's POS receipt field for field at the same 300 px ≈ 80 mm width (logo, company block, depot, dealer line, delivery, item columns, totals or total quantity, driver, signatures, Bangla note, `Order #feedId`, Code128 barcode). The invoice quantity cell no longer carries the webapp's `11 Bag / 1 Kg` typo
+- **Bluetooth printing** — `PosPrinterService` supports classic SPP (bonded devices) and BLE printers, remembers the selection, and prints a `GS v 0` raster of the preview at 384 dots (58 mm) or 576 (80 mm) with feed + partial cut, so paper matches the screen
+- **New permissions** — `BLUETOOTH_SCAN` (`neverForLocation`), `BLUETOOTH_CONNECT`, and the legacy `BLUETOOTH`/`BLUETOOTH_ADMIN` pair capped at API 30
+- **New dependencies** — `flutter_blue_plus`, `esc_pos_utils_plus`, `print_bluetooth_thermal`, `barcode_widget`
+- Guide: [`POS_PRINTING.md`](POS_PRINTING.md); backend contract: `pphl_account-laravel/docs/PUBLIC_FEED_POS_API.md`
+
+---
+
 ## November 15, 2026 Update (v2.5.5-beta.1+9039) — beta channel
 
 **Fingerprint login, fingerprint check-in and face login.**
