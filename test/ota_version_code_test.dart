@@ -70,6 +70,29 @@ void main() {
         isTrue,
       );
     });
+
+    test('the 12xxx band reaches an install whose old code kept the offset', () {
+      // Pre-9042 installs compare the raw 11041 against the manifest, so the
+      // manifest has to advertise a base above it. That is what the band
+      // migration to 12000 is for.
+      expect(
+        isUpdateRequired(
+          installedVersionCode: 11041,
+          remoteVersionCode: 12000,
+        ),
+        isTrue,
+      );
+      // Once the fixed build is installed the same device normalises cleanly and
+      // stops being offered the same manifest.
+      expect(
+        resolveInstalledVersionCode('14000', abi: 'arm64-v8a', channel: 'beta'),
+        12000,
+      );
+      expect(
+        isUpdateRequired(installedVersionCode: 12000, remoteVersionCode: 12000),
+        isFalse,
+      );
+    });
   });
 
   group('AppUpdateCheckResult', () {

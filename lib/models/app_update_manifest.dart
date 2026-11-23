@@ -107,6 +107,11 @@ class AppUpdateManifest {
 /// offset from an unknown base is worse than subtracting nothing — 11008 would
 /// become 6008 or 8008 depending on which offset was assumed, and the resulting
 /// comparison would be wrong in a way nothing would surface.
+///
+/// Beta bases are not limited to four digits: the 9042 release moved the band to
+/// 12xxx so installs whose build number was never normalised (raw `11041`) are
+/// still offered an update. Subtraction keeps working either way, which is
+/// exactly why it must never become a modulo.
 int normalizeVersionCode(String rawBuildNumber, {int abiOffset = 0}) {
   final raw = int.tryParse(rawBuildNumber) ?? 0;
   if (abiOffset > 0 && raw >= abiOffset) return raw - abiOffset;
