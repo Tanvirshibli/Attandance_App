@@ -386,7 +386,6 @@ class _PosOrderListScreenState extends State<PosOrderListScreen> {
     return Padding(
       padding: const EdgeInsets.only(bottom: AppSpace.sm),
       child: AppCard(
-        accent: AppColors.mSales,
         onTap: () {
           Navigator.push(
             context,

@@ -261,7 +261,6 @@ class _SalesInfoScreenState extends State<SalesInfoScreen>
               padding: const EdgeInsets.fromLTRB(
                   AppSpace.gutter, AppSpace.sm, AppSpace.gutter, 0),
               child: AppCard(
-                accent: AppColors.mSales,
                 onTap: () {
                   Navigator.of(context).push(
                     MaterialPageRoute(

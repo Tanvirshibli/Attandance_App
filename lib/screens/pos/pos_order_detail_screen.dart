@@ -153,7 +153,6 @@ class _PosOrderDetailScreenState extends State<PosOrderDetailScreen> {
 
   Widget _summaryCard(PosOrderDetail order) {
     return AppCard(
-      accent: AppColors.mSales,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
