@@ -302,7 +302,7 @@ After publishing build **N**:
 
 **POS Invoice / POS Challan printing for approved feed orders.**
 
-> Pubspec moved `2.5.5+126` → `2.5.5-beta.1+9039` → published as `2.5.6-beta.1+9040` (the +1 bump stays above the last beta, 9039). Both ABIs uploaded; production stays on `2.5.5+126`.
+> Pubspec moved `2.5.5+126` → `2.5.5-beta.1+9039` → published as `2.5.6-beta.1+9040` (the +1 bump stays above the last beta, 9039). Both ABIs uploaded; production stays on `2.5.5+126`. Republished from the merged `main` as `2.5.6-beta.1+9041` (fast-forward merge of `gazi` into `main`, identical code); production untouched.
 
 - **Sales Info gains POS Invoice / Challan** — lists approved feed orders with a sales-point dropdown, the feed category tree, a date range defaulting to the last 30 days, and the approved-order / unique-dealer counters from the new public sales API (`/api/public/feed-orders/pos*`), called without the HRM token
 - **Receipt parity** — `PosReceiptDocument` reproduces the sales webapp's POS receipt field for field at the same 300 px ≈ 80 mm width (logo, company block, depot, dealer line, delivery, item columns, totals or total quantity, driver, signatures, Bangla note, `Order #feedId`, Code128 barcode). The invoice quantity cell no longer carries the webapp's `11 Bag / 1 Kg` typo
