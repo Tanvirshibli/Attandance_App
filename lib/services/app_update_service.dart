@@ -14,21 +14,28 @@ import '../models/app_update_manifest.dart';
 typedef DownloadProgressCallback = void Function(int received, int total);
 
 class AppUpdateCheckResult {
-  const AppUpdateCheckResult.upToDate({this.remoteVersionCode = 0})
-      : manifest = null,
-        installedVersionCode = 0,
+  const AppUpdateCheckResult.upToDate({
+    this.installedVersionCode = 0,
+    this.remoteVersionCode = 0,
+    this.installedAbi,
+    this.rawInstalledBuildNumber,
+  })  : manifest = null,
         errorMessage = null;
 
   const AppUpdateCheckResult.updateRequired({
     required this.manifest,
     required this.installedVersionCode,
     this.remoteVersionCode = 0,
+    this.installedAbi,
+    this.rawInstalledBuildNumber,
   }) : errorMessage = null;
 
   const AppUpdateCheckResult.error(this.errorMessage)
       : manifest = null,
         installedVersionCode = 0,
-        remoteVersionCode = 0;
+        remoteVersionCode = 0,
+        installedAbi = null,
+        rawInstalledBuildNumber = null;
 
   final AppUpdateManifest? manifest;
   final int installedVersionCode;
@@ -38,6 +45,12 @@ class AppUpdateCheckResult {
   /// "up to date" — the difference between build 115 and a cached 112 is
   /// exactly the thing that makes an update look missing.
   final int remoteVersionCode;
+
+  /// The ABI and raw build number the comparison started from. Both are printed
+  /// by the manual check, because "installed 9041" alone cannot distinguish a
+  /// genuine up-to-date build from an un-normalised `11041`.
+  final String? installedAbi;
+  final String? rawInstalledBuildNumber;
 
   final String? errorMessage;
 
@@ -79,9 +92,10 @@ class AppUpdateService {
       // against the manifest's base 120, read as "already newer", and that device
       // was never offered another update.
       final installedAbi = await getInstalledAbi();
-      final installedCode = normalizeVersionCode(
+      final installedCode = resolveInstalledVersionCode(
         packageInfo.buildNumber,
-        abiOffset: abiOffsetFor(installedAbi),
+        abi: installedAbi,
+        channel: AppConfig.updateChannel,
       );
 
       final response = await _dio.get<dynamic>(
@@ -120,13 +134,20 @@ class AppUpdateService {
         installedVersionCode: installedCode,
         remoteVersionCode: remoteCode,
       )) {
-        return AppUpdateCheckResult.upToDate(remoteVersionCode: remoteCode);
+        return AppUpdateCheckResult.upToDate(
+          installedVersionCode: installedCode,
+          remoteVersionCode: remoteCode,
+          installedAbi: installedAbi,
+          rawInstalledBuildNumber: packageInfo.buildNumber,
+        );
       }
 
       return AppUpdateCheckResult.updateRequired(
         manifest: manifest,
         installedVersionCode: installedCode,
         remoteVersionCode: remoteCode,
+        installedAbi: installedAbi,
+        rawInstalledBuildNumber: packageInfo.buildNumber,
       );
     } on DioException catch (e) {
       debugPrint('AppUpdateService.checkForUpdate: $e');

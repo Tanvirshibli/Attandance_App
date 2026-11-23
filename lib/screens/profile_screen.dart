@@ -87,9 +87,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
       // Split-per-ABI APKs encode versionCode as base + abi offset, so a beta
       // build 9008 reports 11008 on arm64. Shared with the update check so the
       // number a tester reads here is the number the manifest advertises.
-      final buildNumber = normalizeVersionCode(
+      final buildNumber = resolveInstalledVersionCode(
         info.buildNumber,
-        abiOffset: abiOffsetFor(abi),
+        abi: abi,
+        channel: AppConfig.updateChannel,
       );
       setState(() {
         _appVersionLabel = 'v${info.version}+$buildNumber';
@@ -132,11 +133,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
 
     final channel = AppConfig.updateChannel;
+    final installedDetail = result.rawInstalledBuildNumber == null
+        ? ''
+        : ' (raw ${result.rawInstalledBuildNumber}, '
+            'abi ${result.installedAbi ?? 'unknown'})';
     final text = result.hasError
         ? 'Update check failed: ${result.errorMessage}\n'
             'Channel $channel · ${AppConfig.updateManifestUrl}'
-        : 'Up to date — installed build ${result.installedVersionCode}, '
-            'latest ${result.remoteVersionCode} (channel $channel).';
+        : 'Up to date — installed build ${result.installedVersionCode}'
+            '$installedDetail, latest ${result.remoteVersionCode} '
+            '(channel $channel).';
 
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()

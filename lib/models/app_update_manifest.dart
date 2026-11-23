@@ -116,13 +116,68 @@ int normalizeVersionCode(String rawBuildNumber, {int abiOffset = 0}) {
 /// The offset Flutter added to [abi], or 0 when it is not a known split ABI.
 ///
 /// Read from the device's own ABI rather than assumed, because assuming is what
-/// produced the modulo bug above.
-int abiOffsetFor(String? abi) => switch (abi) {
+/// produced the modulo bug above. Platform ABI strings vary (`arm64-v8a`,
+/// `arm64`, `aarch64`, `armeabi-v7a`, `armv7l`, …), so they are normalised first:
+/// a single unrecognised spelling used to leave the five-digit raw code in place,
+/// which reads as "newer than the manifest" and silently stopped that device's
+/// updates for good.
+int abiOffsetFor(String? abi) => switch (normalizeAbiName(abi)) {
   'armeabi-v7a' => 1000,
   'arm64-v8a' => 2000,
   'x86_64' => 3000,
   _ => 0,
 };
+
+/// Maps platform ABI spellings onto the three names the split builds use.
+String normalizeAbiName(String? abi) {
+  final value = (abi ?? '').trim().toLowerCase();
+  if (value.isEmpty) return '';
+  if (value.contains('arm64') || value.contains('aarch64')) return 'arm64-v8a';
+  if (value.contains('armeabi-v7') ||
+      value.contains('armv7') ||
+      value == 'arm' ||
+      value == 'armeabi') {
+    return 'armeabi-v7a';
+  }
+  if (value.contains('x86_64') || value.contains('x64')) return 'x86_64';
+  return value;
+}
+
+/// The installed build number with its split-ABI offset removed.
+///
+/// Uses the offset of the reported ABI when it is known. When the platform
+/// reports an ABI we cannot map, the offset is recovered from the channel band:
+/// a build is only plausible when `raw - offset` lands in its own channel's band
+/// (`beta` at or above [betaVersionFloor], `prod` below it), so the candidates are
+/// tried widest-first and the first band-consistent one wins. Falling back to the
+/// raw number instead is what makes an affected device compare `11041` against a
+/// manifest `9041` and stay "up to date" forever.
+int resolveInstalledVersionCode(
+  String rawBuildNumber, {
+  required String? abi,
+  required String channel,
+}) {
+  final raw = int.tryParse(rawBuildNumber) ?? 0;
+  if (raw == 0) return 0;
+
+  bool inChannelBand(int value) => channel == 'beta'
+      ? value >= betaVersionFloor
+      : value < betaVersionFloor;
+
+  final knownOffset = abiOffsetFor(abi);
+  if (knownOffset > 0) {
+    final candidate = normalizeVersionCode(rawBuildNumber, abiOffset: knownOffset);
+    if (inChannelBand(candidate)) return candidate;
+  }
+
+  for (final offset in const [2000, 1000, 3000]) {
+    if (raw <= offset) continue;
+    final candidate = raw - offset;
+    if (inChannelBand(candidate)) return candidate;
+  }
+
+  return raw;
+}
 
 /// The lowest build number the beta channel may use.
 ///
