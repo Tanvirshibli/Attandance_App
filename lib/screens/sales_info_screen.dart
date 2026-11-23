@@ -8,6 +8,7 @@ import '../services/sales_service.dart';
 import '../widgets/filter_chip_row.dart';
 import '../widgets/ui/ui.dart';
 import 'post_booking_screen.dart';
+import 'pos/pos_order_list_screen.dart';
 // Sales posting (PostSaleScreen: egg / fertilizer / live bird / cull bird)
 // is temporarily disabled — will be reintegrated later. Booking stays live.
 
@@ -253,6 +254,45 @@ class _SalesInfoScreenState extends State<SalesInfoScreen>
             child: AppHeader(
               title: 'Sales Info',
               subtitle: _employeeName ?? 'Your sales performance',
+            ),
+          ),
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(
+                  AppSpace.gutter, AppSpace.sm, AppSpace.gutter, 0),
+              child: AppCard(
+                accent: AppColors.mSales,
+                onTap: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => const PosOrderListScreen(),
+                    ),
+                  );
+                },
+                child: Row(
+                  children: [
+                    Icon(AppIcons.receipt, color: AppColors.mSales),
+                    const SizedBox(width: AppSpace.sm),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('POS Invoice / Challan', style: AppType.bodyStrong),
+                          const SizedBox(height: 2),
+                          Text(
+                            'Approved feed orders · print to Bluetooth POS',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: AppColors.inkMuted,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Icon(AppIcons.chevron, size: 18),
+                  ],
+                ),
+              ),
             ),
           ),
           if (_isLoading)
