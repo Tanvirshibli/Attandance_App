@@ -300,6 +300,17 @@ After publishing build **N**:
 
 ---
 
+## November 23, 2026 Update (v2.5.6-beta.1+12001) — beta channel
+
+**POS cards: the orange accent bar is gone.**
+
+> Published `2.5.6-beta.1+12001` (`v2.5.6-beta.1-build12001-beta`, from `4c9c6d9`). Production untouched.
+
+- `AppCard`'s `accent` painted a coloured strip down the left edge of every approved-order card, the order-detail summary and the Sales Info entry. All three now use the plain card; the module colour remains on the Invoice/Challan buttons, chips and pills where it marks an action
+- No behavioural change; `flutter analyze` clean on the touched screens
+
+---
+
 ## November 23, 2026 Update (v2.5.6-beta.1+12000) — beta channel
 
 **Beta band migration: already-installed 11xxx builds now receive the update.**
