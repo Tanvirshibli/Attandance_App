@@ -257,8 +257,8 @@ Profile screen shows `v{version}+{build}` with ABI-offset normalization (split A
 | Symptom | Cause | Fix |
 |---------|-------|-----|
 | App opens normally, no update | Manifest `version_code` ≤ installed build | Publish newer build; force-close app before retest |
-| "Up to date" but the version row shows `+11xxx`/`+10xxx` | Split-APK offset not removed (unknown ABI) — fixed in 9042 | Install 9042 manually once; later updates compare correctly |
-| "Up to date — installed build 0" | Pre-9042 diagnostic discarded the installed code | Install 9042+; the message now prints installed, raw and ABI |
+| "Up to date" but the version row shows `+11xxx`/`+10xxx` | Split-APK offset not removed (unknown ABI) — fixed in 9042 | Fixed without a manual install by the `12000` band release: cold start now offers it |
+| "Up to date — installed build 0" | Pre-9042 diagnostic discarded the installed code | On 9042+ the message prints installed, raw and ABI |
 | "Could not read update manifest" | Network, parse error, wrong URL | Tap Retry; open manifest URL in phone browser; check `github.env` |
 | Download fails | Slow/blocked GitHub | Retry; try mobile data vs Wi‑Fi |
 | Install dialog missing | Install permission denied | Settings → Apps → allow install unknown apps |
@@ -300,11 +300,27 @@ After publishing build **N**:
 
 ---
 
+## November 23, 2026 Update (v2.5.6-beta.1+12000) — beta channel
+
+**Beta band migration: already-installed 11xxx builds now receive the update.**
+
+> Published `2.5.6-beta.1+12000` (`v2.5.6-beta.1-build12000-beta`, from `88da7fd`); APK raw codes are `14000` (arm64) and `13000` (armeabi-v7a). Production untouched.
+
+A device stuck on the pre-9042 comparison keeps its raw split code (`11041`), so no 9xxx manifest can ever look newer. The manifest is the only thing it still obeys, so the base was moved above it:
+
+- **Manifest `version_code` = 12000** > the stuck `11041`, so the old check fires and the update screen appears — no manual APK install needed
+- **The APK's own versionCode (14000/13000) is higher** than the installed one, so Android accepts the install instead of refusing a downgrade
+- **After the install the fixed resolver settles it**: raw `14000` → base `12000`, and the same manifest is no longer offered
+- Publisher and app stay in step: `Read-ApkVersion.ps1` subtracts the APK's own ABI offset (so it wrote `12000`, not `14000`), and `normalizeVersionCode` still subtracts rather than taking a modulo — the reason five-digit bases survive
+- Beta bases are now `12xxx` and will continue from there; the floor remains `9000`, prod remains under `8999`
+
+---
+
 ## November 23, 2026 Update (v2.5.6-beta.1+9042) — beta channel
 
 **OTA fix: an unrecognised ABI could freeze a device on "up to date".**
 
-> Published `2.5.6-beta.1+9042` from `9a5a313`. Production untouched. Devices already stuck on an un-normalised `11xxx` build must install this APK **once manually** — their old comparison cannot see it.
+> Published `2.5.6-beta.1+9042` from `9a5a313`. Production untouched. The stuck-install path was completed by the `12000` band release above; 9042 itself is only reachable by healthy (already-normalising) builds.
 
 - **Symptom** — a beta device reported `Up to date` while its version row read `+11041`. The split-APK offset (`base + 1000/2000/3000`) was not removed because `abiOffsetFor` matched the ABI string exactly; one unrecognised spelling left the five-digit raw code in place, and `11041 > 9041` made every manifest look older
 - **`normalizeAbiName`** maps `arm64`, `aarch64`, `armv7l`, … onto `arm64-v8a` / `armeabi-v7a` / `x86_64` before the offset lookup
