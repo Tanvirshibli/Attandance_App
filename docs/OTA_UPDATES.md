@@ -257,6 +257,8 @@ Profile screen shows `v{version}+{build}` with ABI-offset normalization (split A
 | Symptom | Cause | Fix |
 |---------|-------|-----|
 | App opens normally, no update | Manifest `version_code` ≤ installed build | Publish newer build; force-close app before retest |
+| "Up to date" but the version row shows `+11xxx`/`+10xxx` | Split-APK offset not removed (unknown ABI) — fixed in 9042 | Install 9042 manually once; later updates compare correctly |
+| "Up to date — installed build 0" | Pre-9042 diagnostic discarded the installed code | Install 9042+; the message now prints installed, raw and ABI |
 | "Could not read update manifest" | Network, parse error, wrong URL | Tap Retry; open manifest URL in phone browser; check `github.env` |
 | Download fails | Slow/blocked GitHub | Retry; try mobile data vs Wi‑Fi |
 | Install dialog missing | Install permission denied | Settings → Apps → allow install unknown apps |
@@ -295,6 +297,20 @@ After publishing build **N**:
 - [`rocket launcher/README.md`](../../rocket%20launcher/README.md) — publisher scripts and GitHub API flow
 - [`SERVER_COMMANDS.md`](../../SERVER_COMMANDS.md) — workspace command reference (OTA section)
 - [`MOBILE_EMPLOYEE_FEATURES.md`](MOBILE_EMPLOYEE_FEATURES.md) — feature summary including OTA
+
+---
+
+## November 23, 2026 Update (v2.5.6-beta.1+9042) — beta channel
+
+**OTA fix: an unrecognised ABI could freeze a device on "up to date".**
+
+> Published `2.5.6-beta.1+9042` from `9a5a313`. Production untouched. Devices already stuck on an un-normalised `11xxx` build must install this APK **once manually** — their old comparison cannot see it.
+
+- **Symptom** — a beta device reported `Up to date` while its version row read `+11041`. The split-APK offset (`base + 1000/2000/3000`) was not removed because `abiOffsetFor` matched the ABI string exactly; one unrecognised spelling left the five-digit raw code in place, and `11041 > 9041` made every manifest look older
+- **`normalizeAbiName`** maps `arm64`, `aarch64`, `armv7l`, … onto `arm64-v8a` / `armeabi-v7a` / `x86_64` before the offset lookup
+- **`resolveInstalledVersionCode`** additionally validates the result against the build's own channel band (beta ≥ 9000, prod below) and, when the ABI is still unknown, recovers the offset from the band (`11041 → 9041`, `10041 → 9041`, `2126 → 126`). The Profile version label uses it too, so it can no longer print `+11xxx`
+- **Diagnostics fixed** — `AppUpdateCheckResult.upToDate` used to discard `installedVersionCode` (the message always read `installed build 0`). It now carries both codes plus the raw build number and detected ABI: `Up to date — installed build 9041 (raw 11041, abi arm64-v8a), latest 9042 (channel beta).`
+- Guarded by `test/ota_version_code_test.dart` (known/unknown ABIs, both channels, universal builds, the `11040 → 9040 → update offered` case)
 
 ---
 
