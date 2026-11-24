@@ -23,6 +23,20 @@ The app uses a **dual-backend** integration aligned with PeoplesHRM:
 10. **Attendance sync (v2.2.3+33):** `preserveLocal` trusts API in-only over stale local out; `synthesizePunchRecord` on POST; list span-merge + unique `(employee_id, request_date)` on ZKTeco backend.
 11. **ZKTeco list merge (v2.2.3+33):** mobile list API merges duplicate same-day rows (earliest in, latest out).
 
+### Punch write path and the server-side mirror (November 2026)
+
+- A punch POST goes to the **first base that answers**, and the order comes from the payload: a punch carrying
+  biometric proof (face/fingerprint) tries **HRM** first and falls through to ZKTeco only on a 404; a punch
+  without proof goes to the ZKTeco attendance base.
+- The two backends now **mirror the day between themselves** (`POST /api/v1/integration/mobile-attendance-day`,
+  span merge: earliest in / latest out, idempotent), so a punch stored in one appears in the other without the
+  app resending anything. The merged list above is unchanged.
+- Both backends run `Asia/Dhaka` and the app sends local wall-clock timestamps without an offset — that is the
+  supported contract. A future build may send UTC (`Z`); nothing breaks if it does.
+- The server is the source of truth for the punch instant: HRM clamps a future `self_punch` to server time and
+  answers `effective.timeAdjusted` (ignored by current builds), and ZKTeco does the same for its own writes, so
+  an "Update Check Out" may land a few minutes earlier than the phone showed.
+
 ## Backend endpoints
 
 ### pphl_erp (JWT required)
