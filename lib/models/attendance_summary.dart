@@ -9,6 +9,7 @@ class AttendanceSummary {
     this.totalDays = 0,
     this.parsedFromKnownShape = false,
     this.dayTypes = const {},
+    this.rowPunchDays = const {},
     this.holidaysUnknown = false,
     this.rowsUnknown = false,
   });
@@ -25,6 +26,15 @@ class AttendanceSummary {
   /// Calendar day → normalized lowercase attendance type, built from
   /// daily `rows` (see [fromDailyRows]). Empty for other sources.
   final Map<DateTime, String> dayTypes;
+
+  /// Calendar days HRM reported an in/out punch for, whatever its type said.
+  ///
+  /// The daily rows carry `inTime`/`outTime` beside `attendanceType`, and the
+  /// type is frequently null on a day that clearly has punches (the backend only
+  /// fills it when a detail row exists). Reading the type alone therefore made a
+  /// worked day look unevidenced once the local punch list missed it, which is
+  /// how Present under-reported and Absent over-reported.
+  final Set<DateTime> rowPunchDays;
 
   /// True when the holiday calendar could not be loaded for this window.
   ///
@@ -80,6 +90,7 @@ class AttendanceSummary {
     var leave = 0;
     var holiday = 0;
     final dayTypes = <DateTime, String>{};
+    final rowPunchDays = <DateTime>{};
 
     for (final row in rows) {
       if (row is! Map) continue;
@@ -93,6 +104,19 @@ class AttendanceSummary {
       if (parsedDate != null) {
         dayTypes[DateTime(parsedDate.year, parsedDate.month, parsedDate.day)] =
             type;
+
+        // A row with an in or out timestamp is attendance evidence on its own.
+        // The type can be null on a punched day, so it is counted separately
+        // and only used when it says nothing about the day.
+        final hasPunch = _hasTimestamp(row['inTime']) ||
+            _hasTimestamp(row['in_time']) ||
+            _hasTimestamp(row['outTime']) ||
+            _hasTimestamp(row['out_time']);
+        if (hasPunch) {
+          rowPunchDays.add(
+            DateTime(parsedDate.year, parsedDate.month, parsedDate.day),
+          );
+        }
       }
 
       if (type.isEmpty) continue;
@@ -117,6 +141,7 @@ class AttendanceSummary {
       totalDays: counted > 0 ? counted : rows.length,
       parsedFromKnownShape: true,
       dayTypes: dayTypes,
+      rowPunchDays: rowPunchDays,
     );
   }
 
@@ -136,6 +161,7 @@ class AttendanceSummary {
   factory AttendanceSummary.fromClassification(
     AttendanceClassification classification, {
     Map<DateTime, String> dayTypes = const {},
+    Set<DateTime> rowPunchDays = const {},
     bool parsedFromKnownShape = true,
     bool holidaysUnknown = false,
     bool rowsUnknown = false,
@@ -148,6 +174,7 @@ class AttendanceSummary {
       totalDays: classification.countedDays,
       parsedFromKnownShape: parsedFromKnownShape,
       dayTypes: dayTypes,
+      rowPunchDays: rowPunchDays,
       holidaysUnknown: holidaysUnknown,
       rowsUnknown: rowsUnknown,
     );
@@ -243,6 +270,14 @@ class AttendanceSummary {
       parsedFromKnownShape: false,
     );
   }
+
+  /// True when a row field holds an actual timestamp.
+  ///
+  /// The backend blanks an absent punch to an empty string rather than null, so
+  /// a plain `??` chain would treat `''` as present and stop before a real
+  /// value on the other side. Both sides are therefore checked for content.
+  static bool _hasTimestamp(Object? value) =>
+      value != null && value.toString().trim().isNotEmpty;
 
   static int _toInt(Object? value) {
     if (value is int) return value;

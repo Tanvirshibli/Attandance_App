@@ -59,8 +59,9 @@ class AttendanceStatsService {
     required DateTime from,
     required DateTime to,
     required Iterable<AttendanceRequestRecord> punchRecords,
+    DateTime? joinedOn,
   }) async {
-    final punchDays = _punchDays(punchRecords);
+    final punchDays = punchDaysFor(punchRecords);
 
     // Start both requests before awaiting either one. `(a, b).wait` is the
     // typed equivalent of `Future.wait`: it overlaps them and hands back a
@@ -77,10 +78,16 @@ class AttendanceStatsService {
     // punch, so classification falls through to the punch/calendar rules.
     final rowTypes = summaryRows?.dayTypes ?? const <DateTime, String>{};
 
+    // HRM's daily rows carry in/out times beside a type that is often null, so
+    // a row with punches is attendance evidence in its own right. Without this
+    // a worked day whose mobile punch is missing from the local list was judged
+    // absent, which is the Present-low / Absent-high complaint.
+    final rowPunchDays = summaryRows?.rowPunchDays ?? const <DateTime>{};
+
     final classification = classifyDays(
-      days: _dayWindow(from: from, to: to),
+      days: dayWindowFor(from: from, to: to, joinedOn: joinedOn),
       rowTypes: rowTypes,
-      punchDays: punchDays,
+      punchDays: {...punchDays, ...rowPunchDays},
       holidayDays: calendar.holidays,
       approvedLeaveDays: calendar.approvedLeaveDays,
       isWeeklyOff: isDefaultWeeklyOff,
@@ -94,6 +101,7 @@ class AttendanceStatsService {
     return AttendanceSummary.fromClassification(
       finalised,
       dayTypes: rowTypes,
+      rowPunchDays: rowPunchDays,
       holidaysUnknown: !calendarResult.ok,
       rowsUnknown: summaryRows == null,
     );
@@ -113,16 +121,34 @@ class AttendanceStatsService {
     return AttendanceClassification(buckets);
   }
 
-  /// Calendar days that carry a real punch — rejected rows and empty rows are
-  /// skipped, and everything is normalised to a date-only day so a punch at
-  /// 23:55 and a row dated the same day collapse into one entry.
-  static Set<DateTime> _punchDays(Iterable<AttendanceRequestRecord> records) {
+  /// Calendar days that carry a real punch.
+  ///
+  /// A rejected row is not attendance, and a row with neither punch timestamp
+  /// is only a request stub waiting on the workflow. Anything else counts: a
+  /// record with just a check-in is a day the employee turned up.
+  ///
+  /// The test is on the raw timestamps rather than `hasCheckIn`/`hasCheckOut`
+  /// because the latter are display helpers that refuse a check-out with an
+  /// impossible chronology — gating on both of them silently dropped one-sided
+  /// punches and turned a worked day back into an absence.
+  ///
+  /// Everything is normalised to a date-only day so a punch at 23:55 and a row
+  /// dated the same day collapse into one entry.
+  @visibleForTesting
+  static Set<DateTime> punchDaysFor(Iterable<AttendanceRequestRecord> records) {
     final days = <DateTime>{};
     for (final record in records) {
       if (record.isRejected) continue;
-      // Neither side punched: the row is a request stub, not attendance.
-      if (!record.hasCheckIn && !record.hasCheckOut) continue;
 
+      final inTime =
+          AttendanceRequestRecord.parseFlexibleDateTime(record.requestedInTime);
+      final outTime = AttendanceRequestRecord.parseFlexibleDateTime(
+        record.requestedOutTime,
+      );
+      if (inTime == null && outTime == null) continue;
+
+      // Prefer the punch's own day; `effectiveCalendarDay` already does that
+      // and falls back to `attDate` only when no timestamp parses.
       final day = record.effectiveCalendarDay;
       if (day == null) continue;
       days.add(calendarDay(day));
@@ -130,24 +156,39 @@ class AttendanceStatsService {
     return days;
   }
 
-  /// Every calendar day in `[from, to]`, clipped at today.
+  /// Every calendar day in `[from, to]`, clipped to the employment window.
   ///
   /// A future day has not happened yet, so counting it would invent absences
   /// from the moment the month is opened. Today *is* included and passed
   /// through untouched — whether an unpunched in-progress day is an absence
   /// is the classifier's decision, not this service's.
   ///
+  /// [joinedOn] clips the other end: days before someone joined were never
+  /// theirs to lose, so a mid-month joiner is not reported absent for the
+  /// days they were not employed yet.
+  ///
+  /// [today] is a parameter rather than a clock read so the window is testable;
+  /// the production caller passes nothing and gets the device's date.
+  ///
   /// The loop steps with `DateTime(y, m, day + 1)` rather than
   /// `add(Duration(days: 1))`: a DST transition is 23 or 25 hours long, and a
   /// duration step can skip or repeat a calendar day.
-  static List<DateTime> _dayWindow({
+  @visibleForTesting
+  static List<DateTime> dayWindowFor({
     required DateTime from,
     required DateTime to,
+    DateTime? joinedOn,
+    DateTime? today,
   }) {
-    final today = calendarDay(DateTime.now());
-    final start = calendarDay(from);
+    final endOfToday = calendarDay(today ?? DateTime.now());
+    var start = calendarDay(from);
     var end = calendarDay(to);
-    if (end.isAfter(today)) end = today;
+    if (end.isAfter(endOfToday)) end = endOfToday;
+
+    if (joinedOn != null) {
+      final joined = calendarDay(joinedOn);
+      if (joined.isAfter(start)) start = joined;
+    }
 
     final days = <DateTime>[];
     for (var day = start;

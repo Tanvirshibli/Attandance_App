@@ -34,6 +34,23 @@ class AuthUserProfile {
   final int? canonicalEmployeeId;
   final FaceRegistrationData? faceRegistration;
 
+  /// [joiningDate] as a calendar day, or null when it is absent/unparseable.
+  ///
+  /// HRM stores it as a display string (`2026-11-10`, sometimes with a time and
+  /// occasionally as `N/A`), so the attendance summary cannot use the raw value.
+  /// Null means "unknown": the month is then counted from the 1st, which is what
+  /// the screens did before, so a missing date never hides a real absence.
+  DateTime? get joinedOn {
+    final raw = joiningDate.trim();
+    if (raw.isEmpty || raw.toUpperCase() == 'N/A') return null;
+    final parsed = DateTime.tryParse(raw) ??
+        (raw.contains(' ')
+            ? DateTime.tryParse(raw.replaceFirst(' ', 'T'))
+            : null);
+    if (parsed == null) return null;
+    return DateTime(parsed.year, parsed.month, parsed.day);
+  }
+
   /// The employee's shift as HRM stores it: bare `HH:mm:ss` times plus the
   /// shift's name. `get-my-info` only flattens these onto `user` when HRM
   /// actually holds a shift row for the employee, so all three are nullable and
