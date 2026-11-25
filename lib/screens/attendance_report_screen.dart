@@ -79,6 +79,7 @@ class _AttendanceReportScreenState extends State<AttendanceReportScreen> {
       from: _from,
       to: _to,
       punchRecords: statRecords,
+      joinedOn: profile?.joinedOn,
     );
 
     if (!mounted) return;

@@ -54,6 +54,7 @@ class _AttendanceHistoryScreenState extends State<AttendanceHistoryScreen> {
       from: DateTime(now.year, now.month, 1),
       to: DateTime(now.year, now.month + 1, 0),
       punchRecords: records,
+      joinedOn: profile?.joinedOn,
     );
 
     if (!mounted) return;

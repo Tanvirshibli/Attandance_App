@@ -464,6 +464,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       from: from,
       to: to,
       punchRecords: _requestedRecords,
+      joinedOn: _profile.joinedOn,
     );
 
     if (!mounted) return;
@@ -954,12 +955,18 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   Widget _buildQuickStats() {
+    // Present and Absent are two halves of one answer: every counted day lands
+    // in exactly one bucket, so showing a solid Present beside a dashed Absent
+    // claims a precision the data does not have. When HRM's rows are missing the
+    // Absent figure is unknown (its rows are what say "not here"), so Present
+    // carries the same dash.
+    final absentKnown = !_summary.rowsUnknown;
     return Row(
       children: [
         Expanded(
           child: StatCard(
             label: 'Present',
-            value: '${_summary.presentCount}',
+            value: absentKnown ? '${_summary.presentCount}' : '—',
             icon: Icons.check_circle_outline,
             color: legacy.AppColors.success,
           ),
@@ -968,7 +975,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         Expanded(
           child: StatCard(
             label: 'Absent',
-            value: _summary.rowsUnknown ? '—' : '${_summary.absentCount}',
+            value: absentKnown ? '${_summary.absentCount}' : '—',
             icon: Icons.cancel_outlined,
             color: legacy.AppColors.error,
           ),
