@@ -157,11 +157,11 @@ class _PosReceiptPreviewScreenState extends State<PosReceiptPreviewScreen> {
       appBar: AppBar(
         title: Text(_docType.label),
         actions: [
-          IconButton(
-            tooltip: 'Select printer',
-            onPressed: _choosePrinter,
-            icon: Icon(PhosphorIconsDuotone.printer),
-          ),
+          // One print action. There used to be two identical printer icons here
+          // — "Select printer" and "Print" — which read as a duplicate. `_print`
+          // already opens the printer picker when none is saved, and the
+          // in-body pill below still changes a saved printer, so a separate
+          // app-bar entry point earned nothing.
           IconButton(
             tooltip: 'Print',
             onPressed: _isPrinting ? null : _print,

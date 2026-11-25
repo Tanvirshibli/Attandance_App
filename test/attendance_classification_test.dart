@@ -1,4 +1,7 @@
 import 'package:employee_attendance/models/attendance_classifier.dart';
+import 'package:employee_attendance/models/attendance_request_record.dart';
+import 'package:employee_attendance/models/attendance_summary.dart';
+import 'package:employee_attendance/services/attendance_stats_service.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 /// Unit tests for the attendance day classifier.
@@ -653,6 +656,158 @@ void main() {
       expect(result.buckets.length, 1);
       expect(result.countedDays, 1);
       expect(result.buckets[_march(10)], DayBucket.absent);
+    });
+  });
+
+  group('a joined month with no absences reports no absence', () {
+    // The reported regression: Present and Absent disagreed with each other and
+    // Absent was inflated. Fixtures use 2026-11, the month in the field report
+    // (2026-11-01 is a Sunday), so the window and punch rules keep the numbers
+    // the screen renders. Nothing here reads the wall clock.
+
+    test('the window starts at the joining date, not the 1st', () {
+      final days = AttendanceStatsService.dayWindowFor(
+        from: DateTime(2026, 11, 1),
+        to: DateTime(2026, 11, 30),
+        joinedOn: DateTime(2026, 11, 16),
+        today: DateTime(2026, 11, 25),
+      );
+
+      expect(days.first, DateTime(2026, 11, 16));
+      expect(days.last, DateTime(2026, 11, 25));
+      expect(days.length, 10);
+      // No day before joining survives to be classified absent.
+      expect(days.any((day) => day.isBefore(DateTime(2026, 11, 16))), isFalse);
+    });
+
+    test('the window is unchanged when the joining date is unknown', () {
+      final days = AttendanceStatsService.dayWindowFor(
+        from: DateTime(2026, 11, 1),
+        to: DateTime(2026, 11, 30),
+        today: DateTime(2026, 11, 25),
+      );
+
+      expect(days.first, DateTime(2026, 11, 1));
+      expect(days.last, DateTime(2026, 11, 25));
+      expect(days.length, 25);
+    });
+
+    test('a joining date inside the month cannot hide the rest of it', () {
+      // Someone who joined before the month started is counted from the 1st.
+      final days = AttendanceStatsService.dayWindowFor(
+        from: DateTime(2026, 11, 1),
+        to: DateTime(2026, 11, 30),
+        joinedOn: DateTime(2026, 3, 2),
+        today: DateTime(2026, 11, 25),
+      );
+
+      expect(days.first, DateTime(2026, 11, 1));
+    });
+
+    test('a one-sided punch is present, not absent', () {
+      // `hasCheckIn`/`hasCheckOut` are display helpers, so gating punch
+      // evidence on both dropped a check-in-only day back into Absent.
+      final punchDays =
+          AttendanceStatsService.punchDaysFor(<AttendanceRequestRecord>[
+        AttendanceRequestRecord(
+          id: 1,
+          attDate: '2026-11-18',
+          requestType: 'self_punch',
+          status: 'approved',
+          requestedInTime: '2026-11-18 09:02:00',
+        ),
+      ]);
+
+      expect(punchDays, contains(DateTime(2026, 11, 18)));
+
+      final result = classifyDays(
+        days: <DateTime>[DateTime(2026, 11, 18)],
+        rowTypes: const <DateTime, String>{},
+        punchDays: punchDays,
+        holidayDays: const <DateTime>{},
+        approvedLeaveDays: const <DateTime>{},
+        isWeeklyOff: isDefaultWeeklyOff,
+      );
+
+      expect(result.presentCount, 1);
+      expect(result.absentCount, 0);
+    });
+
+    test('a request stub with no punch timestamps is not attendance', () {
+      final punchDays =
+          AttendanceStatsService.punchDaysFor(<AttendanceRequestRecord>[
+        AttendanceRequestRecord(
+          id: 2,
+          attDate: '2026-11-19',
+          requestType: 'self_punch',
+          status: 'requested',
+        ),
+      ]);
+
+      expect(punchDays, isEmpty);
+    });
+
+    test('a rejected punch is not attendance', () {
+      final punchDays =
+          AttendanceStatsService.punchDaysFor(<AttendanceRequestRecord>[
+        AttendanceRequestRecord(
+          id: 3,
+          attDate: '2026-11-20',
+          requestType: 'self_punch',
+          status: 'rejected',
+          requestedInTime: '2026-11-20 09:00:00',
+        ),
+      ]);
+
+      expect(punchDays, isEmpty);
+    });
+  });
+
+  group('HRM row punches are evidence on their own', () {
+    // The backend returns one row per calendar day with `inTime`/`outTime` and
+    // an `attendanceType` that is null whenever no detail row exists. Reading
+    // only the type judged a worked day as absent.
+    test('a row with only inTime is evidence', () {
+      final summary = AttendanceSummary.fromDailyRows(<Map<String, dynamic>>[
+        <String, dynamic>{
+          'date': '2026-11-17',
+          'inTime': '2026-11-17 09:03:00',
+          'outTime': null,
+          'attendanceType': null,
+        },
+      ]);
+
+      expect(summary.rowPunchDays, contains(DateTime(2026, 11, 17)));
+      // The type said nothing, so the row-based counter still has no opinion;
+      // the classification is what credits the day.
+      expect(summary.presentCount, 0);
+    });
+
+    test('a row with only outTime is evidence', () {
+      final summary = AttendanceSummary.fromDailyRows(<Map<String, dynamic>>[
+        <String, dynamic>{
+          'date': '2026-11-18',
+          'inTime': '',
+          'outTime': '2026-11-18 18:10:00',
+          'attendanceType': null,
+        },
+      ]);
+
+      expect(summary.rowPunchDays, contains(DateTime(2026, 11, 18)));
+    });
+
+    test('a row with no punches is not evidence', () {
+      final summary = AttendanceSummary.fromDailyRows(<Map<String, dynamic>>[
+        <String, dynamic>{
+          'date': '2026-11-19',
+          'inTime': null,
+          'outTime': null,
+          'attendanceType': 'absent',
+        },
+      ]);
+
+      expect(summary.rowPunchDays, isEmpty);
+      expect(summary.absentCount, 1);
     });
   });
 }
