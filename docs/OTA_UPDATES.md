@@ -101,6 +101,8 @@ Two OTA channels: **prod** (default) and **beta**. Each has its own manifest fil
 | `prod` | `ota/manifest.json` | `2.6.0` | 100–8999 | yes | `v2.6.0-build108` |
 | `beta` | `ota/beta/manifest.json` | `2.6.0-beta.1` | 9000–9999 | **no** | `v2.6.0-beta.1-build9001-beta` |
 
+> Current lines after 2026-11-25: production at `2.5.6+130`, beta from `2.5.7-beta.1+12003` (beta bases continue in `12xxx`).
+
 ### ⚠️ The version bands are the whole design
 
 `version_code` is a plain integer compare in `app_update_service.dart` — there is nothing channel-aware in the comparison itself. Separate manifest URLs therefore do **not** keep the channels apart on their own:
@@ -297,6 +299,33 @@ After publishing build **N**:
 - [`rocket launcher/README.md`](../../rocket%20launcher/README.md) — publisher scripts and GitHub API flow
 - [`SERVER_COMMANDS.md`](../../SERVER_COMMANDS.md) — workspace command reference (OTA section)
 - [`MOBILE_EMPLOYEE_FEATURES.md`](MOBILE_EMPLOYEE_FEATURES.md) — feature summary including OTA
+
+---
+
+## November 25, 2026 Update (v2.5.6+130) — main channel
+
+**Attendance KPIs corrected; the POS preview has one print button. Promoted to production, force update.**
+
+> Published `2.5.6+130` (tag `v2.5.6-build130`, manifest commit `87b3ffd`, built from `cb40fbb`). Both APKs verified by download: the arm64 asset's size and SHA-256 match the manifest, `versionName=2.5.6`, `versionCode=130`, and the APK bakes the **prod** manifest URL with no beta path.
+
+Promotes the `2.5.6-beta.1+12002` beta build. The pubspec was moved from the beta band to the prod band for this release (the prod build refuses a number above 8999) and then returned to the beta line at `2.5.7-beta.1+12003`, so the next beta is not withheld as older than the shipped `12002`.
+
+- Home's Present/Absent tiles count from the profile's joining date, treat an HRM row carrying `inTime`/`outTime` as attendance evidence even when `attendanceType` is null, and accept a one-sided punch
+- The two tiles show `—` together when the day rows cannot be loaded
+- One print action on the POS Invoice/Challan preview; the duplicate "Select printer" icon is gone
+
+---
+
+## November 25, 2026 Update (v2.5.6-beta.1+12002) — beta channel
+
+**Attendance KPIs corrected; the POS preview has one print button.**
+
+> Published `2.5.6-beta.1+12002` (`v2.5.6-beta.1-build12002-beta`, from `cb40fbb`). Beta is not forced. Production untouched.
+
+- Home's Present/Absent tiles now count from the profile's joining date, treat an HRM row carrying `inTime`/`outTime` as attendance evidence even when `attendanceType` is null, and accept a one-sided punch. See `ATTENDANCE_UX_PASS.md` and `APP_DOCUMENTATION.md` §10.6
+- The two tiles show `—` together when the day rows cannot be loaded, instead of a solid Present beside a dashed Absent
+- `PosReceiptPreviewScreen`'s app bar carries one print action; the duplicate "Select printer" icon is gone and the in-body pill still changes a saved printer
+- `flutter analyze` clean on the touched files; the counting rules are covered by `test/attendance_classification_test.dart`
 
 ---
 
