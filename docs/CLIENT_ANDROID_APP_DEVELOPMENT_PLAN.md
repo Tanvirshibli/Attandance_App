@@ -22,8 +22,8 @@ The app is built on an **existing Flutter codebase** (not a rewrite). New work a
 
 | System | Docker stack | Local URL | Production URL | Data provided |
 |--------|--------------|-----------|----------------|---------------|
-| **HRM / pphl_erp** | `hrm-production` | `http://127.0.0.1:8020` | `https://hrm.peoplesitsolution.com` | Auth, profile, leave, holidays, face templates |
-| **ZKTeco** | `zkteco-production` | `http://127.0.0.1:8095` | `https://zkteco.peoplesitsolution.online` | Attendance, devices, geo pings, **app config** |
+| **HRM / pphl_erp** | `hrm-production` | `http://127.0.0.1:8020` | `https://bhrm.pphl.online` | Auth, profile, leave, holidays, face templates |
+| **ZKTeco** | `zkteco-production` | `http://127.0.0.1:8095` | `https://device.pphl.online` | Attendance, devices, geo pings, **app config** |
 | **Sales system** | TBD | — | — | Placeholder UI only |
 | **Payment system** | TBD | — | — | Placeholder UI only |
 | **Firebase (optional)** | — | — | — | FCM wake for geo (**wired** when `google-services.json` + ZKTeco service account present) |

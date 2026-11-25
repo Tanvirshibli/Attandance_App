@@ -45,16 +45,16 @@ class AppConfig {
 
   /// HRM / pphl_erp tunnel — auth, profile, face registration, leaves, holidays, sales, payments, etc.
   static const String _localTunnelBackendBaseUrl =
-      'https://hrm.peoplesitsolution.online';
+      'https://bhrm.pphl.online';
 
   /// ZKTeco local tunnel — attendance machine comms, mobile attendance requests.
   static const String _localTunnelAttendanceBaseUrl =
       'https://zktecolocal.peoplesitsolution.online';
 
   static const String _productionBackendBaseUrl =
-      'https://hrm.peoplesitsolution.com';
+      'https://bhrm.pphl.online';
   static const String _productionAttendanceBaseUrl =
-      'https://zkteco.peoplesitsolution.online';
+      'https://device.pphl.online';
   static const String _defaultFallbackBaseUrls = '';
 
   /// Legacy single-base override; used for auth/ERP when set.

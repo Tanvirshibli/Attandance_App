@@ -61,7 +61,7 @@ function Test-EmulatorInternet {
     # Prefer production HRM host (same target as login). Avoid relying only on 8.8.8.8 -
     # some networks drop ICMP to public DNS even when HTTPS works.
     $targets = @(
-        'hrm.peoplesitsolution.com',
+        'bhrm.pphl.online',
         '8.8.8.8',
         '1.1.1.1'
     )
@@ -232,10 +232,10 @@ if (-not (Wait-EmulatorInternet -Serial $serial)) {
     }
 
     Write-Host "WARNING: Emulator $serial booted but cannot reach the internet."
-    Write-Host "  Login to https://hrm.peoplesitsolution.com will time out until this is fixed."
+    Write-Host "  Login to https://bhrm.pphl.online will time out until this is fixed."
     Write-Host "  Try: powershell -ExecutionPolicy Bypass -File .\scripts\start-android-emulator.ps1 -ColdBoot"
     Write-Host "  Verify: adb shell ping -c 2 8.8.8.8"
-    Write-Host "  Verify: adb shell ping -c 2 hrm.peoplesitsolution.com"
+    Write-Host "  Verify: adb shell ping -c 2 bhrm.pphl.online"
     exit 2
 }
 

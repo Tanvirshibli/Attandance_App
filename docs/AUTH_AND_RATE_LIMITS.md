@@ -2,7 +2,7 @@
 
 ## Context
 
-The app authenticates against `https://hrm.peoplesitsolution.com` (pphl_erp). Heavy HRM traffic previously came from geo tracking calling `GET /api/v1/get-my-info` on **every** upload and once **per queued ping** during flush. Combined with Laravel’s old **60/min per IP** throttle, that produced 429s for some users (especially geo-on) while others were fine. Retrying login as the same user could still 429 while background geo kept the IP hot; logging in as another user after logout often succeeded.
+The app authenticates against `https://bhrm.pphl.online` (pphl_erp). Heavy HRM traffic previously came from geo tracking calling `GET /api/v1/get-my-info` on **every** upload and once **per queued ping** during flush. Combined with Laravel’s old **60/min per IP** throttle, that produced 429s for some users (especially geo-on) while others were fine. Retrying login as the same user could still 429 while background geo kept the IP hot; logging in as another user after logout often succeeded.
 
 ## Changes
 

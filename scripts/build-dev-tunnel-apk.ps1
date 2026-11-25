@@ -119,7 +119,7 @@ if ($Emulator) {
 
 Write-Host "  App version: $appVersion"
 Write-Host "  UpdateLevel: $UpdateLevel"
-Write-Host '  AUTH/ERP:  https://hrm.peoplesitsolution.online'
+Write-Host '  AUTH/ERP:  https://bhrm.pphl.online'
 Write-Host '  ZKTeco:    https://zktecolocal.peoplesitsolution.online'
 Write-Host "  Platforms: $platforms"
 Write-Host ''

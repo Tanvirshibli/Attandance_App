@@ -93,8 +93,8 @@ See `lib/config/app_config.dart` and [TUNNEL_DEVELOPMENT.md](TUNNEL_DEVELOPMENT.
 
 | Mode | HRM / ERP | ZKTeco attendance |
 |------|-----------|-------------------|
-| Production (default) | `https://hrm.peoplesitsolution.com` | `https://zkteco.peoplesitsolution.online` |
-| Dev tunnel | `https://hrm.peoplesitsolution.online` | `https://zktecolocal.peoplesitsolution.online` |
+| Production (default) | `https://bhrm.pphl.online` | `https://device.pphl.online` |
+| Dev tunnel | `https://bhrm.pphl.online` | `https://zktecolocal.peoplesitsolution.online` |
 
 Dev tunnel build:
 

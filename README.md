@@ -29,14 +29,14 @@ See [docs/MOBILE_EMPLOYEE_FEATURES.md](docs/MOBILE_EMPLOYEE_FEATURES.md) for API
 
 | Backend | URL |
 |---------|-----|
-| HRM / ERP | `https://hrm.peoplesitsolution.com` |
-| ZKTeco attendance | `https://zkteco.peoplesitsolution.online` |
+| HRM / ERP | `https://bhrm.pphl.online` |
+| ZKTeco attendance | `https://device.pphl.online` |
 
 ### Development URLs (Cloudflare tunnel on dev PC)
 
 | Backend | URL | Docker stack |
 |---------|-----|--------------|
-| HRM / ERP | `https://hrm.peoplesitsolution.online` | `hrm-production` (:8020) |
+| HRM / ERP | `https://bhrm.pphl.online` | `hrm-production` (:8020) |
 | ZKTeco attendance | `https://zktecolocal.peoplesitsolution.online` | `zkteco-production` (:8095) |
 
 See [docs/TUNNEL_DEVELOPMENT.md](docs/TUNNEL_DEVELOPMENT.md) for Windows services, tunnel profiles, and verification steps.
@@ -79,7 +79,7 @@ In Cursor: **Tasks: Run Task** → **Start Android Emulator**, then **Run and De
 
 ### Production APK (live backends — default for distribution)
 
-Lightweight **split-per-ABI** APKs against **production** URLs (`hrm.peoplesitsolution.com` + `zkteco.peoplesitsolution.online`). **Do not** pass `USE_LOCAL_TUNNEL_BACKENDS`.
+Lightweight **split-per-ABI** APKs against **production** URLs (`bhrm.pphl.online` + `device.pphl.online`). **Do not** pass `USE_LOCAL_TUNNEL_BACKENDS`.
 
 ```powershell
 cd Attandance_App

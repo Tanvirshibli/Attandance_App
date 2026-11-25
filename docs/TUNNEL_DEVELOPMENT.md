@@ -17,8 +17,8 @@ Phone (any network)
 
 | Docker stack | Windows service | Profile dir | Public hostname | Local origin |
 |--------------|-----------------|-------------|-----------------|--------------|
-| `hrm-production` | `Cloudflared-hrmlocal` | `%ProgramData%\cloudflared\hrmlocal\` | `https://hrm.peoplesitsolution.online` | `http://localhost:8020` |
-| `hrm-frontend-production` | `Cloudflared-hrmfrontlocal` | `%ProgramData%\cloudflared\hrmfrontlocal\` | `https://hrmfrontlocal.peoplesitsolution.online` | `http://localhost:8021` |
+| `hrm-production` | `Cloudflared-hrmlocal` | `%ProgramData%\cloudflared\hrmlocal\` | `https://bhrm.pphl.online` | `http://localhost:8020` |
+| `hrm-frontend-production` | `Cloudflared-hrmfrontlocal` | `%ProgramData%\cloudflared\hrmfrontlocal\` | `https://hrm.pphl.online` | `http://localhost:8021` |
 | `zkteco-production` | `Cloudflared-zktecolocal` | `%ProgramData%\cloudflared\zktecolocal\` | `https://zktecolocal.peoplesitsolution.online` | `http://localhost:8095` |
 
 Cloudflare Zero Trust dashboard tunnels (this machine): `hrm local`, `hrmfront local`, `zkteco local`.
@@ -46,10 +46,10 @@ Get-CimInstance Win32_Service | Where-Object { $_.Name -like 'Cloudflared*' } | 
 
 | Feature | Dev tunnel build | Production build |
 |---------|------------------|------------------|
-| Login, profile, logout | `https://hrm.peoplesitsolution.online` | `https://hrm.peoplesitsolution.com` |
-| Face registration | `https://hrm.peoplesitsolution.online` | `https://hrm.peoplesitsolution.com` |
-| Future ERP (leave, holiday, sales, payment) | `https://hrm.peoplesitsolution.online` | `https://hrm.peoplesitsolution.com` |
-| Attendance list + check-in/out | `https://zktecolocal.peoplesitsolution.online` | `https://zkteco.peoplesitsolution.online` |
+| Login, profile, logout | `https://bhrm.pphl.online` | `https://bhrm.pphl.online` |
+| Face registration | `https://bhrm.pphl.online` | `https://bhrm.pphl.online` |
+| Future ERP (leave, holiday, sales, payment) | `https://bhrm.pphl.online` | `https://bhrm.pphl.online` |
+| Attendance list + check-in/out | `https://zktecolocal.peoplesitsolution.online` | `https://device.pphl.online` |
 
 Configuration: `lib/config/app_config.dart` — controlled by `--dart-define=USE_LOCAL_TUNNEL_BACKENDS=true`.
 
@@ -95,7 +95,7 @@ Only change URLs for production by **omitting** `USE_LOCAL_TUNNEL_BACKENDS` (def
 4. Quick smoke test from this PC:
 
 ```powershell
-Invoke-WebRequest -Uri "https://hrm.peoplesitsolution.online/login" -UseBasicParsing
+Invoke-WebRequest -Uri "https://bhrm.pphl.online/login" -UseBasicParsing
 Invoke-WebRequest -Uri "https://zktecolocal.peoplesitsolution.online/login" -UseBasicParsing
 ```
 

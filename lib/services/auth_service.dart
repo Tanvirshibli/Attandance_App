@@ -526,8 +526,8 @@ class AuthService {
     final baseUrls = AppConfig.authApiBaseUrlCandidates.join(', ');
     final networkReason = lastNetworkError ?? 'No reachable API login endpoint.';
     final devHint = AppConfig.useLocalTunnelBackends
-        ? 'This build uses Cloudflare tunnel backends (USE_LOCAL_TUNNEL_BACKENDS=true). Ensure Cloudflared-hrmlocal is running and https://hrm.peoplesitsolution.online is healthy.'
-        : 'Production builds target https://hrm.peoplesitsolution.com. For tunnel dev builds use --dart-define=USE_LOCAL_TUNNEL_BACKENDS=true.';
+        ? 'This build uses Cloudflare tunnel backends (USE_LOCAL_TUNNEL_BACKENDS=true). Ensure Cloudflared-hrmlocal is running and https://bhrm.pphl.online is healthy.'
+        : 'Production builds target https://bhrm.pphl.online. For tunnel dev builds use --dart-define=USE_LOCAL_TUNNEL_BACKENDS=true.';
     debugPrint(
       'AuthService.login unreachable: $networkReason $devHint '
       'Tried bases: $baseUrls. Last URL: ${lastAttemptedLoginUrl ?? 'n/a'}. '

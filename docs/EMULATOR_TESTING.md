@@ -41,14 +41,14 @@ C:\flutter\bin\flutter.bat run -d emulator-5554
 
 ## Networking notes
 
-- **Production / cloud backends** (default debug/release builds): no special URLs — the emulator uses the same `https://hrm.peoplesitsolution.com` / ZKTeco cloud hosts as a phone.
+- **Production / cloud backends** (default debug/release builds): no special URLs — the emulator uses the same `https://bhrm.pphl.online` / ZKTeco cloud hosts as a phone.
 - **Local Docker backends** from the emulator: use the special host `10.0.2.2` (maps to the host PC’s `127.0.0.1`), e.g. `http://10.0.2.2:8003` / `:8095` / `:8020`. See also `SERVER_COMMANDS.md`.
 - The start script always launches with `-dns-server 8.8.8.8,1.1.1.1` and turns **Private DNS off** on the AVD (Private DNS to `one.one.one.one` was breaking login timeouts).
 - If Google Fonts fail to download after a cold start, wait a few seconds and retry; with working internet they load normally.
 
 ## Login timeout / no internet on emulator
 
-**Symptom:** Sign In fails with `Request timed out` to `https://hrm.peoplesitsolution.com/.../login`, while the **same build works on a real phone**.
+**Symptom:** Sign In fails with `Request timed out` to `https://bhrm.pphl.online/.../login`, while the **same build works on a real phone**.
 
 **Cause:** Emulator network/DNS (not app auth). Common on fresh AVDs when Private DNS or a bad snapshot leaves Wi‑Fi “connected” but with no real egress.
 
@@ -62,7 +62,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\start-android-emulator.ps1 -C
 Then verify:
 
 ```powershell
-adb shell ping -c 2 hrm.peoplesitsolution.com
+adb shell ping -c 2 bhrm.pphl.online
 adb shell ping -c 2 8.8.8.8
 ```
 
