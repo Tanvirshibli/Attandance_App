@@ -140,6 +140,16 @@ Handoff for backend teams: **[SALES_AND_PAYMENTS_API_CONTRACT.md](SALES_AND_PAYM
 - Picking/uploading is unchanged: images are still compressed to WebP on the phone (`ImageUploadService`) and sent as `image[]` through `MarketingService.uploadAttachments`
 - See [FARM_DEALER_MOBILE.md](FARM_DEALER_MOBILE.md#photos-across-the-app)
 
+### Present and Absent figures corrected (v2.5.6)
+
+The dashboard's Present and Absent tiles were under- and over-reporting the same days. Three causes are fixed:
+
+- **Days before you joined are no longer counted.** The month used to be counted from the 1st even when you joined later, so every earlier working day was recorded against you as an absence. The count now starts on your joining date; if the date is unknown it still starts on the 1st, so it can never hide a real absence
+- **A day you attended but the phone missed now counts as Present.** The attendance server reports one row per day with the in/out times, but leaves the day's *type* blank unless the office has a detailed record. Only the blank type was read, so a day with real punch times could be judged absent
+- **A check-in without a check-out now counts.** A half punch is a day you turned up; it is no longer discarded for having only one side
+
+Present and Absent are also shown together: if the server's day rows cannot be loaded, both tiles show `—` instead of one solid number beside a dash.
+
 ### Holidays and leave split out of absences (v2.5.4+123)
 
 Holidays, approved leave and weekends were being counted against you as if you had missed the day.

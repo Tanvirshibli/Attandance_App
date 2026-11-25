@@ -13,7 +13,9 @@ Entry point: **Sales Info → POS Invoice / Challan** (`sales_info_screen.dart`)
 2. `PosOrderDetailScreen` — order summary and items, with two actions:
    **POS Invoice** and **POS Challan**.
 3. `PosReceiptPreviewScreen` — the receipt at 300 px ≈ 80 mm, with a segmented
-   Invoice/Challan switch, the selected printer, and print.
+   Invoice/Challan switch, the selected printer, and a **single** print action in
+   the app bar. That one button opens the printer picker when nothing is saved;
+   the in-body pill changes a saved printer.
 4. `PosPrinterListScreen` — bonded classic printers and discovered BLE printers;
    tap to select (persisted), "Test" prints a small page.
 

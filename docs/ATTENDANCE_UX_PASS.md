@@ -73,6 +73,22 @@ a working setting.
 - If the holiday calendar cannot be loaded, the summary is marked
   `holidaysUnknown` and the Holiday tile shows `—` instead of a number inflated
   by treating holidays as absences. A failed HRM row fetch marks `rowsUnknown`
-  and does the same for Absent.
+  and does the same for **both** Present and Absent — they are two halves of one
+  answer, so the pair is never shown half-known.
+- The counted window now starts at the **joining date** when the profile carries
+  one (`AuthUserProfile.joinedOn`), so a mid-month joiner is not reported absent
+  for days they were not employed. An absent or unparseable joining date keeps
+  the old behaviour — counting from the 1st — because a missing date must never
+  hide a real absence.
+- Punch evidence is taken from the **raw punch timestamps**, not from
+  `hasCheckIn`/`hasCheckOut`. Those are display helpers that refuse a check-out
+  with an impossible chronology, so gating on both dropped one-sided punches and
+  turned an attended day back into an absence.
+- HRM's daily rows carry `inTime`/`outTime` beside an `attendanceType` that is
+  null whenever no detail row exists. A row with **either** timestamp is
+  therefore treated as attendance evidence on its own
+  (`AttendanceSummary.rowPunchDays`). Reading the type alone is what let a worked
+  day count as absent once the phone's own punch list missed it.
 - Dashboard, history and report still share one calculation
   (`AttendanceStatsService` / `AttendanceClassifier`), so they cannot disagree.
+
