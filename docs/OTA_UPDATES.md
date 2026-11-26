@@ -101,7 +101,7 @@ Two OTA channels: **prod** (default) and **beta**. Each has its own manifest fil
 | `prod` | `ota/manifest.json` | `2.6.0` | 100–8999 | yes | `v2.6.0-build108` |
 | `beta` | `ota/beta/manifest.json` | `2.6.0-beta.1` | 9000–9999 | **no** | `v2.6.0-beta.1-build9001-beta` |
 
-> Current lines after 2026-11-26: production at `2.5.6+130`, beta at `2.5.7-beta.1+12004` (beta bases continue in `12xxx`).
+> Current lines after 2026-11-26: production at `2.5.7+131` (forced), beta from `2.5.8-beta.1+12005` (beta bases continue in `12xxx`).
 
 ### ⚠️ The version bands are the whole design
 
@@ -299,6 +299,21 @@ After publishing build **N**:
 - [`rocket launcher/README.md`](../../rocket%20launcher/README.md) — publisher scripts and GitHub API flow
 - [`SERVER_COMMANDS.md`](../../SERVER_COMMANDS.md) — workspace command reference (OTA section)
 - [`MOBILE_EMPLOYEE_FEATURES.md`](MOBILE_EMPLOYEE_FEATURES.md) — feature summary including OTA
+
+---
+
+## November 26, 2026 Update (v2.5.7+131) — main channel
+
+**The whole POS module shows no prices; a refused biometric punch names its real reason. Promoted to production, force update.**
+
+> Published `2.5.7+131` (tag `v2.5.7-build131`, built from `ab218b4`). Both APKs verified by download: the arm64 asset's size and SHA-256 match the manifest (`ff88a1e6…`), `versionName=2.5.7`, raw codes `2131`/`1131` normalise to `131`, and the APK bakes the **prod** manifest URL with no beta path.
+
+Promotes the `2.5.7-beta.1+12004` beta build. The pubspec was moved from the beta band to `2.5.7+130` for this release (the prod build refuses a number above 8999) and the build script bumped it to `131`; the pubspec then returned to the beta line at `2.5.8-beta.1+12005`, so the next beta is not withheld as older than the shipped `12004`.
+
+- POS carries no money, on the invoice as well as the challan: the API withholds every price and total (`pphl_account-laravel` `7908785`), and the list, detail and printed document render none. The shipped binary has no `Subtotal` / `Others Cost` / `In Words`, while `Total Quantity` remains.
+- A refused face/fingerprint punch names its real reason (`gps_required`, `gps_untrusted`, `client_time_required`, `device_time_untrusted`, `app_outdated`, `biometric_authorization_required`, or the server's shift-window prose) instead of "Server is unreachable", and only a genuine outage falls through to another backend.
+
+> Publisher note — **this inbox was two releases stale.** The prod inbox still held `2.5.5+126` APKs. Publishing without checking would have shipped 2.5.5 to every production phone as the "update". Always read the APK's own version (or compare hashes against `build/app/outputs/flutter-apk`) before `publish-update.ps1`; a file merely existing in the inbox proves nothing.
 
 ---
 
