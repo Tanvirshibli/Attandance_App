@@ -91,4 +91,71 @@ class UserFacingError {
     }
     return generic;
   }
+
+  /// The server's documented punch refusals, keyed by the reason it returns.
+  ///
+  /// These arrive as a 4xx with a machine code in `message`. Letting them fall
+  /// through to [generic] is what made a face or fingerprint refusal look like
+  /// a broken deployment, so each one names the thing the employee can act on.
+  static const Map<String, String> _punchRefusals = {
+    'gps_required':
+        'Location is required to punch. Turn on GPS and try again.',
+    'gps_untrusted':
+        'Your location looks fake or too far from the office. Move to an open spot and try again.',
+    'client_time_required':
+        'Your phone time is needed to punch. Enable automatic date and time and try again.',
+    'device_time_untrusted':
+        'Your phone clock is wrong, so the punch was refused. Turn on automatic date and time.',
+    'app_outdated':
+        'This version of the app is too old to punch. Please update it.',
+    'biometric_authorization_required':
+        'This punch needs a fresh face or fingerprint check. Please verify again.',
+  };
+
+  /// Friendly message for a refused punch that names the real reason.
+  ///
+  /// A shift-window refusal is prose the backend wrote for the employee (it
+  /// names the shift, the anchor time and the grace deadline), so it is passed
+  /// through rather than replaced.
+  static String forPunchRefusal({int? statusCode, String? rawMessage}) {
+    final raw = rawMessage?.trim();
+    if (raw != null && raw.isNotEmpty) {
+      final mapped = _punchRefusals[raw.toLowerCase()];
+      if (mapped != null) return mapped;
+
+      // The shift-window refusals are full sentences the employee can act on.
+      final v = raw.toLowerCase();
+      if (v.contains('shift') || v.contains('grace period')) {
+        return raw;
+      }
+    }
+
+    return forSubmit(statusCode: statusCode, rawMessage: raw);
+  }
+}
+
+/// A failed submit, with the one distinction a caller has to act on: is this an
+/// outage worth retrying elsewhere, or the server's decision about the request?
+class UserFacingFailure {
+  const UserFacingFailure({required this.message, required this.isOutage});
+
+  final String message;
+
+  /// True for a 5xx or a transport failure — something a different host might
+  /// still serve. False for a 4xx, which is a decision about this request and
+  /// must be shown, not retried.
+  final bool isOutage;
+
+  factory UserFacingFailure.fromSubmit({
+    int? statusCode,
+    String? rawMessage,
+  }) {
+    return UserFacingFailure(
+      message: UserFacingError.forPunchRefusal(
+        statusCode: statusCode,
+        rawMessage: rawMessage,
+      ),
+      isOutage: statusCode != null && statusCode >= 500,
+    );
+  }
 }

@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
 import '../config/app_config.dart';
@@ -541,10 +542,13 @@ class AttendanceRequestService {
             .timeout(const Duration(seconds: 20));
 
         if (response.statusCode == 404) {
+          debugPrint('Punch attempt $url -> 404, trying next candidate.');
           continue;
         }
 
         final data = _decodeMap(response.body);
+        final rawMessage = _extractErrorMessage(data);
+
         if (response.statusCode == 201 || response.statusCode == 200) {
           return AttendanceSubmitResult(
             success: true,
@@ -559,17 +563,34 @@ class AttendanceRequestService {
           );
         }
 
-        return AttendanceSubmitResult(
-          success: false,
-          message: UserFacingError.forSubmit(
-            statusCode: response.statusCode,
-            rawMessage: _extractErrorMessage(data),
-          ),
+        final failure = UserFacingFailure.fromSubmit(
+          statusCode: response.statusCode,
+          rawMessage: rawMessage,
         );
+
+        debugPrint(
+          'Punch attempt $url -> ${response.statusCode}: ${rawMessage ?? 'no message'}',
+        );
+
+        // A 4xx is the server's decision about this punch, so it is reported at
+        // once. Retrying it against the other backend would be wrong — and for a
+        // biometric punch it would be unsafe, because the lenient ZKTeco BFF
+        // answers 201 without validating the proof, turning a refused face or
+        // fingerprint into a phantom success. Only an outage is worth a retry.
+        if (!failure.isOutage) {
+          return AttendanceSubmitResult(
+            success: false,
+            message: failure.message,
+          );
+        }
+
+        networkError = failure.message;
       } on TimeoutException catch (error) {
         networkError = UserFacingError.forException(error);
+        debugPrint('Punch attempt $url -> timeout: $error');
       } catch (error) {
         networkError = UserFacingError.forException(error);
+        debugPrint('Punch attempt $url -> error: $error');
       }
     }
 
