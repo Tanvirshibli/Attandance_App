@@ -274,6 +274,35 @@ submission, now carrying `biometric_method: "fingerprint"` and
 `biometric_authorization_id`. The face path is unchanged and sends
 `biometric_method: "face"` with `face_verified: true`.
 
+### When a biometric punch is refused
+
+Both paths send `biometric_method`, so both go through
+`AttendanceRequestService.submitSelfPunch`'s biometric candidate list, which
+puts HRM first because HRM owns the credential, the nonce and the preference
+flags. ZKTeco is the fallback only for an **outage**.
+
+The server's refusals are 4xx carrying a machine code, and
+`UserFacingError.forPunchRefusal` names each one instead of returning
+`generic` — which is what previously made a refusal look like a dead
+deployment:
+
+| Server `message` | What the employee is told |
+|---|---|
+| `gps_required` | Location is required to punch. Turn on GPS and try again. |
+| `gps_untrusted` | Location looks fake or too far from the office. |
+| `client_time_required` | Phone time is needed to punch. Enable automatic date and time. |
+| `device_time_untrusted` | Phone clock is wrong, so the punch was refused. |
+| `app_outdated` | This version of the app is too old to punch. |
+| `biometric_authorization_required` | This punch needs a fresh face or fingerprint check. |
+| shift-window prose | Passed through verbatim — it already names the shift, the anchor time and the grace deadline |
+
+"Server is unreachable. Please try again later." is reserved for a real HTTP
+5xx or a TLS handshake failure. A 4xx is returned immediately and never falls
+through to ZKTeco: the ZKTeco BFF accepts a bare punch and would answer 201,
+turning a refused biometric into a phantom success. Only a 5xx or a transport
+failure advances to the next candidate, and each attempt logs its url, status
+and message for field diagnosis.
+
 ---
 
 ## 6. Threat model

@@ -95,6 +95,26 @@ Handoff for backend teams: **[SALES_AND_PAYMENTS_API_CONTRACT.md](SALES_AND_PAYM
 - Force reporting demo: `--dart-define=USE_SALES_DEMO_DATA=true`
 - Override sales host: `--dart-define=SALES_API_BASE_URL=...`
 
+### POS Invoice / Challan (no prices)
+
+Sales Info → **POS Invoice / Challan** lists approved feed orders and prints
+them to a Bluetooth POS printer, as an invoice or a challan.
+
+**No money is shown anywhere in this module.** The API withholds every price,
+rate, line amount and invoice total, and the app renders none of them:
+
+| Screen | Shows | Never shows |
+|---|---|---|
+| Order list | feed id, sector, dates, dealer, sales person, item name + quantity | item price, Due, Total |
+| Order detail | order/dealer/driver/delivery fields, item name + quantity | item price, item amount, any totals card |
+| Preview / printed paper | SN, item, quantity, total quantity, driver, signature rows | Price/Amount columns, subtotal/VAT/discount/transport/advance/due/total, amount-in-words |
+
+Both document types therefore print the same money-free layout, differing only
+by their title (`~~ Sales Invoice ~~` / `~~Delivery Challan ~~`) and header
+rows. If a price ever reappears, `test/pos_receipt_document_test.dart` fails —
+it scans every rendered string on both document types for money patterns.
+Details: `docs/POS_PRINTING.md`.
+
 ### Vehicles (live)
 
 - Services tile **Vehicles** → full active fleet (`GET /api/get-vehicle-active-list`); header **Vehicles** / “Active fleet”

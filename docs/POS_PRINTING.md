@@ -47,13 +47,36 @@ Public sales endpoints (no sales login, no JWT) documented in
 | `Inv.`/`~DUE` dates `D,MMMM YYYY` | `DateFormat('d,MMMM yyyy')` |
 | Dealer line `tradeName (dealerCode) zoneName` + `PH:` | `PosDealer.displayName` |
 | Challan columns SN 5 % / Item 60 % / Quantity 35 % | same flex weights |
-| Invoice columns Item 35 % / Price 15 % / Qty 19 % / Amount 18 % | same |
+| Invoice columns Item 35 % / Price 15 % / Qty 19 % / Amount 18 % | **deviation: SN 5 % / Item 60 % / Quantity 35 %, same as the challan** |
 | Challan `Total Quantity {bag}Bag ({qty}Kg)` | same |
-| Invoice subtotal/transport/others/VAT/discount/advance/due/total + In Words | same, `toStringAsFixed(2)` and `/-` suffixes |
+| Invoice subtotal/transport/others/VAT/discount/advance/due/total + In Words | **deviation: not printed — the app shows only `Total Quantity`** |
 | `Driver`, `Sig: Sender` / `Sig: Receiver` (challan only), Bangla note, `Order #feedId`, Code128 barcode | same |
 
 Deliberate deviation: the webapp's invoice quantity cell contains a typo
 (`${bagQty}11 Bag (${qty}1 Kg)`); the app prints `2 Bag (100 Kg)`.
+
+## The mobile POS carries no money
+
+Every price, rate, line amount and invoice total is **absent from the app and
+from the API**, for both the invoice and the challan:
+
+- The API withholds them — `PublicFeedPosService` in `pphl_account-laravel`
+  never emits `salePrice`, `tradePrice`, `amount`, `subTotal`, `discount`,
+  `vatPercent`, `totalTax`, `othersCost`, `transportCost`, `depotCost`,
+  `advanceAmount`, `totalAmount`, `dueAmount`, `returnAmount`, `netAmount` or
+  `amountInWords`. The figures never reach the device at all.
+- The app renders none of them: the order list and detail drop their price and
+  amount fields, the detail loses its totals card, and the printed document
+  loses its Price/Amount columns and its totals block.
+
+So an invoice and a challan differ on paper only by their title and header
+rows. `PosOrderItem` and `PosOrderTotals` still *declare* the money fields, but
+only as parser tolerance so an older payload cannot crash a shipped build —
+nothing renders them. `test/pos_receipt_document_test.dart` scans every
+rendered string on both document types and fails if anything money-shaped
+reappears.
+
+The sales webapp is unaffected: `/api/v2/feed-orders` still returns prices.
 
 Because the preview widget *is* the print source, preview and paper cannot
 diverge.
