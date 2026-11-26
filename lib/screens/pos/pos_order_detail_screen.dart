@@ -107,8 +107,6 @@ class _PosOrderDetailScreenState extends State<PosOrderDetailScreen> {
                                 _summaryCard(order),
                                 const SizedBox(height: AppSpace.sm),
                                 _itemsCard(order),
-                                const SizedBox(height: AppSpace.sm),
-                                _totalsCard(order),
                                 const SizedBox(height: AppSpace.fabClearance),
                               ]),
                             ),
@@ -217,50 +215,9 @@ class _PosOrderDetailScreenState extends State<PosOrderDetailScreen> {
                       ],
                     ),
                   ),
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    children: [
-                      Text(formatPosNumber(item.salePrice),
-                          style: AppType.bodySm),
-                      Text(
-                        item.amount.toStringAsFixed(2),
-                        style: AppType.bodyStrong,
-                      ),
-                    ],
-                  ),
                 ],
               ),
             ),
-        ],
-      ),
-    );
-  }
-
-  Widget _totalsCard(PosOrderDetail order) {
-    final totals = order.totals;
-    return AppCard(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Text('Totals', style: AppType.h3),
-          const SizedBox(height: AppSpace.xs),
-          _totalRow('Subtotal', totals.subTotal),
-          _totalRow('Discount', totals.discountTotal),
-          _totalRow('VAT (${formatPosNumber(totals.vatPercent)}%)',
-              totals.totalTax),
-          _totalRow('Transport', totals.transportCost),
-          _totalRow('Others cost', totals.othersCost),
-          _totalRow('Advance', totals.advanceAmount),
-          const Divider(height: AppSpace.md),
-          _totalRow('Due', totals.dueAmount, strong: true),
-          _totalRow('Total', totals.totalAmount, strong: true),
-          if (totals.amountInWords.isNotEmpty) ...[
-            const SizedBox(height: AppSpace.xs),
-            Text(
-              'In words: ${totals.amountInWords}',
-              style: TextStyle(fontSize: 12, color: AppColors.inkMuted),
-            ),
-          ],
         ],
       ),
     );
@@ -281,22 +238,6 @@ class _PosOrderDetailScreenState extends State<PosOrderDetailScreen> {
             ),
           ),
           Expanded(child: Text(value, style: const TextStyle(fontSize: 13))),
-        ],
-      ),
-    );
-  }
-
-  Widget _totalRow(String label, double value, {bool strong = false}) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 3),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(label, style: AppType.bodySm),
-          Text(
-            value.toStringAsFixed(2),
-            style: strong ? AppType.bodyStrong : AppType.bodySm,
-          ),
         ],
       ),
     );

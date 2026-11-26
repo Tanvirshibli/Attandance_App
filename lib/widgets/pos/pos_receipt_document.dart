@@ -57,8 +57,7 @@ class PosReceiptDocument extends StatelessWidget {
             const _Rule(),
             ..._itemRows(),
             const _Rule(),
-            if (_isChallan) _totalQuantityRow(totals) else _invoiceTotals(totals),
-            if (!_isChallan) const _Rule(),
+            _totalQuantityRow(totals),
             _driverBlock(),
             _Rule(top: 8, bottom: 8),
             if (_isChallan) ...[
@@ -239,22 +238,15 @@ class PosReceiptDocument extends StatelessWidget {
   }
 
   Widget _itemsHeader() {
-    final columns = _isChallan
-        ? const [
-            (width: 5.0, label: 'SN'),
-            (width: 60.0, label: 'Item'),
-            (width: 35.0, label: 'Quantity'),
-          ]
-        : const [
-            (width: 35.0, label: 'Item'),
-            (width: 15.0, label: 'Price'),
-            (width: 19.0, label: 'Qty'),
-            (width: 18.0, label: 'Amount'),
-          ];
+    const columns = [
+      (width: 5.0, label: 'SN'),
+      (width: 60.0, label: 'Item'),
+      (width: 35.0, label: 'Quantity'),
+    ];
 
     return Padding(
-      padding: EdgeInsets.only(
-        right: _isChallan ? 16 : 0,
+      padding: const EdgeInsets.only(
+        right: 16,
         bottom: 4,
       ),
       child: Row(
@@ -273,72 +265,30 @@ class PosReceiptDocument extends StatelessWidget {
   }
 
   List<Widget> _itemRows() {
-    if (_isChallan) {
-      return [
-        for (final item in order.items)
-          Padding(
-            padding: const EdgeInsets.only(right: 16),
-            child: Row(
-              children: [
-                Expanded(
-                  flex: 5,
-                  child: Text('${item.sn}.',
-                      style: const TextStyle(fontWeight: FontWeight.w600)),
-                ),
-                Expanded(
-                  flex: 60,
-                  child: Text(item.displayName,
-                      style: const TextStyle(fontWeight: FontWeight.w600)),
-                ),
-                Expanded(
-                  flex: 35,
-                  child: Text(item.quantityLabel,
-                      style: const TextStyle(fontWeight: FontWeight.w600)),
-                ),
-              ],
-            ),
-          ),
-      ];
-    }
-
     return [
-      Padding(
-        padding: const EdgeInsets.only(bottom: 0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            for (final item in order.items)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 4),
-                child: Row(
-                  children: [
-                    Expanded(
-                      flex: 35,
-                      child: Text(item.displayName,
-                          style: const TextStyle(fontWeight: FontWeight.w600)),
-                    ),
-                    Expanded(
-                      flex: 15,
-                      child: Text(_plainNumber(item.salePrice),
-                          style: const TextStyle(fontWeight: FontWeight.w600)),
-                    ),
-                    Expanded(
-                      flex: 19,
-                      child: Text(item.quantityLabel,
-                          style: const TextStyle(fontWeight: FontWeight.w600)),
-                    ),
-                    Expanded(
-                      flex: 18,
-                      child: Text(item.amount.toStringAsFixed(2),
-                          style: const TextStyle(fontWeight: FontWeight.w600)),
-                    ),
-                  ],
-                ),
+      for (final item in order.items)
+        Padding(
+          padding: const EdgeInsets.only(right: 16),
+          child: Row(
+            children: [
+              Expanded(
+                flex: 5,
+                child: Text('${item.sn}.',
+                    style: const TextStyle(fontWeight: FontWeight.w600)),
               ),
-          ],
+              Expanded(
+                flex: 60,
+                child: Text(item.displayName,
+                    style: const TextStyle(fontWeight: FontWeight.w600)),
+              ),
+              Expanded(
+                flex: 35,
+                child: Text(item.quantityLabel,
+                    style: const TextStyle(fontWeight: FontWeight.w600)),
+              ),
+            ],
+          ),
         ),
-      ),
     ];
   }
 
@@ -358,59 +308,6 @@ class PosReceiptDocument extends StatelessWidget {
               style: const TextStyle(fontWeight: FontWeight.w600),
             ),
           ),
-        ],
-      ),
-    );
-  }
-
-  Widget _invoiceTotals(PosOrderTotals totals) {
-    return Padding(
-      padding: const EdgeInsets.only(right: 16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          _totalRow('Subtotal', totals.subTotal.toStringAsFixed(2)),
-          _totalRow('Transport', '${totals.transportCost.toStringAsFixed(2)}/-'),
-          _totalRow('Others Cost', '${totals.othersCost.toStringAsFixed(2)}/-'),
-          _totalRow(
-            'VAT (${formatPosNumber(totals.vatPercent)}%)',
-            '${totals.totalTax.toStringAsFixed(2)}/-',
-          ),
-          _totalRow(
-            'Discount',
-            '${totals.discountTotal.toStringAsFixed(2)}/-',
-          ),
-          _totalRow('Advance', '${totals.advanceAmount.toStringAsFixed(2)}/-'),
-          const _Rule(),
-          _totalRow('Due', '${totals.dueAmount.toStringAsFixed(2)}/-',
-              bold: true),
-          _totalRow('Total', '${totals.totalAmount.toStringAsFixed(2)}/-',
-              bold: true, bottom: 4),
-          Padding(
-            padding: const EdgeInsets.only(right: 4),
-            child: Text.rich(
-              TextSpan(children: [
-                const TextSpan(text: 'In Words: '),
-                TextSpan(text: totals.amountInWords),
-              ]),
-              textAlign: TextAlign.center,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _totalRow(String label, String value, {bool bold = false, double bottom = 4}) {
-    final style = TextStyle(fontWeight: bold ? FontWeight.bold : FontWeight.w600);
-    return Padding(
-      padding: EdgeInsets.only(bottom: bottom),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(label, style: style),
-          Text(value, style: style),
         ],
       ),
     );
@@ -562,11 +459,6 @@ class PosReceiptDocument extends StatelessWidget {
   static String _formatDate(DateTime? date) {
     if (date == null) return '';
     return DateFormat('d,MMMM yyyy').format(date);
-  }
-
-  static String _plainNumber(double value) {
-    if (value == value.roundToDouble()) return value.toInt().toString();
-    return value.toString();
   }
 }
 

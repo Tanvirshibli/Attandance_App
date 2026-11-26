@@ -439,31 +439,13 @@ class _PosOrderListScreenState extends State<PosOrderListScreen> {
                 padding: const EdgeInsets.only(bottom: 2),
                 child: Text(
                   '${item.sn}. ${item.productName ?? item.displayName}: '
-                  '${item.quantityLabel} * ${formatPosNumber(item.salePrice)} /-',
+                  '${item.quantityLabel}',
                   style: const TextStyle(fontSize: 12),
                 ),
               ),
-            const SizedBox(height: AppSpace.xs),
-            Row(
-              children: [
-                Expanded(child: _amount('Due A', order.dueAmount)),
-                Expanded(child: _amount('Total A', order.totalAmount)),
-              ],
-            ),
           ],
         ),
       ),
-    );
-  }
-
-  Widget _amount(String label, double value) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(label,
-            style: TextStyle(fontSize: 11, color: AppColors.inkMuted)),
-        Text(value.toStringAsFixed(2), style: AppType.bodyStrong),
-      ],
     );
   }
 

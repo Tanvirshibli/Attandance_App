@@ -219,6 +219,11 @@ class PosOrderItem {
   final String? unit;
   final double bagQty;
   final double qty;
+
+  /// Money fields are retained only so the parser stays tolerant: the POS API
+  /// no longer sends them (see PublicFeedPosService) and nothing in the app
+  /// renders them. Do not display [salePrice], [tradePrice] or [amount] — the
+  /// mobile POS must show no prices.
   final double salePrice;
   final double tradePrice;
   final double amount;
@@ -247,6 +252,11 @@ class PosOrderItem {
   }
 }
 
+/// The money totals of a POS order.
+///
+/// Retained for tolerance only: the POS API no longer sends any of these
+/// (see PublicFeedPosService) and the mobile POS renders none of them. The two
+/// quantity totals are the fields that still arrive and still matter.
 class PosOrderTotals {
   const PosOrderTotals({
     this.subTotal = 0,
