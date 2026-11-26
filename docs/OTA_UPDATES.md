@@ -101,7 +101,7 @@ Two OTA channels: **prod** (default) and **beta**. Each has its own manifest fil
 | `prod` | `ota/manifest.json` | `2.6.0` | 100–8999 | yes | `v2.6.0-build108` |
 | `beta` | `ota/beta/manifest.json` | `2.6.0-beta.1` | 9000–9999 | **no** | `v2.6.0-beta.1-build9001-beta` |
 
-> Current lines after 2026-11-25: production at `2.5.6+130`, beta from `2.5.7-beta.1+12003` (beta bases continue in `12xxx`).
+> Current lines after 2026-11-26: production at `2.5.6+130`, beta at `2.5.7-beta.1+12004` (beta bases continue in `12xxx`).
 
 ### ⚠️ The version bands are the whole design
 
@@ -299,6 +299,21 @@ After publishing build **N**:
 - [`rocket launcher/README.md`](../../rocket%20launcher/README.md) — publisher scripts and GitHub API flow
 - [`SERVER_COMMANDS.md`](../../SERVER_COMMANDS.md) — workspace command reference (OTA section)
 - [`MOBILE_EMPLOYEE_FEATURES.md`](MOBILE_EMPLOYEE_FEATURES.md) — feature summary including OTA
+
+---
+
+## November 26, 2026 Update (v2.5.7-beta.1+12004) — beta channel
+
+**The whole POS module shows no prices; a refused biometric punch names its real reason.**
+
+> Published `2.5.7-beta.1+12004` (tag `v2.5.7-beta.1-build12004-beta`, built from `ab218b4`). Beta is not forced; production stays at `2.5.6+130`. Verified by download: the arm64 asset's size and SHA-256 match the manifest, `versionName=2.5.7-beta.1`, raw codes `14004`/`13004` normalise to `12004`, and the APK bakes the **beta** manifest URL with no prod path.
+
+- **POS carries no money, on the invoice as well as the challan.** The figures are withheld by the API first — `PublicFeedPosService` in `pphl_account-laravel` stopped emitting `salePrice`, `tradePrice`, `amount` and every invoice total (backend commit `7908785`, pushed to that repo's `main` before this build). The app renders none of them either: the list drops its per-item price and Due/Total pair, the detail drops its per-item price and amount plus the totals card, and the printed document drops its Price/Amount columns and totals block in favour of the `Total Quantity` row. Confirmed in the shipped binary: `Subtotal`, `Others Cost` and `In Words` are absent while `Total Quantity` remains.
+- **A refused punch no longer says "server is unreachable".** `UserFacingError.forPunchRefusal` names each documented 4xx refusal (`gps_required`, `gps_untrusted`, `client_time_required`, `device_time_untrusted`, `app_outdated`, `biometric_authorization_required`) and passes shift-window text through. `submitSelfPunch` now advances to the next candidate on an outage rather than only on a 404, while still returning a 4xx at once so ZKTeco cannot accept a proof HRM refused. Each attempt logs its url, status and message.
+
+See `POS_PRINTING.md` and `BIOMETRIC_AUTH.md`.
+
+> Publisher note: the beta inbox still held the previous release's APKs under **identical sizes** (67441584 / 59844656), which makes a size-only check look correct. Verify with a hash before publishing; these were refreshed from `build/app/outputs/flutter-apk` first. Unlike the `2.5.6` release, the asset upload succeeded, so no `curl` workaround was needed.
 
 ---
 
