@@ -87,16 +87,22 @@ void main() {
     expect(find.text('Subtotal'), findsNothing);
   });
 
-  testWidgets('invoice receipt shows money totals and no signature row',
-      (tester) async {
+  testWidgets('invoice receipt carries no money either', (tester) async {
     await pumpReceipt(tester, PosDocType.invoice);
 
     expect(find.text('~~ Sales Invoice ~~'), findsOneWidget);
-    expect(find.text('Subtotal'), findsOneWidget);
-    expect(find.text('6503.00'), findsNWidgets(2));
-    expect(find.text('6603.00/-'), findsNWidgets(2));
+    // No totals block, no amount-in-words, no Price/Amount columns.
+    expect(find.text('Subtotal'), findsNothing);
+    expect(find.text('Total'), findsNothing);
+    expect(find.text('Due'), findsNothing);
+    expect(find.text('Advance'), findsNothing);
+    expect(find.text('Price'), findsNothing);
+    expect(find.text('Amount'), findsNothing);
+    expect(find.textContaining('taka only'), findsNothing);
+    expect(find.text('6503.00'), findsNothing);
+    expect(find.text('6603.00/-'), findsNothing);
     expect(find.text('Sig: Sender'), findsNothing);
-    expect(find.text('Total Quantity'), findsNothing);
+    expect(find.text('Total Quantity'), findsOneWidget);
     expect(find.text('Order #CFO26116744'), findsOneWidget);
   });
 
@@ -106,4 +112,45 @@ void main() {
     final size = tester.getSize(find.byType(PosReceiptDocument));
     expect(size.width, 300);
   });
+
+  // The POS must never show money in the mobile app, on either document. This
+  // scans every rendered string rather than checking known labels, so a future
+  // price column or totals row cannot slip back in unnoticed.
+  for (final docType in PosDocType.values) {
+    testWidgets('${docType.name} document renders no money at all',
+        (tester) async {
+      await pumpReceipt(tester, docType);
+
+      final rendered = <String>[
+        ...tester
+            .widgetList<Text>(find.byType(Text))
+            .map((text) => text.data ?? ''),
+        ...tester
+            .widgetList<Text>(find.byType(Text))
+            .expand((text) => text.textSpan == null
+                ? const <String>[]
+                : [text.textSpan!.toPlainText()]),
+      ];
+
+      // A money-ish render: "1234.00", "1234/-", "Rs 1234", "৳1234",
+      // "taka only" (amount-in-words). Item names and quantities never match.
+      final moneyPattern = RegExp(
+        r'\d+\.\d{2}|/-|\btaka\b|৳|\bRs\.?\s?\d|Tk\.?\s?\d',
+        caseSensitive: false,
+      );
+
+      for (final line in rendered) {
+        expect(
+          moneyPattern.hasMatch(line),
+          isFalse,
+          reason: '${docType.name} document must not render money: "$line"',
+        );
+      }
+
+      // The delivery data the document exists for must still be there.
+      expect(find.text('101 Broiler Starter'), findsOneWidget);
+      expect(find.text('Total Quantity'), findsOneWidget);
+      expect(find.text('Mizan'), findsOneWidget);
+    });
+  }
 }
